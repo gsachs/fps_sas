@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { createWorld } from '../../src/sim/world.js';
 import { createCommand } from '../../src/sim/command.js';
-import { createMovementSystem } from '../../src/sim/movement.js';
+import { createMovementSystem, CAPSULE_RADIUS } from '../../src/sim/movement.js';
 import { createWeaponSystem } from '../../src/sim/weapon.js';
 import { createHealthSystem } from '../../src/sim/health.js';
 import { createSimulation } from '../../src/sim/index.js';
@@ -182,6 +182,26 @@ describe('combat: cover blocks hits', () => {
     }
 
     expect(rig.world.getEntity('target').health).toBe(100);
+  });
+});
+
+describe('combat: hitbox width matches the capsule radius (regression)', () => {
+  it('hits a target offset inside the current capsule radius but outside the pre-widening one', () => {
+    // Regression for commit db9d9b7: CAPSULE_RADIUS was widened 0.3 -> 0.4
+    // after a user reported hits at a character's visible edges not
+    // landing. No test exercised hitbox width at all -- this offset (0.35)
+    // sits inside the current 0.4 radius but outside the old 0.3 one, so a
+    // future narrowing of CAPSULE_RADIUS fails this test instead of
+    // silently reintroducing the "hits at the edges miss" bug.
+    const edgeOffset = (CAPSULE_RADIUS + 0.3) / 2; // between the old and current radius
+    const rig = buildCombatRig();
+    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addCombatant(rig, 'target', { x: edgeOffset, y: 1, z: 5 }); // shooter fires straight down x=0
+    primeBroadPhase(rig);
+
+    rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
+
+    expect(rig.world.getEntity('target').health).toBeLessThan(100);
   });
 });
 
