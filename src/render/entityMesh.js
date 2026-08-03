@@ -12,7 +12,12 @@ import { CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS } from '../sim/movement.js';
 export function createCharacterMesh({ color = 0xcc4444 } = {}) {
   const geometry = new THREE.CapsuleGeometry(CAPSULE_RADIUS, CAPSULE_HALF_HEIGHT * 2, 4, 8);
   const material = new THREE.MeshStandardMaterial({ color });
-  return new THREE.Mesh(geometry, material);
+  const mesh = new THREE.Mesh(geometry, material);
+  // Casts and receives like the real rig it stands in for, so the fallback
+  // path looks deliberate rather than like a lighting bug.
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 // Some GLTF rigs are authored facing -Z at rest instead of matching the

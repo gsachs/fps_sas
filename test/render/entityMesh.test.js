@@ -15,6 +15,13 @@ describe('createCharacterMesh', () => {
     expect(geometry.parameters.radius).toBeCloseTo(CAPSULE_RADIUS);
     expect(geometry.parameters.height).toBeCloseTo(CAPSULE_HALF_HEIGHT * 2);
   });
+
+  it('casts a shadow, so the fallback visual is grounded like the real rig', () => {
+    const mesh = createCharacterMesh();
+
+    expect(mesh.castShadow).toBe(true);
+    expect(mesh.receiveShadow).toBe(true);
+  });
 });
 
 describe('computeBotMeshYaw', () => {

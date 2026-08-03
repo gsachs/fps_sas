@@ -15,9 +15,18 @@ function buildClips() {
   ];
 }
 
+// The mapping is the caller's to supply, so these names are just this test's
+// fixture rig -- not a rig the game still ships.
+const CLIPS = {
+  idle: 'Rig|Idle_Loop',
+  moving: 'Rig|Jog_Fwd_Loop',
+  dead: 'Rig|Death01',
+  fire: 'Rig|Pistol_Shoot',
+};
+
 describe('createAnimatedCharacter: base-hint clip selection', () => {
   it('plays the clip matching each base hint', () => {
-    const character = createAnimatedCharacter(new THREE.Group(), buildClips());
+    const character = createAnimatedCharacter(new THREE.Group(), buildClips(), CLIPS);
 
     character.setBaseHint('idle');
     expect(character.getActiveClipName()).toBe('Rig|Idle_Loop');
@@ -32,7 +41,7 @@ describe('createAnimatedCharacter: base-hint clip selection', () => {
 
 describe('createAnimatedCharacter: fire reaction', () => {
   it('plays the fire clip immediately and reverts to the base hint after it elapses', () => {
-    const character = createAnimatedCharacter(new THREE.Group(), buildClips());
+    const character = createAnimatedCharacter(new THREE.Group(), buildClips(), CLIPS);
     character.setBaseHint('moving');
 
     character.playFireReaction();
@@ -44,7 +53,7 @@ describe('createAnimatedCharacter: fire reaction', () => {
   });
 
   it('does not let a base-hint change interrupt an in-progress fire reaction', () => {
-    const character = createAnimatedCharacter(new THREE.Group(), buildClips());
+    const character = createAnimatedCharacter(new THREE.Group(), buildClips(), CLIPS);
     character.setBaseHint('idle');
     character.playFireReaction();
 

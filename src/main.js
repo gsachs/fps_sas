@@ -13,12 +13,15 @@ import { createBotAI } from './sim/bot/fsm.js';
 import { getActiveBotCount, buildOccupiedPositions } from './shell/botRamp.js';
 import { createInputSampler } from './input/sampler.js';
 import { createCharacterMesh, computeBotMeshYaw, computeBotMeshY, computeCameraYaw } from './render/entityMesh.js';
-import { loadCharacterModel, disposeObject3D } from './render/models.js';
+import { loadCharacterModel, loadPropModel, disposeObject3D } from './render/models.js';
+import { BOT_MODEL, WEAPON_MODEL, GUNSHOT_PATHS } from './render/modelAssets.js';
 import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
 import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
+import { createImpactSystem, shooterIdsThatHit } from './render/impacts.js';
+import { createGunshotAudio } from './audio/gunshots.js';
 import { createGameShell } from './shell/states.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
 
@@ -32,6 +35,15 @@ const debugMode = new URLSearchParams(window.location.search).has('debug');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: debugMode });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
+// Shadows are what ground an object to the surface it stands on; without
+// them a correctly-placed character still reads as floating (R12).
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Tone mapping so bright things -- muzzle flash, tracer, impact spark -- roll
+// off into white instead of clipping flat at it, which is what made them read
+// as coloured shapes rather than as light (R13).
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 app.appendChild(renderer.domElement);
 
 const { scene, camera } = createScene({ aspect: window.innerWidth / window.innerHeight });
@@ -42,23 +54,23 @@ scene.add(buildArenaMeshes(arena));
 // BASE_URL-relative, not a hard-coded leading slash: this must resolve
 // correctly when deployed under a subpath (e.g. a GitHub Pages project
 // page), not just when served from a host's root.
-const CHARACTER_MODEL_URL = `${import.meta.env.BASE_URL}assets/characters/quaternius-base-character.glb`;
-// The downloaded pistol model (public/assets/weapons/quaternius-pistol.glb)
-// is a *skinned* mesh (rigged to its own reload/fire animation, with a
-// baked 100x scale split across its armature and mesh nodes) rather than a
-// static prop. loadPropModel's plain .clone() doesn't preserve skin
-// bindings the way loadCharacterModel's SkeletonUtils.clone() does, and
-// three independent scale attempts (0.12, 0.003, 0.00001) all rendered
-// identically -- confirmed via the raw GLTF node hierarchy (Muzzle/mesh
-// node scale ~100, sibling to the armature, not nested under it). Left
-// unwired for now: the placeholder weapon box is clean and correct: a
-// static (non-skinned) pistol model swapped in via loadPropModel would
-// need re-sourcing, not more scale tuning.
+const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 
 const hud = createHud(app);
 const damageIndicator = createDamageIndicator(app);
 const weaponView = createWeaponView(camera);
 const tracers = createTracerSystem(scene);
+const impacts = createImpactSystem(scene);
+const gunshots = createGunshotAudio({
+  camera,
+  scene,
+  urls: GUNSHOT_PATHS.map(assetUrl),
+  onError: (error) => console.warn('Failed to load gunshot audio:', error),
+});
+// Any click reaches this before the pointer-lock request it belongs to, so
+// the existing click-to-play gesture doubles as the audio unlock the browser
+// requires -- no separate "click to enable sound" step.
+app.addEventListener('pointerdown', () => gunshots.unlock());
 
 const inputSampler = createInputSampler();
 const movementSystem = createMovementSystem(arena.rapierWorld);
@@ -135,26 +147,49 @@ for (let i = 0; i < BOT_COUNT; i++) {
   // Placeholder capsule renders immediately; the real model swaps in once
   // loaded (or never, on failure -- R9's error path), so startup is never
   // blocked on the asset load.
-  loadCharacterModel(CHARACTER_MODEL_URL, {
+  loadCharacterModel(assetUrl(BOT_MODEL.path), {
     onError: (error) => console.warn(`Failed to load character model for ${botId}:`, error),
   }).then((result) => {
     if (!result) return;
     const { scene: modelScene, animations } = result;
-    modelScene.scale.setScalar(0.9);
-    botEntry.yawOffset = Math.PI; // this rig's forward faces -Z; entity yaw=0 faces +Z
+    modelScene.scale.setScalar(BOT_MODEL.scale);
+    botEntry.yawOffset = BOT_MODEL.yawOffset;
     // This rig has a feet-based origin, not the center-based origin the
     // placeholder capsule (and the physics capsule) use -- without this, the
     // visible character floats ~0.8 units above its actual hitbox, so a shot
     // aimed at the character can sail clean over the real collider.
     botEntry.modelYOffset = -CAPSULE_GROUND_OFFSET;
+    // Every mesh in a loaded rig opts into shadows individually -- setting
+    // the flag on the root does nothing, since the renderer reads it per
+    // mesh. A bot that casts no shadow is the floating-sticker look that
+    // shadows were turned on to fix.
+    modelScene.traverse((node) => {
+      if (node.isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+      }
+    });
     modelScene.visible = botEntry.mesh.visible;
     scene.remove(botEntry.mesh);
     disposeObject3D(botEntry.mesh);
     botEntry.mesh = modelScene;
     scene.add(modelScene);
-    botEntry.animatedCharacter = createAnimatedCharacter(modelScene, animations);
+    botEntry.animatedCharacter = createAnimatedCharacter(modelScene, animations, BOT_MODEL.clips);
   });
 }
+
+// Swaps the placeholder box for the real weapon once it arrives. Same
+// non-blocking shape as the bot models: a failed load leaves the box in
+// place and the game stays playable (R18).
+loadPropModel(assetUrl(WEAPON_MODEL.path), {
+  onError: (error) => console.warn('Failed to load weapon model:', error),
+}).then((model) => {
+  if (!model) return;
+  weaponView.setModel(model, {
+    position: new THREE.Vector3(WEAPON_MODEL.offset.x, WEAPON_MODEL.offset.y, WEAPON_MODEL.offset.z),
+    scale: new THREE.Vector3(WEAPON_MODEL.scale, WEAPON_MODEL.scale, WEAPON_MODEL.scale),
+  });
+});
 
 // Ramp reinforcements in (shell/botRamp.js): later-indexed bots start
 // parked and inactive, then get moved to a real spawn and unlocked as the
@@ -332,10 +367,16 @@ const loop = createRenderLoop({
   scene,
   camera,
   onFrame(delta) {
+    // Audio tracks run state, not the early return below: a shot still
+    // sounding when the player hits Esc has to be cut off, and that decision
+    // has to be made on the frames where the sim is *not* running (R11).
+    const simRunning = gameShell.isSimRunning();
+    gunshots.setRunning(simRunning);
+
     // The scene still renders every frame regardless (render/loop.js calls
     // renderer.render after this returns), so start/pause/results screens
     // show over a frozen last-playing frame rather than a blank canvas.
-    if (!gameShell.isSimRunning()) return;
+    if (!simRunning) return;
 
     // Ramp reinforcements in over the match (shell/botRamp.js) -- the clock
     // only advances while actually playing, so pausing doesn't burn ramp time.
@@ -390,14 +431,24 @@ const loop = createRenderLoop({
       }
     }
 
+    // Resolved up front because the impact spark's colour depends on whether
+    // the shot landed on someone, and the 'hit' event that says so is pushed
+    // after the 'fire' event it belongs to.
+    const landedShooters = shooterIdsThatHit(events);
+
     for (const event of events) {
       if (event.type === 'fire' && event.shooterId === LOCAL_PLAYER_ID) {
         weaponView.fire();
+        gunshots.playLocal();
         if (debugMode) debugCounters.fires += 1;
       }
       if (event.type === 'fire') {
         bots.find((b) => b.id === event.shooterId)?.animatedCharacter?.playFireReaction();
         tracers.spawn(event.origin, event.endPoint);
+        impacts.spawn(event.endPoint, landedShooters.has(event.shooterId) ? 'body' : 'surface');
+        // event.origin is the shooter's own eye position, so it doubles as
+        // where the shot should be heard from.
+        if (event.shooterId !== LOCAL_PLAYER_ID) gunshots.playAt(event.origin);
       }
       if (event.type === 'hit' && event.shooterId === LOCAL_PLAYER_ID) {
         hud.flashCrosshair(event.killed ? 'kill' : 'hit');
@@ -414,8 +465,14 @@ const loop = createRenderLoop({
       }
     }
 
+    // Layered on top of the simulation's pitch, which was applied above and
+    // is what hitscans actually resolve against -- so the jolt is visible
+    // but the shot still lands where the crosshair was (R5, R17).
+    camera.rotation.x -= weaponView.getCameraKick();
+
     weaponView.update(delta);
     tracers.update(delta);
+    impacts.update(delta);
     hud.update({
       health: playerEntity.health,
       score: playerEntity.score,

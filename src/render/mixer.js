@@ -5,20 +5,24 @@ import * as THREE from 'three';
 // from U3) plus a one-shot firing reaction triggered by 'fire' events. The
 // hint stays in the sim; clip names and blending are a render-layer
 // concern, kept out of the THREE.js-free simulation (KTD2).
-const HINT_TO_CLIP = {
-  idle: 'Rig|Idle_Loop',
-  moving: 'Rig|Jog_Fwd_Loop',
-  dead: 'Rig|Death01',
-};
-const FIRE_CLIP = 'Rig|Pistol_Shoot';
+//
+// Clip names are a property of the *model*, not of this module, so the
+// caller supplies the hint->clip mapping. They used to be module constants
+// naming one rig's clips ('Rig|Idle_Loop' and friends), which silently
+// coupled every animated character to a single asset: swapping in a rig
+// from a different pack made every lookup miss and left the model frozen
+// in its bind pose with nothing failing loudly. Each model now declares its
+// own names alongside its other quirks (see render/botModel.js).
 const FIRE_REACTION_SECONDS = 0.3;
 
-export function createAnimatedCharacter(scene3D, animations) {
+// `clipNames` maps each animation hint plus 'fire' to a clip name in
+// `animations`: { idle, moving, dead, fire }.
+export function createAnimatedCharacter(scene3D, animations, clipNames) {
   const mixer = new THREE.AnimationMixer(scene3D);
   const actions = new Map();
   for (const clip of animations) {
     const action = mixer.clipAction(clip);
-    if (clip.name === FIRE_CLIP || clip.name.includes('Death')) {
+    if (clip.name === clipNames.fire || clip.name.includes('Death')) {
       action.setLoop(THREE.LoopOnce, 1);
       action.clampWhenFinished = true;
     }
@@ -41,12 +45,12 @@ export function createAnimatedCharacter(scene3D, animations) {
   // stride doesn't get cut off by an idle/moving hint change underneath it.
   function setBaseHint(hint) {
     baseHint = hint;
-    if (fireReactionRemaining <= 0) play(HINT_TO_CLIP[hint] ?? HINT_TO_CLIP.idle);
+    if (fireReactionRemaining <= 0) play(clipNames[hint] ?? clipNames.idle);
   }
 
   function playFireReaction() {
     fireReactionRemaining = FIRE_REACTION_SECONDS;
-    play(FIRE_CLIP);
+    play(clipNames.fire);
   }
 
   // Call once per render frame with the real frame delta (not sim DT) --
@@ -57,7 +61,7 @@ export function createAnimatedCharacter(scene3D, animations) {
     mixer.update(deltaSeconds);
     if (fireReactionRemaining > 0) {
       fireReactionRemaining -= deltaSeconds;
-      if (fireReactionRemaining <= 0) play(HINT_TO_CLIP[baseHint] ?? HINT_TO_CLIP.idle);
+      if (fireReactionRemaining <= 0) play(clipNames[baseHint] ?? clipNames.idle);
     }
   }
 
