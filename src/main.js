@@ -83,6 +83,7 @@ const BOT_COUNT = 4; // v1 target bot count (Success Criteria); tune here during
 // has no entity-removal path (KTD2's entity store is add-only).
 const PARK_POSITION = { x: 0, y: -100, z: 0 };
 let matchElapsedSeconds = 0;
+let lastRenderState = [];
 
 // gatherCommands closes over `sim` and `bots` before either is assigned --
 // safe because it only runs later, from sim.tick() in the render loop, by
@@ -271,7 +272,26 @@ if (debugMode) {
   // Reports each bot's FSM phase and position, for diagnosing AI behavior
   // (stuck idle vs. chasing vs. attacking) without a human watching the screen.
   window.__debugBotPhases = () =>
-    bots.map((b) => ({ id: b.id, active: b.active, phase: b.bot.getPhase(), position: sim.world.getEntity(b.id)?.position }));
+    bots.map((b) => ({
+      id: b.id,
+      active: b.active,
+      phase: b.bot.getPhase(),
+      position: sim.world.getEntity(b.id)?.position,
+      meshVisible: b.mesh.visible,
+      dead: sim.world.getEntity(b.id)?.dead,
+      health: sim.world.getEntity(b.id)?.health,
+    }));
+  // Reports each bot's last *rendered* (interpolated) position alongside its
+  // raw/authoritative sim position, so automated verification can check
+  // whether a shot aimed at what's actually drawn on screen (interpolated)
+  // still lands, versus one aimed at the raw sim position (as prior
+  // verification in this session always did).
+  window.__debugBotRenderVsSimPosition = () =>
+    bots.map((b) => ({
+      id: b.id,
+      rendered: lastRenderState.find((e) => e.id === b.id)?.position,
+      raw: sim.world.getEntity(b.id)?.position,
+    }));
 }
 
 document.addEventListener('mousemove', (event) => {
@@ -315,6 +335,7 @@ const loop = createRenderLoop({
 
     const { alpha, events } = sim.tick(delta);
     const renderState = sim.getRenderState(alpha);
+    lastRenderState = renderState;
     let playerEntity = null;
 
     for (const entity of renderState) {

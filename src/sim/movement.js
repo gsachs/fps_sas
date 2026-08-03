@@ -15,7 +15,11 @@ const CONTROLLER_OFFSET = 0.01;
 // computeBotMeshY uses both to align a feet-anchored GLTF rig with this
 // center-anchored physics capsule.
 export const CAPSULE_HALF_HEIGHT = 0.5;
-export const CAPSULE_RADIUS = 0.3;
+// Widened from an initial 0.3 -- measured against the animated character
+// model's actual visual footprint (~0.8-0.9 units wide including arms/
+// shoulders), a 0.3 radius (0.6 diameter) left a real gap where a shot
+// aimed at the visible character's edges would miss the narrower hitbox.
+export const CAPSULE_RADIUS = 0.4;
 
 // Height above the rigid body's origin (its capsule center, not its feet)
 // for both the render camera and the hitscan ray -- so shots land exactly
