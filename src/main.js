@@ -37,7 +37,10 @@ const { scene, camera } = createScene({ aspect: window.innerWidth / window.inner
 const arena = createArena();
 scene.add(buildArenaMeshes(arena));
 
-const CHARACTER_MODEL_URL = '/assets/characters/quaternius-base-character.glb';
+// BASE_URL-relative, not a hard-coded leading slash: this must resolve
+// correctly when deployed under a subpath (e.g. a GitHub Pages project
+// page), not just when served from a host's root.
+const CHARACTER_MODEL_URL = `${import.meta.env.BASE_URL}assets/characters/quaternius-base-character.glb`;
 // The downloaded pistol model (public/assets/weapons/quaternius-pistol.glb)
 // is a *skinned* mesh (rigged to its own reload/fire animation, with a
 // baked 100x scale split across its armature and mesh nodes) rather than a
