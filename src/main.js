@@ -6,13 +6,13 @@ import { buildArenaMeshes } from './render/arenaMesh.js';
 import { createArena } from './arena/arena.js';
 import { pickSpawnPoint } from './arena/spawns.js';
 import { createSimulation } from './sim/index.js';
-import { createMovementSystem, EYE_HEIGHT } from './sim/movement.js';
+import { createMovementSystem, EYE_HEIGHT, CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS } from './sim/movement.js';
 import { createWeaponSystem } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createBotAI } from './sim/bot/fsm.js';
 import { getActiveBotCount } from './shell/botRamp.js';
 import { createInputSampler } from './input/sampler.js';
-import { createCharacterMesh, computeBotMeshYaw } from './render/entityMesh.js';
+import { createCharacterMesh, computeBotMeshYaw, computeBotMeshY } from './render/entityMesh.js';
 import { loadCharacterModel, disposeObject3D } from './render/models.js';
 import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
@@ -126,6 +126,7 @@ for (let i = 0; i < BOT_COUNT; i++) {
     mesh,
     animatedCharacter: null,
     yawOffset: 0,
+    modelYOffset: 0,
     active: true,
   };
   bots.push(botEntry);
@@ -140,6 +141,11 @@ for (let i = 0; i < BOT_COUNT; i++) {
     const { scene: modelScene, animations } = result;
     modelScene.scale.setScalar(0.9);
     botEntry.yawOffset = Math.PI; // this rig's forward faces -Z; entity yaw=0 faces +Z
+    // This rig has a feet-based origin, not the center-based origin the
+    // placeholder capsule (and the physics capsule) use -- without this, the
+    // visible character floats ~0.8 units above its actual hitbox, so a shot
+    // aimed at the character can sail clean over the real collider.
+    botEntry.modelYOffset = -(CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS);
     modelScene.visible = botEntry.mesh.visible;
     scene.remove(botEntry.mesh);
     disposeObject3D(botEntry.mesh);
@@ -232,6 +238,20 @@ if (debugMode) {
   window.__debugModelSizes = () => ({
     bot0: bots[0] ? new THREE.Box3().setFromObject(bots[0].mesh).getSize(new THREE.Vector3()) : null,
   });
+  // Reports bot0's visual mesh bounds (world Y) alongside its entity
+  // position, so automated verification can confirm the model is anchored
+  // to line up with the actual (invisible) capsule collider -- a mismatch
+  // there would let a shot that visually looks like a hit still miss the
+  // real hitbox.
+  window.__debugBotMeshBounds = () => {
+    if (!bots[0]) return null;
+    const box = new THREE.Box3().setFromObject(bots[0].mesh);
+    return {
+      entityPositionY: sim.world.getEntity(bots[0].id)?.position.y,
+      meshMinY: box.min.y,
+      meshMaxY: box.max.y,
+    };
+  };
   // Reports each bot's sim yaw alongside its rendered mesh yaw, so
   // automated verification can confirm the model's rest-facing offset is
   // actually being composed into the per-frame rotation, not silently
@@ -320,7 +340,11 @@ const loop = createRenderLoop({
         // make it visible again the instant this runs.
         if (!botEntry.active) continue;
         botEntry.mesh.visible = !entity.dead;
-        botEntry.mesh.position.set(entity.position.x, entity.position.y, entity.position.z);
+        botEntry.mesh.position.set(
+          entity.position.x,
+          computeBotMeshY(entity.position.y, botEntry.modelYOffset),
+          entity.position.z
+        );
         botEntry.mesh.rotation.y = computeBotMeshYaw(entity.yaw, botEntry.yawOffset);
         botEntry.animatedCharacter?.setBaseHint(entity.animHint);
         botEntry.animatedCharacter?.update(delta);

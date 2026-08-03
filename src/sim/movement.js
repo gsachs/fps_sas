@@ -9,10 +9,12 @@ const GRAVITY = -9.81;
 const JUMP_SPEED = 5;
 const MOVE_SPEED = 4;
 const CONTROLLER_OFFSET = 0.01;
-const CAPSULE_HALF_HEIGHT = 0.5;
-// Exported so a line-of-sight ray (fsm.js) can back off far enough to stop
-// short of the target's own capsule surface, rather than treating a hit on
-// the target itself as "something is blocking my view of them".
+// Exported: fsm.js's line-of-sight ray backs off by CAPSULE_RADIUS so it
+// stops short of the target's own capsule surface (a hit on the target
+// itself isn't "something blocking the view of them"); entityMesh.js's
+// computeBotMeshY uses both to align a feet-anchored GLTF rig with this
+// center-anchored physics capsule.
+export const CAPSULE_HALF_HEIGHT = 0.5;
 export const CAPSULE_RADIUS = 0.3;
 
 // Height above the rigid body's origin (its capsule center, not its feet)

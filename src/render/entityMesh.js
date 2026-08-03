@@ -18,3 +18,16 @@ export function createCharacterMesh({ color = 0xcc4444 } = {}) {
 export function computeBotMeshYaw(entityYaw, yawOffset = 0) {
   return entityYaw + yawOffset;
 }
+
+// GLTF character rigs are typically authored with a feet-based origin (feet
+// at local y=0), but the Rapier capsule's translation -- entity.position --
+// is its *center*. Placing a rig's origin directly at entity.position (as
+// the placeholder capsule correctly does, since CapsuleGeometry is centered
+// on its own origin) makes the model float roughly half its height above
+// where the actual collider sits, so a shot aimed at the visible character
+// can sail clean over the real hitbox. modelYOffset corrects for that, and
+// composing it here (rather than baking a one-time position at load time)
+// keeps it from being silently dropped the same way the yaw offset was.
+export function computeBotMeshY(entityY, modelYOffset = 0) {
+  return entityY + modelYOffset;
+}
