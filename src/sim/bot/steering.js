@@ -7,6 +7,9 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 
 const AVOIDANCE_LOOKAHEAD = 2;
+// Idle/patrol drift is low-stakes filler movement, not real navigation --
+// this bounds how far a single wander() call can turn per tick.
+const WANDER_JITTER = 0.05;
 
 function normalize(vector) {
   const length = Math.hypot(vector.x, vector.z);
@@ -26,7 +29,7 @@ export function flee(fromPosition, awayFromPosition) {
 // A gentle drift for idle/patrol -- low-stakes filler movement, not real
 // navigation between waypoints.
 export function wander(currentYaw, random) {
-  const driftedYaw = currentYaw + (random() * 2 - 1) * 0.05;
+  const driftedYaw = currentYaw + (random() * 2 - 1) * WANDER_JITTER;
   return { x: Math.sin(driftedYaw), z: Math.cos(driftedYaw), yaw: driftedYaw };
 }
 
@@ -47,8 +50,23 @@ export function avoidObstacles(rapierWorld, position, desiredDirection, excludeC
   );
   if (!hit) return desiredDirection;
 
-  return normalize({
-    x: desiredDirection.x + hit.normal.x * 1.5,
-    z: desiredDirection.z + hit.normal.z * 1.5,
-  });
+  // Slide along the obstacle's surface instead of blending in the normal.
+  // Projecting the normal component out of desiredDirection leaves only the
+  // tangential component, which routes the bot sideways past the obstacle.
+  // The previous approach (normalize(desired + normal * K)) reversed the
+  // bot instead for any approach within ~48 degrees of head-on, since
+  // dot(desired + normal * K, desired) goes negative there -- the bot would
+  // back away, re-approach, and reverse again, oscillating in place.
+  const alongNormal = desiredDirection.x * hit.normal.x + desiredDirection.z * hit.normal.z;
+  const tangent = {
+    x: desiredDirection.x - hit.normal.x * alongNormal,
+    z: desiredDirection.z - hit.normal.z * alongNormal,
+  };
+  if (Math.hypot(tangent.x, tangent.z) < 1e-6) {
+    // Exactly head-on: the tangential component vanishes, so there's no
+    // "which way past it" signal to slide along. Pick a fixed perpendicular
+    // to the surface normal as a deterministic (not reversing) escape.
+    return normalize({ x: -hit.normal.z, z: hit.normal.x });
+  }
+  return normalize(tangent);
 }
