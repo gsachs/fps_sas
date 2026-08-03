@@ -15,3 +15,8 @@ An AI-controlled Entity that produces its own Command every tick by sensing the 
 
 ### Bot Phase
 The current stage of a Bot's decision-making: idle/patrolling (no target engaged), chasing (closing distance on a sensed target), attacking (target in range and in sight, actively engaging), or retreating (disengaging due to low health). Transitions are sensed from distance and line-of-sight to the target. Retreat is health-gated and, once entered, holds until either its duration elapses or health recovers — health recovering while retreating only happens via a full heal (this game has no gradual regen), so recovered health while still retreating doubles as a signal that the Bot has just returned to play after dying.
+
+## Presentation & Feedback
+
+### Cosmetic Recoil
+Weapon kick that animates the viewmodel and the camera but never moves the aim point — shots still land where the crosshair was when the trigger was pulled. The distinction matters because real recoil (aim that climbs and must be fought back down) would be a gameplay change: it reaches into hitscan resolution and invalidates the tuned Bot aim spread and reaction delay. Cosmetic Recoil stays entirely in the render layer, so weapon feel can be tuned freely without re-tuning difficulty.
