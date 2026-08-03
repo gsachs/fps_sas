@@ -2,6 +2,7 @@
 // points (R8). Builds the shared Rapier physics world every sim system
 // (movement, combat, bot line-of-sight) queries against.
 import RAPIER from '@dimforge/rapier3d-compat';
+import { CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS, EYE_HEIGHT } from '../sim/movement.js';
 
 // Doubled from an initial 15 after playtest feedback that the arena felt
 // cramped with 4 bots converging at once (Outstanding Questions).
@@ -9,12 +10,24 @@ const ARENA_HALF_SIZE = 30;
 const WALL_HEIGHT = 4;
 const WALL_THICKNESS = 0.5;
 
+// A resting capsule's center sits (half-height + radius) above the ground
+// it's snapped to (movement.js); eye height is measured from there. Cover
+// boxes must clear that with real margin, derived rather than a fixed
+// literal -- a previous fixed literal here already went stale once when
+// CAPSULE_RADIUS widened, silently turning the centre box into geometry
+// that blocked nothing (eye height rose to just above its old fixed top).
+const STANDING_EYE_HEIGHT = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS + EYE_HEIGHT;
+const COVER_CLEARANCE = 0.5;
+// Box translation puts its center at y = halfY (sitting on the ground), so
+// its top is 2 * halfY -- halve the target top height back into a halfY.
+const COVER_BOX_HALF_HEIGHT = (STANDING_EYE_HEIGHT + COVER_CLEARANCE) / 2;
+
 const COVER_BOXES = [
-  { x: 10, z: 10, halfX: 1, halfY: 1, halfZ: 1 },
-  { x: -10, z: 10, halfX: 1, halfY: 1, halfZ: 1 },
-  { x: 10, z: -10, halfX: 1, halfY: 1, halfZ: 1 },
-  { x: -10, z: -10, halfX: 1, halfY: 1, halfZ: 1 },
-  { x: 0, z: 0, halfX: 1.5, halfY: 0.75, halfZ: 1.5 },
+  { x: 10, z: 10, halfX: 1, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1 },
+  { x: -10, z: 10, halfX: 1, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1 },
+  { x: 10, z: -10, halfX: 1, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1 },
+  { x: -10, z: -10, halfX: 1, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1 },
+  { x: 0, z: 0, halfX: 1.5, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1.5 },
 ];
 
 const SPAWN_POINTS = [
