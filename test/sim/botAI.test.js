@@ -289,4 +289,40 @@ describe('createBotAI: difficulty is tunable', () => {
 
     expect(ticksUntilFirstShot(90)).toBeGreaterThan(ticksUntilFirstShot(0));
   });
+
+  it('zero aim spread reliably hits a stationary target; wide spread reliably misses it (accuracy drop)', () => {
+    // The yaw-variance test above proves the jitter arithmetic composes
+    // correctly, but not that it actually changes whether shots land --
+    // the deleted U6 bot.test.js proved that end-to-end (a wide-spread shot
+    // left the target at full, unhit, health) and this replacement lost
+    // that assertion. Restoring it through the real weapon/health pipeline,
+    // matching the U11 test-scenario requirement: "Given high aim-spread
+    // settings, Then bot accuracy measurably drops."
+    function fireAndMeasureTargetHealth(aimSpread) {
+      const rig = buildBotRig();
+      addEntity(rig, 'bot', { x: 0, y: 1, z: 0 });
+      addEntity(rig, 'target', { x: 0, y: 1, z: ATTACK_RANGE - 2 }); // dead ahead, in range+LOS from tick 1
+      rig.movementSystem.commit();
+
+      const bot = createBotAI({
+        rapierWorld: rig.rapierWorld,
+        movementSystem: rig.movementSystem,
+        botId: 'bot',
+        difficulty: { aimSpread, reactionDelayTicks: 0 },
+        random: () => 1, // worst-case jitter roll, matching the sibling test above
+      });
+
+      for (let i = 0; i < 120; i++) {
+        const botPosition = rig.world.getEntity('bot').position;
+        const targetPosition = rig.world.getEntity('target').position;
+        const command = bot.sample(botPosition, targetPosition, 100);
+        rig.world.step(new Map([['bot', command], ['target', createCommand()]]), 1 / 60);
+      }
+
+      return rig.world.getEntity('target').health;
+    }
+
+    expect(fireAndMeasureTargetHealth(0)).toBeLessThan(100); // no spread: direct line, hits
+    expect(fireAndMeasureTargetHealth(0.8)).toBe(100); // wide spread: deviates well past the target
+  });
 });
