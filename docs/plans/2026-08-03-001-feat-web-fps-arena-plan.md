@@ -325,7 +325,7 @@ Units are grouped into five phases and dependency-ordered. Phase 1 is spike-gate
 - **Goal:** Bots that move toward the player and fire with imperfect aim, emitting the same `Command` shape — enough to run the "dumb bots are fun" playtest gate before investing in richer AI.
 - **Requirements:** R6 (partial), R10; realizes A2, AE4.
 - **Dependencies:** U5.
-- **Files:** `src/sim/bot/basic.js`, `test/sim/bot.test.js`.
+- **Files:** `src/sim/bot/basic.js`, `test/sim/bot.test.js`. Superseded and removed by U11 — the fuller FSM/steering bot replaced this minimal policy outright, and its files were deleted rather than left as dead code.
 - **Approach:**
   1. A minimal bot policy: face the player, move toward them, and fire with imperfect aim — written into the same `Command` shape as the player.
   2. Run the playtest gate: is fighting these crude bots already fun? Gate the U11 AI investment on the answer (the Goal Capsule stop condition applies if it is not).
@@ -340,11 +340,12 @@ Units are grouped into five phases and dependency-ordered. Phase 1 is spike-gate
 - **Goal:** Upgrade bots to pursue, take positions, and fight believably at tunable, beatable difficulty.
 - **Requirements:** R6, R7; KTD4; realizes A2.
 - **Dependencies:** U6 (gated on its playtest result).
-- **Files:** `src/sim/bot/fsm.js`, `src/sim/bot/steering.js`, `src/sim/bot/difficulty.js`, `test/sim/botAI.test.js`.
+- **Files:** `src/sim/bot/fsm.js`, `src/sim/bot/steering.js`, `src/sim/bot/difficulty.js`, `test/sim/botAI.test.js`, `src/shell/botRamp.js`, `test/shell/botRamp.test.js`.
 - **Approach:**
   1. FSM: Idle/Patrol → Chase → Attack → Retreat, transitions on distance + line-of-sight raycast.
   2. Steering (seek/flee/wander + raycast obstacle avoidance) produces movement; aim produces yaw/pitch — still written into the same `Command` shape.
   3. Difficulty knobs: aim spread and reaction delay make bots beatable.
+  4. Bot-count ramp (`shell/botRamp.js`): match-level orchestration, not per-bot AI — starts a match with fewer active bots (`INITIAL_ACTIVE_BOTS`) and unlocks the rest over time (`RAMP_INTERVAL_SECONDS`) up to `BOT_COUNT`, added in response to playtest feedback that all bots converging from the start felt overwhelming rather than a fair fight to learn. Kept out of `difficulty.js` since it's a different caller (`main.js`'s spawn loop) and a different concern (match orchestration vs. per-bot intelligence) from the difficulty knobs above.
 - **Test scenarios:**
   - Given the player enters line of sight, Then the bot transitions Chase → Attack.
   - Given the player breaks line of sight, Then the bot stops firing and re-acquires or patrols.
