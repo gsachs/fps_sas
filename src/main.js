@@ -12,7 +12,7 @@ import { createHealthSystem } from './sim/health.js';
 import { createBotAI } from './sim/bot/fsm.js';
 import { getActiveBotCount } from './shell/botRamp.js';
 import { createInputSampler } from './input/sampler.js';
-import { createCharacterMesh, computeBotMeshYaw, computeBotMeshY } from './render/entityMesh.js';
+import { createCharacterMesh, computeBotMeshYaw, computeBotMeshY, computeCameraYaw } from './render/entityMesh.js';
 import { loadCharacterModel, disposeObject3D } from './render/models.js';
 import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
@@ -372,15 +372,11 @@ const loop = createRenderLoop({
           entity.latest.position.y + EYE_HEIGHT,
           entity.latest.position.z
         );
-        // THREE cameras look down their local -Z axis by default, but every
-        // other convention in this codebase (movement.js's forward vector,
-        // weapon.js's hitscan direction, bot mesh rotation) treats +Z as
-        // "front" for a given yaw -- so camera.rotation.y = yaw alone faces
-        // the camera in the exact opposite world direction from where the
-        // weapon actually fires. The +PI corrects for that mismatch; it
-        // does not apply to bot meshes, which use the generic (+Z-front)
-        // convention and were already correct.
-        camera.rotation.set(entity.latest.pitch, entity.latest.yaw + Math.PI, 0, 'YXZ');
+        // Local-player camera only -- bot meshes already use the generic
+        // +Z-front convention and don't need this correction (see
+        // computeCameraYaw's doc comment in entityMesh.js for why the
+        // camera does).
+        camera.rotation.set(entity.latest.pitch, computeCameraYaw(entity.latest.yaw), 0, 'YXZ');
         continue;
       }
 

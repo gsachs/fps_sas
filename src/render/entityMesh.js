@@ -31,3 +31,18 @@ export function computeBotMeshYaw(entityYaw, yawOffset = 0) {
 export function computeBotMeshY(entityY, modelYOffset = 0) {
   return entityY + modelYOffset;
 }
+
+// THREE cameras look down their local -Z axis by default, but every other
+// convention in this codebase (movement.js's forward vector, weapon.js's
+// hitscan direction, bot mesh rotation) treats +Z as "front" for a given
+// yaw -- so camera.rotation.y = simYaw alone faces the camera in the exact
+// opposite world direction from where the weapon actually fires (a bug
+// that shipped once: every shot fired 180 degrees from what was on
+// screen). Composing the correction here (rather than leaving a bare
+// inline +Math.PI in the render loop) keeps it from being "simplified
+// away" as apparently-redundant by a later reader who doesn't know why
+// it's there, and makes it independently testable against weapon.js's
+// hitscan formula.
+export function computeCameraYaw(simYaw) {
+  return simYaw + Math.PI;
+}
