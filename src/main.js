@@ -160,8 +160,14 @@ for (let i = 0; i < BOT_COUNT; i++) {
 // parked and inactive, then get moved to a real spawn and unlocked as the
 // match clock advances (see onFrame). Bots within the initial unlocked
 // count just play normally from their already-assigned spawn.
-for (let i = getActiveBotCount(0, BOT_COUNT); i < bots.length; i++) {
-  deactivateBot(bots[i]);
+parkBotsBeyondRampCount();
+
+// Shared by initial setup and onRestart, so the parking rule can't drift
+// between the two call sites the way a duplicated loop could.
+function parkBotsBeyondRampCount() {
+  for (let i = getActiveBotCount(0, BOT_COUNT); i < bots.length; i++) {
+    deactivateBot(bots[i]);
+  }
 }
 
 function activateBot(botEntry) {
@@ -202,9 +208,7 @@ const gameShell = createGameShell({
     // ramp hadn't unlocked yet -- re-park those so the new match starts the
     // ramp over instead of carrying over the previous match's bot count.
     matchElapsedSeconds = 0;
-    for (let i = getActiveBotCount(0, BOT_COUNT); i < bots.length; i++) {
-      deactivateBot(bots[i]);
-    }
+    parkBotsBeyondRampCount();
   },
 });
 
