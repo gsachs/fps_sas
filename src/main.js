@@ -11,12 +11,13 @@ import { createWeaponSystem } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createBasicBot } from './sim/bot/basic.js';
 import { createInputSampler } from './input/sampler.js';
-import { createCharacterMesh } from './render/entityMesh.js';
+import { createCharacterMesh, computeBotMeshYaw } from './render/entityMesh.js';
 import { loadCharacterModel, disposeObject3D } from './render/models.js';
 import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
 import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
+import { createTracerSystem } from './render/tracer.js';
 import { createGameShell } from './shell/states.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
 
@@ -56,6 +57,7 @@ const CHARACTER_MODEL_URL = `${import.meta.env.BASE_URL}assets/characters/quater
 const hud = createHud(app);
 const damageIndicator = createDamageIndicator(app);
 const weaponView = createWeaponView(camera);
+const tracers = createTracerSystem(scene);
 
 const inputSampler = createInputSampler();
 const movementSystem = createMovementSystem(arena.rapierWorld);
@@ -109,7 +111,7 @@ for (let i = 0; i < BOT_COUNT; i++) {
   movementSystem.addCharacter(botId, botSpawn);
   const mesh = createCharacterMesh({ color: 0x7a3b3b });
   scene.add(mesh);
-  const botEntry = { id: botId, bot: createBasicBot(), mesh, animatedCharacter: null };
+  const botEntry = { id: botId, bot: createBasicBot(), mesh, animatedCharacter: null, yawOffset: 0 };
   bots.push(botEntry);
 
   // Placeholder capsule renders immediately; the real model swaps in once
@@ -121,7 +123,7 @@ for (let i = 0; i < BOT_COUNT; i++) {
     if (!result) return;
     const { scene: modelScene, animations } = result;
     modelScene.scale.setScalar(0.9);
-    modelScene.rotation.y = Math.PI; // this rig's forward faces -Z; entity yaw=0 faces +Z
+    botEntry.yawOffset = Math.PI; // this rig's forward faces -Z; entity yaw=0 faces +Z
     scene.remove(botEntry.mesh);
     disposeObject3D(botEntry.mesh);
     botEntry.mesh = modelScene;
@@ -181,6 +183,15 @@ if (debugMode) {
   window.__debugModelSizes = () => ({
     bot0: bots[0] ? new THREE.Box3().setFromObject(bots[0].mesh).getSize(new THREE.Vector3()) : null,
   });
+  // Reports each bot's sim yaw alongside its rendered mesh yaw, so
+  // automated verification can confirm the model's rest-facing offset is
+  // actually being composed into the per-frame rotation, not silently
+  // dropped -- the exact failure mode this guards against.
+  window.__debugBotYaws = () =>
+    bots.map((b) => ({ id: b.id, entityYaw: sim.world.getEntity(b.id)?.yaw, meshYaw: b.mesh.rotation.y }));
+  // Counts live tracer lines in the scene graph, for verifying the tracer
+  // effect actually spawns (and expires) without a human watching the screen.
+  window.__debugTracerCount = () => scene.children.filter((child) => child.type === 'Line').length;
 }
 
 document.addEventListener('mousemove', (event) => {
@@ -236,7 +247,7 @@ const loop = createRenderLoop({
       if (botEntry) {
         botEntry.mesh.visible = !entity.dead;
         botEntry.mesh.position.set(entity.position.x, entity.position.y, entity.position.z);
-        botEntry.mesh.rotation.y = entity.yaw;
+        botEntry.mesh.rotation.y = computeBotMeshYaw(entity.yaw, botEntry.yawOffset);
         botEntry.animatedCharacter?.setBaseHint(entity.animHint);
         botEntry.animatedCharacter?.update(delta);
       }
@@ -249,6 +260,7 @@ const loop = createRenderLoop({
       }
       if (event.type === 'fire') {
         bots.find((b) => b.id === event.shooterId)?.animatedCharacter?.playFireReaction();
+        tracers.spawn(event.origin, event.endPoint);
       }
       if (event.type === 'hit' && event.shooterId === LOCAL_PLAYER_ID) {
         hud.flashCrosshair(event.killed ? 'kill' : 'hit');
@@ -266,6 +278,7 @@ const loop = createRenderLoop({
     }
 
     weaponView.update(delta);
+    tracers.update(delta);
     hud.update({
       health: playerEntity.health,
       score: playerEntity.score,

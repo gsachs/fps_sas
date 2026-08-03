@@ -14,11 +14,14 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks 
   const remainingCooldown = new Map(); // entityId -> ticks left before next shot allowed
 
   // Resolves a hitscan shot for `entity` if its command requests fire and
-  // its cooldown allows it. Returns { fired, hitEntityId } -- `fired` is
-  // true whenever the weapon actually discharges this tick (hit or miss),
-  // so callers can trigger fire feedback (recoil, muzzle flash) even on a
-  // miss; `hitEntityId` is the hit entity's id, or null (miss, blocked by
-  // cover, on cooldown, or not firing).
+  // its cooldown allows it. Returns { fired, hitEntityId, origin, endPoint }
+  // -- `fired` is true whenever the weapon actually discharges this tick
+  // (hit or miss), so callers can trigger fire feedback (recoil, muzzle
+  // flash, tracers) even on a miss; `hitEntityId` is the hit entity's id, or
+  // null (miss, blocked by cover, on cooldown, or not firing). `origin` and
+  // `endPoint` describe the ray's path (muzzle to hit point, or to max
+  // range on a miss) so the render layer can draw a tracer without
+  // recomputing this geometry itself.
   function resolveFire(entity, command) {
     const cooldown = remainingCooldown.get(entity.id) ?? 0;
     if (cooldown > 0) remainingCooldown.set(entity.id, cooldown - 1);
@@ -46,7 +49,13 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks 
     );
 
     const hitEntityId = hit ? movementSystem.getEntityIdForCollider(hit.collider) ?? null : null;
-    return { fired: true, hitEntityId };
+    const distance = hit ? hit.timeOfImpact : HITSCAN_MAX_DISTANCE;
+    const endPoint = {
+      x: origin.x + direction.x * distance,
+      y: origin.y + direction.y * distance,
+      z: origin.z + direction.z * distance,
+    };
+    return { fired: true, hitEntityId, origin, endPoint };
   }
 
   return { resolveFire };

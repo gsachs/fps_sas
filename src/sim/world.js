@@ -95,7 +95,12 @@ export function createWorld({ physics, combat } = {}) {
       if (combat) {
         const fireResult = combat.resolveFire(entity, command);
         if (fireResult.fired) {
-          events.push({ type: 'fire', shooterId: id });
+          events.push({
+            type: 'fire',
+            shooterId: id,
+            origin: fireResult.origin,
+            endPoint: fireResult.endPoint,
+          });
         }
         if (fireResult.hitEntityId) {
           const hitEvent = combat.applyHit(entityAccessor, fireResult.hitEntityId, id);

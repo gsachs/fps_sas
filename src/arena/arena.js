@@ -3,25 +3,27 @@
 // (movement, combat, bot line-of-sight) queries against.
 import RAPIER from '@dimforge/rapier3d-compat';
 
-const ARENA_HALF_SIZE = 15;
+// Doubled from an initial 15 after playtest feedback that the arena felt
+// cramped with 4 bots converging at once (Outstanding Questions).
+const ARENA_HALF_SIZE = 30;
 const WALL_HEIGHT = 4;
 const WALL_THICKNESS = 0.5;
 
 const COVER_BOXES = [
-  { x: 5, z: 5, halfX: 1, halfY: 1, halfZ: 1 },
-  { x: -5, z: 5, halfX: 1, halfY: 1, halfZ: 1 },
-  { x: 5, z: -5, halfX: 1, halfY: 1, halfZ: 1 },
-  { x: -5, z: -5, halfX: 1, halfY: 1, halfZ: 1 },
+  { x: 10, z: 10, halfX: 1, halfY: 1, halfZ: 1 },
+  { x: -10, z: 10, halfX: 1, halfY: 1, halfZ: 1 },
+  { x: 10, z: -10, halfX: 1, halfY: 1, halfZ: 1 },
+  { x: -10, z: -10, halfX: 1, halfY: 1, halfZ: 1 },
   { x: 0, z: 0, halfX: 1.5, halfY: 0.75, halfZ: 1.5 },
 ];
 
 const SPAWN_POINTS = [
-  { x: 10, y: 1, z: 10 },
-  { x: -10, y: 1, z: 10 },
-  { x: 10, y: 1, z: -10 },
-  { x: -10, y: 1, z: -10 },
-  { x: 0, y: 1, z: 12 },
-  { x: 0, y: 1, z: -12 },
+  { x: 20, y: 1, z: 20 },
+  { x: -20, y: 1, z: 20 },
+  { x: 20, y: 1, z: -20 },
+  { x: -20, y: 1, z: -20 },
+  { x: 0, y: 1, z: 24 },
+  { x: 0, y: 1, z: -24 },
 ];
 
 export function createArena() {

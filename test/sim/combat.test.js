@@ -129,7 +129,10 @@ describe('combat: step() reports fire and hit events (U7 feedback source)', () =
 
     const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
 
-    expect(events).toContainEqual({ type: 'fire', shooterId: 'shooter' });
+    const fireEvent = events.find((e) => e.type === 'fire');
+    expect(fireEvent).toMatchObject({ type: 'fire', shooterId: 'shooter' });
+    expect(fireEvent.origin).toBeTruthy();
+    expect(fireEvent.endPoint).toBeTruthy();
     expect(events.some((e) => e.type === 'hit')).toBe(false);
   });
 
@@ -141,7 +144,15 @@ describe('combat: step() reports fire and hit events (U7 feedback source)', () =
 
     const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
 
-    expect(events).toContainEqual({ type: 'fire', shooterId: 'shooter' });
+    const fireEvent = events.find((e) => e.type === 'fire');
+    expect(fireEvent).toMatchObject({ type: 'fire', shooterId: 'shooter' });
+    // Regression coverage: a landed shot's endPoint previously came out NaN
+    // (read the ray hit's nonexistent `.toi` instead of `.timeOfImpact`),
+    // which only surfaces on an actual hit, not a miss.
+    expect(Number.isFinite(fireEvent.endPoint.x)).toBe(true);
+    expect(Number.isFinite(fireEvent.endPoint.y)).toBe(true);
+    expect(fireEvent.endPoint.z).toBeGreaterThan(0);
+    expect(fireEvent.endPoint.z).toBeLessThan(6); // at or just past the target, not a mid-air NaN/miss-range value
     const hitEvent = events.find((e) => e.type === 'hit');
     expect(hitEvent).toMatchObject({ shooterId: 'shooter', targetId: 'target', damage: 20, killed: false });
   });
