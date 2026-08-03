@@ -2,7 +2,7 @@
 // Command each sim tick. Camera orientation is sim-owned (KTD2); this
 // module only accumulates yaw/pitch from raw input and never touches a
 // THREE.Camera, so it stays reusable for any render layer.
-import { createCommand } from '../sim/command.js';
+import { createCommand, createFireLatch } from '../sim/command.js';
 
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
 
@@ -10,6 +10,7 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
   let yaw = 0;
   let pitch = 0;
   const keys = new Set();
+  const fireLatch = createFireLatch();
 
   function onMouseMove(event) {
     yaw -= event.movementX * lookSpeed;
@@ -25,6 +26,13 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
     keys.delete(event.code);
   }
 
+  // One discrete fire-button press (e.g. a mouse click), queued for the
+  // next sample() -- see createFireLatch for why this is edge-triggered
+  // rather than a held-down level.
+  function onFirePressed() {
+    fireLatch.press();
+  }
+
   function sample() {
     let moveZ = 0;
     let moveX = 0;
@@ -38,9 +46,16 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
       moveZ,
       yaw,
       pitch,
-      buttons: { fire: false, jump: keys.has('Space') },
+      buttons: { fire: fireLatch.consume(), jump: keys.has('Space') },
     });
   }
 
-  return { onMouseMove, onKeyDown, onKeyUp, sample, getYawPitch: () => ({ yaw, pitch }) };
+  return {
+    onMouseMove,
+    onKeyDown,
+    onKeyUp,
+    onFirePressed,
+    sample,
+    getYawPitch: () => ({ yaw, pitch }),
+  };
 }

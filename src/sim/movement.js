@@ -12,6 +12,11 @@ const CONTROLLER_OFFSET = 0.01;
 const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.3;
 
+// Height above the rigid body's origin (its capsule center, not its feet)
+// for both the render camera and the hitscan ray -- so shots land exactly
+// where the crosshair appears to point.
+export const EYE_HEIGHT = 0.6;
+
 export function createMovementSystem(rapierWorld) {
   const controller = rapierWorld.createCharacterController(CONTROLLER_OFFSET);
   controller.enableAutostep(0.3, 0.1, true);
@@ -19,6 +24,7 @@ export function createMovementSystem(rapierWorld) {
   controller.setMaxSlopeClimbAngle((60 * Math.PI) / 180);
 
   const characters = new Map(); // entityId -> { rigidBody, collider, verticalVelocity, grounded }
+  const entityIdByColliderHandle = new Map(); // collider.handle -> entityId, for hit-to-entity lookup
 
   function addCharacter(entityId, position) {
     const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
@@ -32,6 +38,15 @@ export function createMovementSystem(rapierWorld) {
       rigidBody
     );
     characters.set(entityId, { rigidBody, collider, verticalVelocity: 0, grounded: false });
+    entityIdByColliderHandle.set(collider.handle, entityId);
+  }
+
+  function getCollider(entityId) {
+    return characters.get(entityId)?.collider;
+  }
+
+  function getEntityIdForCollider(collider) {
+    return entityIdByColliderHandle.get(collider.handle);
   }
 
   // Mutates entity.position in place; does not commit the physics world
@@ -88,5 +103,5 @@ export function createMovementSystem(rapierWorld) {
     rapierWorld.step();
   }
 
-  return { addCharacter, resolveMovement, teleport, commit, controller };
+  return { addCharacter, resolveMovement, teleport, commit, controller, getCollider, getEntityIdForCollider };
 }

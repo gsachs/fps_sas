@@ -34,9 +34,17 @@ function createEntity(id, overrides = {}) {
   };
 }
 
-export function createWorld({ physics } = {}) {
+export function createWorld({ physics, combat } = {}) {
   const entities = new Map();
   const prevTransforms = new Map();
+
+  // A minimal entity accessor passed to the injected combat system, so
+  // health.js can read/mutate entities without needing a self-reference to
+  // the not-yet-constructed world object below.
+  const entityAccessor = {
+    getEntity: (id) => entities.get(id),
+    allEntities: () => Array.from(entities.values()),
+  };
 
   function snapshotPrev() {
     for (const [id, entity] of entities) {
@@ -44,70 +52,85 @@ export function createWorld({ physics } = {}) {
     }
   }
 
-  return {
-    addEntity(id, overrides) {
-      const entity = createEntity(id, overrides);
-      entities.set(id, entity);
-      prevTransforms.set(id, cloneTransform(entity));
-      return entity;
-    },
-    getEntity(id) {
-      return entities.get(id);
-    },
-    allEntities() {
-      return Array.from(entities.values());
-    },
-    step(commandsByEntityId, dt) {
-      snapshotPrev();
-      for (const [id, command] of commandsByEntityId) {
-        const entity = entities.get(id);
-        if (!entity || entity.dead) continue;
+  function addEntity(id, overrides) {
+    const entity = createEntity(id, overrides);
+    entities.set(id, entity);
+    prevTransforms.set(id, cloneTransform(entity));
+    return entity;
+  }
 
-        entity.yaw = command.yaw;
-        entity.pitch = command.pitch;
+  function getEntity(id) {
+    return entities.get(id);
+  }
 
-        if (physics) {
-          // Rapier character-controller resolution (movement.js); mutates
-          // entity.position via collide-and-slide against the arena.
-          physics.resolveMovement(entity, command, dt);
-        } else {
-          // No physics system injected (e.g. plain unit tests): fall back to
-          // an unobstructed kinematic placeholder so the seam is still
-          // exercisable headlessly without an arena.
-          const speed = 4;
-          entity.position.x += command.moveX * speed * dt;
-          entity.position.z += command.moveZ * speed * dt;
-        }
+  function allEntities() {
+    return Array.from(entities.values());
+  }
 
-        entity.animHint = command.moveX !== 0 || command.moveZ !== 0 ? 'moving' : 'idle';
+  function step(commandsByEntityId, dt) {
+    snapshotPrev();
+    for (const [id, command] of commandsByEntityId) {
+      const entity = entities.get(id);
+      if (!entity || entity.dead) continue;
+
+      entity.yaw = command.yaw;
+      entity.pitch = command.pitch;
+
+      if (physics) {
+        // Rapier character-controller resolution (movement.js); mutates
+        // entity.position via collide-and-slide against the arena.
+        physics.resolveMovement(entity, command, dt);
+      } else {
+        // No physics system injected (e.g. plain unit tests): fall back to
+        // an unobstructed kinematic placeholder so the seam is still
+        // exercisable headlessly without an arena.
+        const speed = 4;
+        entity.position.x += command.moveX * speed * dt;
+        entity.position.z += command.moveZ * speed * dt;
       }
-      if (physics) physics.commit();
-    },
-    // Per-entity render state: position/yaw/pitch interpolated between the
-    // two most recent sim states by `alpha`, plus `latest` (the current,
-    // un-interpolated transform) so the render layer can draw the local
-    // player's camera from latest state instead of interpolated state.
-    getRenderState(alpha) {
-      const result = [];
-      for (const [id, entity] of entities) {
-        const prev = prevTransforms.get(id) ?? cloneTransform(entity);
-        result.push({
-          id,
-          position: {
-            x: lerp(prev.position.x, entity.position.x, alpha),
-            y: lerp(prev.position.y, entity.position.y, alpha),
-            z: lerp(prev.position.z, entity.position.z, alpha),
-          },
-          yaw: lerpAngle(prev.yaw, entity.yaw, alpha),
-          pitch: lerp(prev.pitch, entity.pitch, alpha),
-          latest: cloneTransform(entity),
-          health: entity.health,
-          dead: entity.dead,
-          animHint: entity.animHint,
-          score: entity.score,
-        });
+
+      entity.animHint = command.moveX !== 0 || command.moveZ !== 0 ? 'moving' : 'idle';
+
+      if (combat) {
+        const targetId = combat.resolveFire(entity, command);
+        if (targetId) combat.applyHit(entityAccessor, targetId, id);
       }
-      return result;
-    },
-  };
+    }
+    if (physics) physics.commit();
+    if (combat) {
+      const occupiedPositions = allEntities()
+        .filter((entity) => !entity.dead)
+        .map((entity) => entity.position);
+      combat.tickRespawns(entityAccessor, occupiedPositions);
+    }
+  }
+
+  // Per-entity render state: position/yaw/pitch interpolated between the
+  // two most recent sim states by `alpha`, plus `latest` (the current,
+  // un-interpolated transform) so the render layer can draw the local
+  // player's camera from latest state instead of interpolated state.
+  function getRenderState(alpha) {
+    const result = [];
+    for (const [id, entity] of entities) {
+      const prev = prevTransforms.get(id) ?? cloneTransform(entity);
+      result.push({
+        id,
+        position: {
+          x: lerp(prev.position.x, entity.position.x, alpha),
+          y: lerp(prev.position.y, entity.position.y, alpha),
+          z: lerp(prev.position.z, entity.position.z, alpha),
+        },
+        yaw: lerpAngle(prev.yaw, entity.yaw, alpha),
+        pitch: lerp(prev.pitch, entity.pitch, alpha),
+        latest: cloneTransform(entity),
+        health: entity.health,
+        dead: entity.dead,
+        animHint: entity.animHint,
+        score: entity.score,
+      });
+    }
+    return result;
+  }
+
+  return { addEntity, getEntity, allEntities, step, getRenderState };
 }

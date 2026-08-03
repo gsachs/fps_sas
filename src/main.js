@@ -6,7 +6,9 @@ import { buildArenaMeshes } from './render/arenaMesh.js';
 import { createArena } from './arena/arena.js';
 import { pickSpawnPoint } from './arena/spawns.js';
 import { createSimulation } from './sim/index.js';
-import { createMovementSystem } from './sim/movement.js';
+import { createMovementSystem, EYE_HEIGHT } from './sim/movement.js';
+import { createWeaponSystem } from './sim/weapon.js';
+import { createHealthSystem } from './sim/health.js';
 import { createInputSampler } from './input/sampler.js';
 
 await RAPIER.init();
@@ -28,15 +30,34 @@ scene.add(buildArenaMeshes(arena));
 
 const inputSampler = createInputSampler();
 const movementSystem = createMovementSystem(arena.rapierWorld);
+const weaponSystem = createWeaponSystem({ rapierWorld: arena.rapierWorld, movementSystem });
+const healthSystem = createHealthSystem({
+  pickSpawnPoint,
+  spawnPoints: arena.spawnPoints,
+  movementSystem,
+});
+const combat = {
+  resolveFire: weaponSystem.resolveFire,
+  applyHit: healthSystem.applyHit,
+  tickRespawns: healthSystem.tickRespawns,
+};
+
 const LOCAL_PLAYER_ID = 'player';
 const sim = createSimulation({
   physics: movementSystem,
+  combat,
   gatherCommands: () => new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]),
 });
 
 const spawn = pickSpawnPoint(arena.spawnPoints, []);
 sim.world.addEntity(LOCAL_PLAYER_ID, { position: { ...spawn } });
 movementSystem.addCharacter(LOCAL_PLAYER_ID, spawn);
+
+// Rapier's broad-phase only indexes newly-created colliders on the next
+// world.step(); priming once here (safe -- every body is still kinematic
+// with no translation queued yet) ensures the very first real tick's
+// hitscan and movement queries see a fully up-to-date broad-phase.
+movementSystem.commit();
 
 // Read-only state hook for automated verification; never wired to any
 // input or mutation path, so it carries no gameplay effect.
@@ -79,10 +100,13 @@ document.addEventListener('mousemove', (event) => {
     inputSampler.onMouseMove(event);
   }
 });
+document.addEventListener('mousedown', (event) => {
+  if (document.pointerLockElement === renderer.domElement && event.button === 0) {
+    inputSampler.onFirePressed();
+  }
+});
 document.addEventListener('keydown', (event) => inputSampler.onKeyDown(event));
 document.addEventListener('keyup', (event) => inputSampler.onKeyUp(event));
-
-const EYE_HEIGHT = 0.6; // above the character capsule's origin, not its feet
 
 const statsEl = document.createElement('div');
 statsEl.style.cssText = 'position:absolute;top:8px;left:8px;color:#0f0;font:12px monospace;';

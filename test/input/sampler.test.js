@@ -33,4 +33,13 @@ describe('createInputSampler', () => {
     sampler.onKeyDown({ code: 'Space' });
     expect(sampler.sample().buttons.jump).toBe(true);
   });
+
+  it('latches a fire press to exactly one sampled command', () => {
+    const sampler = createInputSampler();
+    expect(sampler.sample().buttons.fire).toBe(false);
+
+    sampler.onFirePressed();
+    expect(sampler.sample().buttons.fire).toBe(true);
+    expect(sampler.sample().buttons.fire).toBe(false);
+  });
 });
