@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { createWorld } from '../../src/sim/world.js';
 import { createCommand } from '../../src/sim/command.js';
-import { createMovementSystem } from '../../src/sim/movement.js';
+import { createMovementSystem, CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS, CAPSULE_GROUND_OFFSET } from '../../src/sim/movement.js';
 
 await RAPIER.init();
+
+describe('CAPSULE_GROUND_OFFSET', () => {
+  it('pins the derived constant so main.js/arena.js drift is caught directly, not only through their composed values', () => {
+    expect(CAPSULE_GROUND_OFFSET).toBeCloseTo(CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS);
+  });
+});
 
 function buildTestRig({ obstacles = [] } = {}) {
   const rapierWorld = new RAPIER.World({ x: 0, y: -9.81, z: 0 });

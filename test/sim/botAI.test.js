@@ -153,6 +153,24 @@ describe('transitionBotState (pure)', () => {
       const next = transitionBotState(state, { distanceToPlayer: 5, hasLineOfSight: true, health: 100 }, 110);
       expect(next.phase).not.toBe('retreat');
     });
+
+    it('trusts the armed latch over a direct health check (documented invariant)', () => {
+      // transitionBotState is the only producer of bot AI state, and it
+      // always keeps retreatArmed in sync with health (the ternary at the
+      // top of this function) -- so {phase:'retreat', retreatArmed:true}
+      // with health still low is a state no real call sequence can
+      // produce. This pins that as a deliberate trust boundary, not an
+      // untested gap: given such a (synthetic, invariant-violating) state,
+      // the retreat-continuation guard trusts the latch and exits to
+      // chase, rather than re-deriving health independently.
+      const invariantViolatingState = { phase: 'retreat', retreatArmed: true, retreatEndTick: 500 };
+      const next = transitionBotState(
+        invariantViolatingState,
+        { distanceToPlayer: 5, hasLineOfSight: true, health: 10 },
+        100
+      );
+      expect(next.phase).toBe('chase');
+    });
   });
 });
 

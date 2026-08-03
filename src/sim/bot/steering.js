@@ -60,12 +60,13 @@ export function avoidObstacles(rapierWorld, position, desiredDirection, excludeC
     x: desiredDirection.x - hit.normal.x * alongNormal,
     z: desiredDirection.z - hit.normal.z * alongNormal,
   };
-  const tangentLength = Math.hypot(tangent.x, tangent.z);
-  if (tangentLength < 1e-6) {
-    // Exactly head-on: the tangential component vanishes, so there's no
-    // "which way past it" signal to slide along. Pick a fixed perpendicular
-    // to the surface normal as a deterministic (not reversing) escape.
+  const normalizedTangent = normalize(tangent);
+  if (normalizedTangent.x === 0 && normalizedTangent.z === 0) {
+    // Exactly head-on: the tangential component vanishes (normalize()'s own
+    // near-zero-length convention), so there's no "which way past it" signal
+    // to slide along. Pick a fixed perpendicular to the surface normal as a
+    // deterministic (not reversing) escape.
     return normalize({ x: -hit.normal.z, z: hit.normal.x });
   }
-  return { x: tangent.x / tangentLength, z: tangent.z / tangentLength };
+  return normalizedTangent;
 }

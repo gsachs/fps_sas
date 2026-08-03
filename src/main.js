@@ -10,7 +10,7 @@ import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/m
 import { createWeaponSystem } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createBotAI } from './sim/bot/fsm.js';
-import { getActiveBotCount } from './shell/botRamp.js';
+import { getActiveBotCount, buildOccupiedPositions } from './shell/botRamp.js';
 import { createInputSampler } from './input/sampler.js';
 import { createCharacterMesh, computeBotMeshYaw, computeBotMeshY, computeCameraYaw } from './render/entityMesh.js';
 import { loadCharacterModel, disposeObject3D } from './render/models.js';
@@ -171,15 +171,7 @@ function parkBotsBeyondRampCount() {
 }
 
 function activateBot(botEntry) {
-  // Every live entity except this bot itself, matching the convention
-  // world.js's tickRespawns and matchEnd.js's resetMatch already use --
-  // built from active bots only (as this did before), the player was
-  // invisible to spawn selection, so a reinforcement could land exactly on
-  // the player's position (spawnPoints[0], where the player starts).
-  const occupied = sim.world
-    .allEntities()
-    .filter((entity) => !entity.dead && entity.id !== botEntry.id)
-    .map((entity) => entity.position);
+  const occupied = buildOccupiedPositions(sim.world.allEntities(), botEntry.id);
   const spawn = pickSpawnPoint(arena.spawnPoints, occupied);
   sim.world.getEntity(botEntry.id).position = { ...spawn };
   movementSystem.teleport(botEntry.id, spawn);
