@@ -1,11 +1,16 @@
 import * as THREE from 'three';
+import { CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS } from '../sim/movement.js';
 
-// Placeholder capsule matching the sim's character capsule dimensions
-// (movement.js: half-height 0.5, radius 0.3 -> length 1.0). Swapped for real
-// animated models in U9; origin is the mesh's geometric center, matching the
-// Rapier rigid body's translation convention.
+// Placeholder capsule matching the sim's character capsule dimensions.
+// Reads CAPSULE_RADIUS/CAPSULE_HALF_HEIGHT directly rather than duplicating
+// them as literals, so the two can't silently drift the way they once did
+// (the physics capsule widened but this geometry stayed at its old radius).
+// This is also the permanent bot visual on a failed GLTF load (R9's error
+// path), not just a brief flicker before the real model swaps in -- origin
+// is the mesh's geometric center, matching the Rapier rigid body's
+// translation convention.
 export function createCharacterMesh({ color = 0xcc4444 } = {}) {
-  const geometry = new THREE.CapsuleGeometry(0.3, 1.0, 4, 8);
+  const geometry = new THREE.CapsuleGeometry(CAPSULE_RADIUS, CAPSULE_HALF_HEIGHT * 2, 4, 8);
   const material = new THREE.MeshStandardMaterial({ color });
   return new THREE.Mesh(geometry, material);
 }

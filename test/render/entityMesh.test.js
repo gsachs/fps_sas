@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { computeBotMeshYaw, computeBotMeshY, computeCameraYaw } from '../../src/render/entityMesh.js';
+import { createCharacterMesh, computeBotMeshYaw, computeBotMeshY, computeCameraYaw } from '../../src/render/entityMesh.js';
+import { CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS } from '../../src/sim/movement.js';
+
+describe('createCharacterMesh', () => {
+  // Regression: this placeholder is not just a brief loading flicker -- per
+  // main.js, it's the permanent bot visual whenever the real GLTF model
+  // fails to load (R9's error path). A hardcoded radius/height here can
+  // silently drift from the actual physics capsule (as it did once: the
+  // capsule widened 0.3 -> 0.4 but this geometry stayed at 0.3), leaving a
+  // visible character narrower than its real hitbox on that fallback path.
+  it('tracks the sim capsule dimensions instead of a hardcoded literal', () => {
+    const { geometry } = createCharacterMesh();
+    expect(geometry.parameters.radius).toBeCloseTo(CAPSULE_RADIUS);
+    expect(geometry.parameters.height).toBeCloseTo(CAPSULE_HALF_HEIGHT * 2);
+  });
+});
 
 describe('computeBotMeshYaw', () => {
   it('matches entity yaw when the model has no rest-facing offset', () => {
