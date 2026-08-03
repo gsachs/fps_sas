@@ -1,6 +1,15 @@
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { createScene } from './render/scene.js';
 import { createRenderLoop } from './render/loop.js';
+import { buildArenaMeshes } from './render/arenaMesh.js';
+import { createArena } from './arena/arena.js';
+import { pickSpawnPoint } from './arena/spawns.js';
+import { createSimulation } from './sim/index.js';
+import { createMovementSystem } from './sim/movement.js';
+import { createInputSampler } from './input/sampler.js';
+
+await RAPIER.init();
 
 const app = document.getElementById('app');
 
@@ -13,6 +22,29 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 app.appendChild(renderer.domElement);
 
 const { scene, camera } = createScene({ aspect: window.innerWidth / window.innerHeight });
+
+const arena = createArena();
+scene.add(buildArenaMeshes(arena));
+
+const inputSampler = createInputSampler();
+const movementSystem = createMovementSystem(arena.rapierWorld);
+const LOCAL_PLAYER_ID = 'player';
+const sim = createSimulation({
+  physics: movementSystem,
+  gatherCommands: () => new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]),
+});
+
+const spawn = pickSpawnPoint(arena.spawnPoints, []);
+sim.world.addEntity(LOCAL_PLAYER_ID, { position: { ...spawn } });
+movementSystem.addCharacter(LOCAL_PLAYER_ID, spawn);
+
+// Read-only state hook for automated verification; never wired to any
+// input or mutation path, so it carries no gameplay effect.
+if (debugMode) {
+  window.__debugState = () => ({
+    player: sim.world.getEntity(LOCAL_PLAYER_ID),
+  });
+}
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -42,6 +74,16 @@ document.addEventListener('pointerlockerror', () => {
   console.warn('Pointer lock request failed or was rejected.');
 });
 
+document.addEventListener('mousemove', (event) => {
+  if (document.pointerLockElement === renderer.domElement) {
+    inputSampler.onMouseMove(event);
+  }
+});
+document.addEventListener('keydown', (event) => inputSampler.onKeyDown(event));
+document.addEventListener('keyup', (event) => inputSampler.onKeyUp(event));
+
+const EYE_HEIGHT = 0.6; // above the character capsule's origin, not its feet
+
 const statsEl = document.createElement('div');
 statsEl.style.cssText = 'position:absolute;top:8px;left:8px;color:#0f0;font:12px monospace;';
 app.appendChild(statsEl);
@@ -53,6 +95,24 @@ const loop = createRenderLoop({
   scene,
   camera,
   onFrame(delta) {
+    const alpha = sim.tick(delta);
+    const renderState = sim.getRenderState(alpha);
+
+    for (const entity of renderState) {
+      if (entity.id === LOCAL_PLAYER_ID) {
+        // The local player's camera renders from the latest sim state (not
+        // interpolated) so aiming stays responsive -- KTD2's carve-out,
+        // validated by the U2 latency spike. Other entities (bots, once
+        // added in U6) interpolate via entity.position/entity.yaw instead.
+        camera.position.set(
+          entity.latest.position.x,
+          entity.latest.position.y + EYE_HEIGHT,
+          entity.latest.position.z
+        );
+        camera.rotation.set(entity.latest.pitch, entity.latest.yaw, 0, 'YXZ');
+      }
+    }
+
     frames += 1;
     fpsAccum += delta;
     if (fpsAccum >= 1) {
