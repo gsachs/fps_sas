@@ -357,7 +357,7 @@ const loop = createRenderLoop({
 
     const { alpha, events } = sim.tick(delta);
     const renderState = sim.getRenderState(alpha);
-    lastRenderState = renderState;
+    if (debugMode) lastRenderState = renderState;
     let playerEntity = null;
 
     for (const entity of renderState) {
