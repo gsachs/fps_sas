@@ -15,6 +15,8 @@ import { createCharacterMesh } from './render/entityMesh.js';
 import { createHud } from './ui/hud.js';
 import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
+import { createGameShell } from './shell/states.js';
+import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
 
 await RAPIER.init();
 
@@ -98,8 +100,22 @@ for (let i = 0; i < BOT_COUNT; i++) {
 // hitscan and movement queries see a fully up-to-date broad-phase.
 movementSystem.commit();
 
-// Read-only state hook for automated verification; never wired to any
-// input or mutation path, so it carries no gameplay effect.
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const gameShell = createGameShell({
+  container: app,
+  lockElement: renderer.domElement,
+  localPlayerId: LOCAL_PLAYER_ID,
+  onRestart: () =>
+    resetMatch(sim.world, { spawnPoints: arena.spawnPoints, pickSpawnPoint, movementSystem, healthSystem }),
+});
+
+// Read-only/test-only hooks for automated verification; never wired to any
+// gameplay input path, so they carry no effect unless explicitly called.
 const debugCounters = { fires: 0, crosshairFlashes: 0, damageIndicatorShows: 0 };
 if (debugMode) {
   window.__debugState = () => ({
@@ -114,35 +130,17 @@ if (debugMode) {
   // mousemove listener) so automated verification can aim at a known
   // target instead of firing in whatever direction yaw defaulted to.
   window.__debugSetYaw = (targetYaw) => inputSampler.setYaw(targetYaw);
+  // Directly sets an entity's score, so automated verification can reach
+  // match-end without playing out KILLS_TO_WIN real kills.
+  window.__debugSetScore = (entityId, score) => {
+    sim.world.getEntity(entityId).score = score;
+  };
+  window.__debugShellState = () => gameShell.getState();
+  // See states.js's debugForceLockAcquired doc comment: real Pointer Lock
+  // cannot be acquired under headless automation at all.
+  window.__debugForcePlaying = () => gameShell.debugForceLockAcquired();
+  window.__debugForcePaused = () => gameShell.debugForceLockLost();
 }
-
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
-// Click-to-play overlay. Full pointer-lock lifecycle (resume overlay,
-// re-lock-after-cooldown handling, unadjustedMovement fallback) lands in
-// U8's src/shell/pointerLock.js; this is the minimal engage/exit smoke path.
-const overlay = document.createElement('div');
-overlay.textContent = 'Click to Play';
-overlay.style.cssText =
-  'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
-  'color:#fff;font-size:2rem;cursor:pointer;background:rgba(0,0,0,0.5);';
-app.appendChild(overlay);
-
-overlay.addEventListener('click', () => {
-  renderer.domElement.requestPointerLock();
-});
-
-document.addEventListener('pointerlockchange', () => {
-  overlay.style.display = document.pointerLockElement === renderer.domElement ? 'none' : 'flex';
-});
-
-document.addEventListener('pointerlockerror', () => {
-  console.warn('Pointer lock request failed or was rejected.');
-});
 
 document.addEventListener('mousemove', (event) => {
   if (document.pointerLockElement === renderer.domElement) {
@@ -168,6 +166,11 @@ const loop = createRenderLoop({
   scene,
   camera,
   onFrame(delta) {
+    // The scene still renders every frame regardless (render/loop.js calls
+    // renderer.render after this returns), so start/pause/results screens
+    // show over a frozen last-playing frame rather than a blank canvas.
+    if (!gameShell.isSimRunning()) return;
+
     const { alpha, events } = sim.tick(delta);
     const renderState = sim.getRenderState(alpha);
     let playerEntity = null;
@@ -223,6 +226,11 @@ const loop = createRenderLoop({
       dead: playerEntity.dead,
       respawnSecondsRemaining: healthSystem.getRespawnTicksRemaining(LOCAL_PLAYER_ID) * sim.dt,
     });
+
+    const matchResult = checkMatchEnd(sim.world);
+    if (matchResult.ended) {
+      gameShell.showResults(matchResult.leaderboard);
+    }
 
     frames += 1;
     fpsAccum += delta;

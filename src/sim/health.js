@@ -66,5 +66,20 @@ export function createHealthSystem({ pickSpawnPoint, spawnPoints, movementSystem
     return respawnTicksRemaining.get(entityId) ?? 0;
   }
 
-  return { applyHit, tickRespawns, isRespawning, getRespawnTicksRemaining, RESPAWN_DELAY_TICKS };
+  // Cancels a pending respawn timer without respawning the entity -- for
+  // match-reset (U8), where the entity is about to be repositioned by the
+  // reset itself, and a stale timer firing afterward would move it again
+  // mid-new-match.
+  function clearRespawnTimer(entityId) {
+    respawnTicksRemaining.delete(entityId);
+  }
+
+  return {
+    applyHit,
+    tickRespawns,
+    isRespawning,
+    getRespawnTicksRemaining,
+    clearRespawnTimer,
+    RESPAWN_DELAY_TICKS,
+  };
 }
