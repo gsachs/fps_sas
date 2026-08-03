@@ -50,6 +50,17 @@ Pick any static host and upload the contents of `dist/`. A few options:
 npm test
 ```
 
+## Documentation
+
+- `docs/plans/` — the design plan this project was built from: product
+  requirements, key technical decisions, and the implementation unit
+  breakdown.
+- `docs/solutions/` — documented bugs and their root causes, organized by
+  category with searchable frontmatter. Worth checking before touching
+  bot AI or simulation code.
+- `CONCEPTS.md` — shared vocabulary for this codebase's domain (Command,
+  Entity, Bot, Bot Phase).
+
 ## Credits
 
 Third-party assets and their licenses are listed in `CREDITS.md`.
