@@ -139,6 +139,20 @@ describe('transitionBotState (pure)', () => {
       );
       expect(state.phase).toBe('retreat');
     });
+
+    it('exits retreat immediately once health is back to full, without waiting out the timer (regression)', () => {
+      // Regression: gatherCommands (main.js) gives a dead bot no command at
+      // all, so the AI's internal tick freezes while dead -- but
+      // retreatEndTick is an absolute tick value. A bot that died mid-retreat
+      // and respawned at full health previously kept serving the entire
+      // unspent retreat window post-respawn, fleeing at full health for no
+      // reason. A respawned-at-full-health bot has no reason to keep
+      // fleeing: this game has no health regen, so health this high while
+      // still in retreat uniquely means "just respawned."
+      const state = { phase: 'retreat', retreatArmed: false, retreatEndTick: 100_000 }; // far-future end
+      const next = transitionBotState(state, { distanceToPlayer: 5, hasLineOfSight: true, health: 100 }, 110);
+      expect(next.phase).not.toBe('retreat');
+    });
   });
 });
 

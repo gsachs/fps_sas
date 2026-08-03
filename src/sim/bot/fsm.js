@@ -23,6 +23,7 @@ export const RETREAT_HEALTH_THRESHOLD = 30;
 export const RETREAT_DURATION_TICKS = 180; // ~3s at 60Hz
 const MOVE_DEADZONE = 1.5; // stop closing once this close, so bots don't shove into the player
 const FIRE_INTERVAL_TICKS = 45; // intent to fire ~1.3x/sec; weapon.js's cooldown still bounds actual rate
+const LOS_SURFACE_BACKOFF = 0.05; // extra margin past CAPSULE_RADIUS so the ray clears the target's own surface
 
 export function createInitialBotState() {
   return { phase: 'idle', retreatArmed: true, retreatEndTick: 0 };
@@ -45,6 +46,16 @@ export function transitionBotState(state, sensors, tick) {
     return { phase: 'retreat', retreatArmed: false, retreatEndTick: tick + RETREAT_DURATION_TICKS };
   }
   if (state.phase === 'retreat') {
+    // This game has no health regen (only a full heal on respawn), so
+    // health back at or above the threshold while still in retreat
+    // uniquely means "just respawned" -- exit immediately rather than
+    // serving out a retreat window that was budgeted for the bot that
+    // died, not the fresh one that just spawned in. Without this, a bot
+    // that died mid-retreat resumed fleeing at full health for however
+    // much of the window remained (gatherCommands gives a dead bot no
+    // command, so this reducer isn't called and `tick` doesn't advance
+    // while dead, but retreatEndTick is an absolute tick value).
+    if (health >= RETREAT_HEALTH_THRESHOLD) return { phase: 'chase', retreatArmed: armed, retreatEndTick: 0 };
     if (tick < state.retreatEndTick) return { phase: 'retreat', retreatArmed: armed, retreatEndTick: state.retreatEndTick };
     return { phase: 'chase', retreatArmed: armed, retreatEndTick: 0 };
   }
@@ -76,7 +87,7 @@ function checkLineOfSight(rapierWorld, fromPosition, toPosition, excludeCollider
   // ~2.9 units -- registered as blocked even with a dead-clear line to it).
   const hit = rapierWorld.castRay(
     new RAPIER.Ray(origin, direction),
-    Math.max(distance - CAPSULE_RADIUS - 0.05, 0),
+    Math.max(distance - CAPSULE_RADIUS - LOS_SURFACE_BACKOFF, 0),
     true,
     undefined,
     undefined,
