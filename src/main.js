@@ -12,6 +12,8 @@ import { createHealthSystem } from './sim/health.js';
 import { createBasicBot } from './sim/bot/basic.js';
 import { createInputSampler } from './input/sampler.js';
 import { createCharacterMesh } from './render/entityMesh.js';
+import { loadCharacterModel, disposeObject3D } from './render/models.js';
+import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
 import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
@@ -34,6 +36,19 @@ const { scene, camera } = createScene({ aspect: window.innerWidth / window.inner
 
 const arena = createArena();
 scene.add(buildArenaMeshes(arena));
+
+const CHARACTER_MODEL_URL = '/assets/characters/quaternius-base-character.glb';
+// The downloaded pistol model (public/assets/weapons/quaternius-pistol.glb)
+// is a *skinned* mesh (rigged to its own reload/fire animation, with a
+// baked 100x scale split across its armature and mesh nodes) rather than a
+// static prop. loadPropModel's plain .clone() doesn't preserve skin
+// bindings the way loadCharacterModel's SkeletonUtils.clone() does, and
+// three independent scale attempts (0.12, 0.003, 0.00001) all rendered
+// identically -- confirmed via the raw GLTF node hierarchy (Muzzle/mesh
+// node scale ~100, sibling to the armature, not nested under it). Left
+// unwired for now: the placeholder weapon box is clean and correct: a
+// static (non-skinned) pistol model swapped in via loadPropModel would
+// need re-sourcing, not more scale tuning.
 
 const hud = createHud(app);
 const damageIndicator = createDamageIndicator(app);
@@ -91,7 +106,25 @@ for (let i = 0; i < BOT_COUNT; i++) {
   movementSystem.addCharacter(botId, botSpawn);
   const mesh = createCharacterMesh({ color: 0x7a3b3b });
   scene.add(mesh);
-  bots.push({ id: botId, bot: createBasicBot(), mesh });
+  const botEntry = { id: botId, bot: createBasicBot(), mesh, animatedCharacter: null };
+  bots.push(botEntry);
+
+  // Placeholder capsule renders immediately; the real model swaps in once
+  // loaded (or never, on failure -- R9's error path), so startup is never
+  // blocked on the asset load.
+  loadCharacterModel(CHARACTER_MODEL_URL, {
+    onError: (error) => console.warn(`Failed to load character model for ${botId}:`, error),
+  }).then((result) => {
+    if (!result) return;
+    const { scene: modelScene, animations } = result;
+    modelScene.scale.setScalar(0.9);
+    modelScene.rotation.y = Math.PI; // this rig's forward faces -Z; entity yaw=0 faces +Z
+    scene.remove(botEntry.mesh);
+    disposeObject3D(botEntry.mesh);
+    botEntry.mesh = modelScene;
+    scene.add(modelScene);
+    botEntry.animatedCharacter = createAnimatedCharacter(modelScene, animations);
+  });
 }
 
 // Rapier's broad-phase only indexes newly-created colliders on the next
@@ -140,6 +173,11 @@ if (debugMode) {
   // cannot be acquired under headless automation at all.
   window.__debugForcePlaying = () => gameShell.debugForceLockAcquired();
   window.__debugForcePaused = () => gameShell.debugForceLockLost();
+  // Reports the current bot0 mesh's world-space bounding-box size -- for
+  // tuning loaded-model scale, not gameplay-relevant.
+  window.__debugModelSizes = () => ({
+    bot0: bots[0] ? new THREE.Box3().setFromObject(bots[0].mesh).getSize(new THREE.Vector3()) : null,
+  });
 }
 
 document.addEventListener('mousemove', (event) => {
@@ -196,6 +234,8 @@ const loop = createRenderLoop({
         botEntry.mesh.visible = !entity.dead;
         botEntry.mesh.position.set(entity.position.x, entity.position.y, entity.position.z);
         botEntry.mesh.rotation.y = entity.yaw;
+        botEntry.animatedCharacter?.setBaseHint(entity.animHint);
+        botEntry.animatedCharacter?.update(delta);
       }
     }
 
@@ -203,6 +243,9 @@ const loop = createRenderLoop({
       if (event.type === 'fire' && event.shooterId === LOCAL_PLAYER_ID) {
         weaponView.fire();
         if (debugMode) debugCounters.fires += 1;
+      }
+      if (event.type === 'fire') {
+        bots.find((b) => b.id === event.shooterId)?.animatedCharacter?.playFireReaction();
       }
       if (event.type === 'hit' && event.shooterId === LOCAL_PLAYER_ID) {
         hud.flashCrosshair(event.killed ? 'kill' : 'hit');
