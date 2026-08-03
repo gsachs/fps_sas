@@ -10,7 +10,10 @@ const JUMP_SPEED = 5;
 const MOVE_SPEED = 4;
 const CONTROLLER_OFFSET = 0.01;
 const CAPSULE_HALF_HEIGHT = 0.5;
-const CAPSULE_RADIUS = 0.3;
+// Exported so a line-of-sight ray (fsm.js) can back off far enough to stop
+// short of the target's own capsule surface, rather than treating a hit on
+// the target itself as "something is blocking my view of them".
+export const CAPSULE_RADIUS = 0.3;
 
 // Height above the rigid body's origin (its capsule center, not its feet)
 // for both the render camera and the hitscan ray -- so shots land exactly

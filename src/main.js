@@ -9,7 +9,8 @@ import { createSimulation } from './sim/index.js';
 import { createMovementSystem, EYE_HEIGHT } from './sim/movement.js';
 import { createWeaponSystem } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
-import { createBasicBot } from './sim/bot/basic.js';
+import { createBotAI } from './sim/bot/fsm.js';
+import { getActiveBotCount } from './shell/botRamp.js';
 import { createInputSampler } from './input/sampler.js';
 import { createCharacterMesh, computeBotMeshYaw } from './render/entityMesh.js';
 import { loadCharacterModel, disposeObject3D } from './render/models.js';
@@ -75,6 +76,13 @@ const combat = {
 
 const LOCAL_PLAYER_ID = 'player';
 const BOT_COUNT = 4; // v1 target bot count (Success Criteria); tune here during playtest
+// Reinforcements not yet unlocked by the ramp (shell/botRamp.js) sit parked
+// here -- far enough below the arena that no hitscan ray reaches them
+// (HITSCAN_MAX_DISTANCE is 100; the ground collider blocks a downward ray
+// long before then anyway) -- rather than being removed from the sim, which
+// has no entity-removal path (KTD2's entity store is add-only).
+const PARK_POSITION = { x: 0, y: -100, z: 0 };
+let matchElapsedSeconds = 0;
 
 // gatherCommands closes over `sim` and `bots` before either is assigned --
 // safe because it only runs later, from sim.tick() in the render loop, by
@@ -86,10 +94,11 @@ const sim = createSimulation({
   gatherCommands: () => {
     const commands = new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]);
     const playerPosition = sim.world.getEntity(LOCAL_PLAYER_ID).position;
-    for (const { id, bot } of bots) {
+    for (const { id, bot, active } of bots) {
+      if (!active) continue; // not yet unlocked by the ramp -- frozen in place, no command at all
       const botEntity = sim.world.getEntity(id);
       if (botEntity && !botEntity.dead) {
-        commands.set(id, bot.sample(botEntity.position, playerPosition));
+        commands.set(id, bot.sample(botEntity.position, playerPosition, botEntity.health));
       }
     }
     return commands;
@@ -111,7 +120,14 @@ for (let i = 0; i < BOT_COUNT; i++) {
   movementSystem.addCharacter(botId, botSpawn);
   const mesh = createCharacterMesh({ color: 0x7a3b3b });
   scene.add(mesh);
-  const botEntry = { id: botId, bot: createBasicBot(), mesh, animatedCharacter: null, yawOffset: 0 };
+  const botEntry = {
+    id: botId,
+    bot: createBotAI({ rapierWorld: arena.rapierWorld, movementSystem, botId }),
+    mesh,
+    animatedCharacter: null,
+    yawOffset: 0,
+    active: true,
+  };
   bots.push(botEntry);
 
   // Placeholder capsule renders immediately; the real model swaps in once
@@ -124,12 +140,37 @@ for (let i = 0; i < BOT_COUNT; i++) {
     const { scene: modelScene, animations } = result;
     modelScene.scale.setScalar(0.9);
     botEntry.yawOffset = Math.PI; // this rig's forward faces -Z; entity yaw=0 faces +Z
+    modelScene.visible = botEntry.mesh.visible;
     scene.remove(botEntry.mesh);
     disposeObject3D(botEntry.mesh);
     botEntry.mesh = modelScene;
     scene.add(modelScene);
     botEntry.animatedCharacter = createAnimatedCharacter(modelScene, animations);
   });
+}
+
+// Ramp reinforcements in (shell/botRamp.js): later-indexed bots start
+// parked and inactive, then get moved to a real spawn and unlocked as the
+// match clock advances (see onFrame). Bots within the initial unlocked
+// count just play normally from their already-assigned spawn.
+for (let i = getActiveBotCount(0, BOT_COUNT); i < bots.length; i++) {
+  deactivateBot(bots[i]);
+}
+
+function activateBot(botEntry) {
+  const occupied = bots.filter((b) => b.active).map((b) => sim.world.getEntity(b.id).position);
+  const spawn = pickSpawnPoint(arena.spawnPoints, occupied);
+  sim.world.getEntity(botEntry.id).position = { ...spawn };
+  movementSystem.teleport(botEntry.id, spawn);
+  botEntry.mesh.visible = true;
+  botEntry.active = true;
+}
+
+function deactivateBot(botEntry) {
+  sim.world.getEntity(botEntry.id).position = { ...PARK_POSITION };
+  movementSystem.teleport(botEntry.id, PARK_POSITION);
+  botEntry.mesh.visible = false;
+  botEntry.active = false;
 }
 
 // Rapier's broad-phase only indexes newly-created colliders on the next
@@ -148,8 +189,16 @@ const gameShell = createGameShell({
   container: app,
   lockElement: renderer.domElement,
   localPlayerId: LOCAL_PLAYER_ID,
-  onRestart: () =>
-    resetMatch(sim.world, { spawnPoints: arena.spawnPoints, pickSpawnPoint, movementSystem, healthSystem }),
+  onRestart: () => {
+    resetMatch(sim.world, { spawnPoints: arena.spawnPoints, pickSpawnPoint, movementSystem, healthSystem });
+    // resetMatch repositions every entity in the world, including bots the
+    // ramp hadn't unlocked yet -- re-park those so the new match starts the
+    // ramp over instead of carrying over the previous match's bot count.
+    matchElapsedSeconds = 0;
+    for (let i = getActiveBotCount(0, BOT_COUNT); i < bots.length; i++) {
+      deactivateBot(bots[i]);
+    }
+  },
 });
 
 // Read-only/test-only hooks for automated verification; never wired to any
@@ -192,6 +241,17 @@ if (debugMode) {
   // Counts live tracer lines in the scene graph, for verifying the tracer
   // effect actually spawns (and expires) without a human watching the screen.
   window.__debugTracerCount = () => scene.children.filter((child) => child.type === 'Line').length;
+  // Reports the bot ramp's live state, for verifying reinforcements unlock
+  // over a match without waiting out the real ramp interval by hand.
+  window.__debugBotRamp = () => ({
+    matchElapsedSeconds,
+    activeCount: bots.filter((b) => b.active).length,
+    targetCount: getActiveBotCount(matchElapsedSeconds, BOT_COUNT),
+  });
+  // Reports each bot's FSM phase and position, for diagnosing AI behavior
+  // (stuck idle vs. chasing vs. attacking) without a human watching the screen.
+  window.__debugBotPhases = () =>
+    bots.map((b) => ({ id: b.id, active: b.active, phase: b.bot.getPhase(), position: sim.world.getEntity(b.id)?.position }));
 }
 
 document.addEventListener('mousemove', (event) => {
@@ -223,6 +283,16 @@ const loop = createRenderLoop({
     // show over a frozen last-playing frame rather than a blank canvas.
     if (!gameShell.isSimRunning()) return;
 
+    // Ramp reinforcements in over the match (shell/botRamp.js) -- the clock
+    // only advances while actually playing, so pausing doesn't burn ramp time.
+    matchElapsedSeconds += delta;
+    const targetActiveBots = getActiveBotCount(matchElapsedSeconds, BOT_COUNT);
+    for (const botEntry of bots) {
+      if (botEntry.active) continue;
+      if (bots.filter((b) => b.active).length >= targetActiveBots) break;
+      activateBot(botEntry);
+    }
+
     const { alpha, events } = sim.tick(delta);
     const renderState = sim.getRenderState(alpha);
     let playerEntity = null;
@@ -245,6 +315,10 @@ const loop = createRenderLoop({
 
       const botEntry = bots.find((b) => b.id === entity.id);
       if (botEntry) {
+        // Not yet unlocked by the ramp overrides the death-hides-mesh rule
+        // below -- a parked bot is never "dead", so !entity.dead alone would
+        // make it visible again the instant this runs.
+        if (!botEntry.active) continue;
         botEntry.mesh.visible = !entity.dead;
         botEntry.mesh.position.set(entity.position.x, entity.position.y, entity.position.z);
         botEntry.mesh.rotation.y = computeBotMeshYaw(entity.yaw, botEntry.yawOffset);
