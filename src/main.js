@@ -217,6 +217,16 @@ if (debugMode) {
     bots: bots.map(({ id }) => sim.world.getEntity(id)),
     counters: { ...debugCounters },
   });
+  // Asks THREE.js directly what direction the camera actually faces, so it
+  // can be compared against the sim's own movement-forward convention
+  // (sin(yaw), cos(yaw)) for the same yaw -- settles whether what the
+  // player visually aims at matches what the weapon ray actually targets,
+  // without re-deriving rotation matrices by hand.
+  window.__debugCameraForward = () => {
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    return { x: dir.x, y: dir.y, z: dir.z };
+  };
   // Triggers the same fire-latch path a real mousedown does, for automated
   // verification in a harness where pointer lock cannot engage.
   window.__debugFire = () => inputSampler.onFirePressed();
@@ -350,7 +360,15 @@ const loop = createRenderLoop({
           entity.latest.position.y + EYE_HEIGHT,
           entity.latest.position.z
         );
-        camera.rotation.set(entity.latest.pitch, entity.latest.yaw, 0, 'YXZ');
+        // THREE cameras look down their local -Z axis by default, but every
+        // other convention in this codebase (movement.js's forward vector,
+        // weapon.js's hitscan direction, bot mesh rotation) treats +Z as
+        // "front" for a given yaw -- so camera.rotation.y = yaw alone faces
+        // the camera in the exact opposite world direction from where the
+        // weapon actually fires. The +PI corrects for that mismatch; it
+        // does not apply to bot meshes, which use the generic (+Z-front)
+        // convention and were already correct.
+        camera.rotation.set(entity.latest.pitch, entity.latest.yaw + Math.PI, 0, 'YXZ');
         continue;
       }
 
