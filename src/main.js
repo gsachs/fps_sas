@@ -171,7 +171,15 @@ function parkBotsBeyondRampCount() {
 }
 
 function activateBot(botEntry) {
-  const occupied = bots.filter((b) => b.active).map((b) => sim.world.getEntity(b.id).position);
+  // Every live entity except this bot itself, matching the convention
+  // world.js's tickRespawns and matchEnd.js's resetMatch already use --
+  // built from active bots only (as this did before), the player was
+  // invisible to spawn selection, so a reinforcement could land exactly on
+  // the player's position (spawnPoints[0], where the player starts).
+  const occupied = sim.world
+    .allEntities()
+    .filter((entity) => !entity.dead && entity.id !== botEntry.id)
+    .map((entity) => entity.position);
   const spawn = pickSpawnPoint(arena.spawnPoints, occupied);
   sim.world.getEntity(botEntry.id).position = { ...spawn };
   movementSystem.teleport(botEntry.id, spawn);
