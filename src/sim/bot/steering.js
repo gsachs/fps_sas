@@ -7,9 +7,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 
 const AVOIDANCE_LOOKAHEAD = 2;
-// Idle/patrol drift is low-stakes filler movement, not real navigation --
-// this bounds how far a single wander() call can turn per tick.
-const WANDER_JITTER = 0.05;
+const WANDER_JITTER = 0.05; // max yaw drift per wander() call
 
 function normalize(vector) {
   const length = Math.hypot(vector.x, vector.z);
@@ -62,11 +60,12 @@ export function avoidObstacles(rapierWorld, position, desiredDirection, excludeC
     x: desiredDirection.x - hit.normal.x * alongNormal,
     z: desiredDirection.z - hit.normal.z * alongNormal,
   };
-  if (Math.hypot(tangent.x, tangent.z) < 1e-6) {
+  const tangentLength = Math.hypot(tangent.x, tangent.z);
+  if (tangentLength < 1e-6) {
     // Exactly head-on: the tangential component vanishes, so there's no
     // "which way past it" signal to slide along. Pick a fixed perpendicular
     // to the surface normal as a deterministic (not reversing) escape.
     return normalize({ x: -hit.normal.z, z: hit.normal.x });
   }
-  return normalize(tangent);
+  return { x: tangent.x / tangentLength, z: tangent.z / tangentLength };
 }

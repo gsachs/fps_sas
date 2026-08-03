@@ -26,6 +26,12 @@ export const CAPSULE_RADIUS = 0.4;
 // where the crosshair appears to point.
 export const EYE_HEIGHT = 0.6;
 
+// A resting capsule's center sits this far above the ground it's snapped
+// to. Shared by main.js's modelYOffset (feet-anchored GLTF rig alignment)
+// and arena.js's cover-box sizing, so the sum isn't re-derived -- and
+// risking drift -- in more than one place.
+export const CAPSULE_GROUND_OFFSET = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS;
+
 export function createMovementSystem(rapierWorld) {
   const controller = rapierWorld.createCharacterController(CONTROLLER_OFFSET);
   controller.enableAutostep(0.3, 0.1, true);

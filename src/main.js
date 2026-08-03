@@ -6,7 +6,7 @@ import { buildArenaMeshes } from './render/arenaMesh.js';
 import { createArena } from './arena/arena.js';
 import { pickSpawnPoint } from './arena/spawns.js';
 import { createSimulation } from './sim/index.js';
-import { createMovementSystem, EYE_HEIGHT, CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS } from './sim/movement.js';
+import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/movement.js';
 import { createWeaponSystem } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createBotAI } from './sim/bot/fsm.js';
@@ -146,7 +146,7 @@ for (let i = 0; i < BOT_COUNT; i++) {
     // placeholder capsule (and the physics capsule) use -- without this, the
     // visible character floats ~0.8 units above its actual hitbox, so a shot
     // aimed at the character can sail clean over the real collider.
-    botEntry.modelYOffset = -(CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS);
+    botEntry.modelYOffset = -CAPSULE_GROUND_OFFSET;
     modelScene.visible = botEntry.mesh.visible;
     scene.remove(botEntry.mesh);
     disposeObject3D(botEntry.mesh);

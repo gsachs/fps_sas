@@ -46,17 +46,21 @@ export function transitionBotState(state, sensors, tick) {
     return { phase: 'retreat', retreatArmed: false, retreatEndTick: tick + RETREAT_DURATION_TICKS };
   }
   if (state.phase === 'retreat') {
-    // This game has no health regen (only a full heal on respawn), so
-    // health back at or above the threshold while still in retreat
-    // uniquely means "just respawned" -- exit immediately rather than
-    // serving out a retreat window that was budgeted for the bot that
-    // died, not the fresh one that just spawned in. Without this, a bot
-    // that died mid-retreat resumed fleeing at full health for however
-    // much of the window remained (gatherCommands gives a dead bot no
-    // command, so this reducer isn't called and `tick` doesn't advance
-    // while dead, but retreatEndTick is an absolute tick value).
-    if (health >= RETREAT_HEALTH_THRESHOLD) return { phase: 'chase', retreatArmed: armed, retreatEndTick: 0 };
-    if (tick < state.retreatEndTick) return { phase: 'retreat', retreatArmed: armed, retreatEndTick: state.retreatEndTick };
+    // Stay in retreat only while still unarmed (health hasn't recovered)
+    // and the timer hasn't run out. `armed` already means "health is back
+    // at or above the threshold" (per the ternary above), so this reuses
+    // that latch instead of re-testing health -- and, since this game has
+    // no health regen (only a full heal on respawn), armed-while-retreating
+    // uniquely means "just respawned": exit immediately rather than
+    // serving out a retreat window budgeted for the bot that died, not the
+    // fresh one that just spawned in. Without this, a bot that died
+    // mid-retreat resumed fleeing at full health for however much of the
+    // window remained (gatherCommands gives a dead bot no command, so this
+    // reducer isn't called and `tick` doesn't advance while dead, but
+    // retreatEndTick is an absolute tick value).
+    if (!armed && tick < state.retreatEndTick) {
+      return { phase: 'retreat', retreatArmed: armed, retreatEndTick: state.retreatEndTick };
+    }
     return { phase: 'chase', retreatArmed: armed, retreatEndTick: 0 };
   }
 
