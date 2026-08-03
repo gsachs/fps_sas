@@ -9,7 +9,9 @@ import { createSimulation } from './sim/index.js';
 import { createMovementSystem, EYE_HEIGHT } from './sim/movement.js';
 import { createWeaponSystem } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
+import { createBasicBot } from './sim/bot/basic.js';
 import { createInputSampler } from './input/sampler.js';
+import { createCharacterMesh } from './render/entityMesh.js';
 
 await RAPIER.init();
 
@@ -43,15 +45,45 @@ const combat = {
 };
 
 const LOCAL_PLAYER_ID = 'player';
+const BOT_COUNT = 4; // v1 target bot count (Success Criteria); tune here during playtest
+
+// gatherCommands closes over `sim` and `bots` before either is assigned --
+// safe because it only runs later, from sim.tick() in the render loop, by
+// which point both exist (bots need sim.world to add entities to, so they
+// can't be built first).
 const sim = createSimulation({
   physics: movementSystem,
   combat,
-  gatherCommands: () => new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]),
+  gatherCommands: () => {
+    const commands = new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]);
+    const playerPosition = sim.world.getEntity(LOCAL_PLAYER_ID).position;
+    for (const { id, bot } of bots) {
+      const botEntity = sim.world.getEntity(id);
+      if (botEntity && !botEntity.dead) {
+        commands.set(id, bot.sample(botEntity.position, playerPosition));
+      }
+    }
+    return commands;
+  },
 });
 
-const spawn = pickSpawnPoint(arena.spawnPoints, []);
+const occupiedSpawns = [];
+const spawn = pickSpawnPoint(arena.spawnPoints, occupiedSpawns);
+occupiedSpawns.push(spawn);
 sim.world.addEntity(LOCAL_PLAYER_ID, { position: { ...spawn } });
 movementSystem.addCharacter(LOCAL_PLAYER_ID, spawn);
+
+const bots = [];
+for (let i = 0; i < BOT_COUNT; i++) {
+  const botId = `bot${i}`;
+  const botSpawn = pickSpawnPoint(arena.spawnPoints, occupiedSpawns);
+  occupiedSpawns.push(botSpawn);
+  sim.world.addEntity(botId, { position: { ...botSpawn } });
+  movementSystem.addCharacter(botId, botSpawn);
+  const mesh = createCharacterMesh({ color: 0x7a3b3b });
+  scene.add(mesh);
+  bots.push({ id: botId, bot: createBasicBot(), mesh });
+}
 
 // Rapier's broad-phase only indexes newly-created colliders on the next
 // world.step(); priming once here (safe -- every body is still kinematic
@@ -64,7 +96,11 @@ movementSystem.commit();
 if (debugMode) {
   window.__debugState = () => ({
     player: sim.world.getEntity(LOCAL_PLAYER_ID),
+    bots: bots.map(({ id }) => sim.world.getEntity(id)),
   });
+  // Triggers the same fire-latch path a real mousedown does, for automated
+  // verification in a harness where pointer lock cannot engage.
+  window.__debugFire = () => inputSampler.onFirePressed();
 }
 
 window.addEventListener('resize', () => {
@@ -126,14 +162,22 @@ const loop = createRenderLoop({
       if (entity.id === LOCAL_PLAYER_ID) {
         // The local player's camera renders from the latest sim state (not
         // interpolated) so aiming stays responsive -- KTD2's carve-out,
-        // validated by the U2 latency spike. Other entities (bots, once
-        // added in U6) interpolate via entity.position/entity.yaw instead.
+        // validated by the U2 latency spike. Other entities interpolate
+        // via entity.position/entity.yaw instead.
         camera.position.set(
           entity.latest.position.x,
           entity.latest.position.y + EYE_HEIGHT,
           entity.latest.position.z
         );
         camera.rotation.set(entity.latest.pitch, entity.latest.yaw, 0, 'YXZ');
+        continue;
+      }
+
+      const botEntry = bots.find((b) => b.id === entity.id);
+      if (botEntry) {
+        botEntry.mesh.visible = !entity.dead;
+        botEntry.mesh.position.set(entity.position.x, entity.position.y, entity.position.z);
+        botEntry.mesh.rotation.y = entity.yaw;
       }
     }
 
