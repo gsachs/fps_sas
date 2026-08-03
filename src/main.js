@@ -12,6 +12,9 @@ import { createHealthSystem } from './sim/health.js';
 import { createBasicBot } from './sim/bot/basic.js';
 import { createInputSampler } from './input/sampler.js';
 import { createCharacterMesh } from './render/entityMesh.js';
+import { createHud } from './ui/hud.js';
+import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback.js';
+import { createWeaponView } from './render/weaponView.js';
 
 await RAPIER.init();
 
@@ -29,6 +32,10 @@ const { scene, camera } = createScene({ aspect: window.innerWidth / window.inner
 
 const arena = createArena();
 scene.add(buildArenaMeshes(arena));
+
+const hud = createHud(app);
+const damageIndicator = createDamageIndicator(app);
+const weaponView = createWeaponView(camera);
 
 const inputSampler = createInputSampler();
 const movementSystem = createMovementSystem(arena.rapierWorld);
@@ -93,14 +100,20 @@ movementSystem.commit();
 
 // Read-only state hook for automated verification; never wired to any
 // input or mutation path, so it carries no gameplay effect.
+const debugCounters = { fires: 0, crosshairFlashes: 0, damageIndicatorShows: 0 };
 if (debugMode) {
   window.__debugState = () => ({
     player: sim.world.getEntity(LOCAL_PLAYER_ID),
     bots: bots.map(({ id }) => sim.world.getEntity(id)),
+    counters: { ...debugCounters },
   });
   // Triggers the same fire-latch path a real mousedown does, for automated
   // verification in a harness where pointer lock cannot engage.
   window.__debugFire = () => inputSampler.onFirePressed();
+  // Sets the player's yaw directly (bypassing the pointer-lock-gated
+  // mousemove listener) so automated verification can aim at a known
+  // target instead of firing in whatever direction yaw defaulted to.
+  window.__debugSetYaw = (targetYaw) => inputSampler.setYaw(targetYaw);
 }
 
 window.addEventListener('resize', () => {
@@ -155,11 +168,13 @@ const loop = createRenderLoop({
   scene,
   camera,
   onFrame(delta) {
-    const alpha = sim.tick(delta);
+    const { alpha, events } = sim.tick(delta);
     const renderState = sim.getRenderState(alpha);
+    let playerEntity = null;
 
     for (const entity of renderState) {
       if (entity.id === LOCAL_PLAYER_ID) {
+        playerEntity = entity;
         // The local player's camera renders from the latest sim state (not
         // interpolated) so aiming stays responsive -- KTD2's carve-out,
         // validated by the U2 latency spike. Other entities interpolate
@@ -180,6 +195,34 @@ const loop = createRenderLoop({
         botEntry.mesh.rotation.y = entity.yaw;
       }
     }
+
+    for (const event of events) {
+      if (event.type === 'fire' && event.shooterId === LOCAL_PLAYER_ID) {
+        weaponView.fire();
+        if (debugMode) debugCounters.fires += 1;
+      }
+      if (event.type === 'hit' && event.shooterId === LOCAL_PLAYER_ID) {
+        hud.flashCrosshair(event.killed ? 'kill' : 'hit');
+        if (debugMode) debugCounters.crosshairFlashes += 1;
+      }
+      if (event.type === 'hit' && event.targetId === LOCAL_PLAYER_ID && event.shooterPosition) {
+        const angle = computeAngleFromPlayer(
+          playerEntity.latest.position,
+          playerEntity.latest.yaw,
+          event.shooterPosition
+        );
+        damageIndicator.show(angle);
+        if (debugMode) debugCounters.damageIndicatorShows += 1;
+      }
+    }
+
+    weaponView.update(delta);
+    hud.update({
+      health: playerEntity.health,
+      score: playerEntity.score,
+      dead: playerEntity.dead,
+      respawnSecondsRemaining: healthSystem.getRespawnTicksRemaining(LOCAL_PLAYER_ID) * sim.dt,
+    });
 
     frames += 1;
     fpsAccum += delta;

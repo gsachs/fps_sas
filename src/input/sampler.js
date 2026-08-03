@@ -57,5 +57,8 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
     onFirePressed,
     sample,
     getYawPitch: () => ({ yaw, pitch }),
+    setYaw: (newYaw) => {
+      yaw = newYaw;
+    },
   };
 }

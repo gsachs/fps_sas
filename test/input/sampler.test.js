@@ -42,4 +42,15 @@ describe('createInputSampler', () => {
     expect(sampler.sample().buttons.fire).toBe(true);
     expect(sampler.sample().buttons.fire).toBe(false);
   });
+
+  it('setYaw sets the yaw directly without touching pitch', () => {
+    const sampler = createInputSampler();
+    sampler.onMouseMove({ movementX: 0, movementY: -50 }); // establish a non-zero pitch
+    const pitchBefore = sampler.getYawPitch().pitch;
+
+    sampler.setYaw(1.23);
+
+    expect(sampler.getYawPitch().yaw).toBe(1.23);
+    expect(sampler.getYawPitch().pitch).toBe(pitchBefore);
+  });
 });

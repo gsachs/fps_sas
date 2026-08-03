@@ -14,14 +14,17 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks 
   const remainingCooldown = new Map(); // entityId -> ticks left before next shot allowed
 
   // Resolves a hitscan shot for `entity` if its command requests fire and
-  // its cooldown allows it. Returns the hit entity's id, or null (miss,
-  // blocked by cover, on cooldown, or not firing).
+  // its cooldown allows it. Returns { fired, hitEntityId } -- `fired` is
+  // true whenever the weapon actually discharges this tick (hit or miss),
+  // so callers can trigger fire feedback (recoil, muzzle flash) even on a
+  // miss; `hitEntityId` is the hit entity's id, or null (miss, blocked by
+  // cover, on cooldown, or not firing).
   function resolveFire(entity, command) {
     const cooldown = remainingCooldown.get(entity.id) ?? 0;
     if (cooldown > 0) remainingCooldown.set(entity.id, cooldown - 1);
 
-    if (!command.buttons.fire) return null;
-    if ((remainingCooldown.get(entity.id) ?? 0) > 0) return null;
+    if (!command.buttons.fire) return { fired: false, hitEntityId: null };
+    if ((remainingCooldown.get(entity.id) ?? 0) > 0) return { fired: false, hitEntityId: null };
 
     remainingCooldown.set(entity.id, cooldownTicks);
 
@@ -42,8 +45,8 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks 
       shooterCollider
     );
 
-    if (!hit) return null;
-    return movementSystem.getEntityIdForCollider(hit.collider) ?? null;
+    const hitEntityId = hit ? movementSystem.getEntityIdForCollider(hit.collider) ?? null : null;
+    return { fired: true, hitEntityId };
   }
 
   return { resolveFire };

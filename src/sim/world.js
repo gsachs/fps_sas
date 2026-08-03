@@ -69,6 +69,7 @@ export function createWorld({ physics, combat } = {}) {
 
   function step(commandsByEntityId, dt) {
     snapshotPrev();
+    const events = [];
     for (const [id, command] of commandsByEntityId) {
       const entity = entities.get(id);
       if (!entity || entity.dead) continue;
@@ -92,8 +93,14 @@ export function createWorld({ physics, combat } = {}) {
       entity.animHint = command.moveX !== 0 || command.moveZ !== 0 ? 'moving' : 'idle';
 
       if (combat) {
-        const targetId = combat.resolveFire(entity, command);
-        if (targetId) combat.applyHit(entityAccessor, targetId, id);
+        const fireResult = combat.resolveFire(entity, command);
+        if (fireResult.fired) {
+          events.push({ type: 'fire', shooterId: id });
+        }
+        if (fireResult.hitEntityId) {
+          const hitEvent = combat.applyHit(entityAccessor, fireResult.hitEntityId, id);
+          if (hitEvent) events.push({ type: 'hit', ...hitEvent });
+        }
       }
     }
     if (physics) physics.commit();
@@ -103,6 +110,7 @@ export function createWorld({ physics, combat } = {}) {
         .map((entity) => entity.position);
       combat.tickRespawns(entityAccessor, occupiedPositions);
     }
+    return events;
   }
 
   // Per-entity render state: position/yaw/pitch interpolated between the

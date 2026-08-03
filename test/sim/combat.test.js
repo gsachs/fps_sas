@@ -120,6 +120,43 @@ describe('combat: miss', () => {
   });
 });
 
+describe('combat: step() reports fire and hit events (U7 feedback source)', () => {
+  it('reports a fire event even on a miss, with no accompanying hit event', () => {
+    const rig = buildCombatRig();
+    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addCombatant(rig, 'target', { x: 50, y: 1, z: 50 });
+    primeBroadPhase(rig);
+
+    const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
+
+    expect(events).toContainEqual({ type: 'fire', shooterId: 'shooter' });
+    expect(events.some((e) => e.type === 'hit')).toBe(false);
+  });
+
+  it('reports both a fire event and a hit event on a landed shot', () => {
+    const rig = buildCombatRig();
+    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addCombatant(rig, 'target', { x: 0, y: 1, z: 5 });
+    primeBroadPhase(rig);
+
+    const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
+
+    expect(events).toContainEqual({ type: 'fire', shooterId: 'shooter' });
+    const hitEvent = events.find((e) => e.type === 'hit');
+    expect(hitEvent).toMatchObject({ shooterId: 'shooter', targetId: 'target', damage: 20, killed: false });
+  });
+
+  it('reports no events when nobody fires', () => {
+    const rig = buildCombatRig();
+    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    primeBroadPhase(rig);
+
+    const events = rig.world.step(new Map([['shooter', HOLD]]), 1 / 60);
+
+    expect(events).toEqual([]);
+  });
+});
+
 describe('combat: cover blocks hits', () => {
   it('does not hit an entity fully occluded by cover geometry', () => {
     const rig = buildCombatRig({
@@ -143,9 +180,9 @@ describe('combat: self-hit exclusion', () => {
     addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
     primeBroadPhase(rig);
 
-    const hitId = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), FIRE);
+    const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), FIRE);
 
-    expect(hitId).not.toBe('shooter');
+    expect(result.hitEntityId).not.toBe('shooter');
   });
 });
 
