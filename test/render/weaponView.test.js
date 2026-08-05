@@ -117,4 +117,61 @@ describe('createWeaponView', () => {
     for (let i = 0; i < 60; i++) weaponView.update(1 / 60);
     expect(realModel.position.z).toBeCloseTo(3, 5); // settles back to rest, not to 0
   });
+
+  it('setHeldWeapon swaps to a visually distinct machine-gun placeholder and back to the pistol', () => {
+    const camera = new THREE.PerspectiveCamera();
+    const weaponView = createWeaponView(camera);
+    const { group, gun: pistolPlaceholder } = parts(camera);
+
+    weaponView.setHeldWeapon('machinegun');
+    const mgVisual = group.getObjectByName('weaponVisual');
+
+    expect(mgVisual).not.toBe(pistolPlaceholder);
+    expect(group.children).toContain(mgVisual);
+    expect(group.children).not.toContain(pistolPlaceholder);
+
+    weaponView.setHeldWeapon('pistol');
+    expect(group.getObjectByName('weaponVisual')).toBe(pistolPlaceholder);
+    expect(group.children).toContain(pistolPlaceholder);
+    expect(group.children).not.toContain(mgVisual);
+  });
+
+  it('setHeldWeapon is a no-op when the requested weapon is already active', () => {
+    const camera = new THREE.PerspectiveCamera();
+    const weaponView = createWeaponView(camera);
+    const { group } = parts(camera);
+    const childrenBefore = [...group.children];
+
+    weaponView.setHeldWeapon('pistol'); // already active by default
+
+    expect(group.children).toEqual(childrenBefore);
+  });
+
+  it('switching back to the pistol after setModel shows the loaded model, not the original placeholder (U5 seam)', () => {
+    const camera = new THREE.PerspectiveCamera();
+    const weaponView = createWeaponView(camera);
+    const realModel = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+
+    weaponView.setModel(realModel, { position: new THREE.Vector3(0, 0, 0.1) });
+    weaponView.setHeldWeapon('machinegun');
+    weaponView.setHeldWeapon('pistol');
+
+    const { group } = parts(camera);
+    expect(group.getObjectByName('weaponVisual')).toBe(realModel);
+  });
+
+  it('setModel on an inactive weapon id does not disturb the currently displayed visual', () => {
+    const camera = new THREE.PerspectiveCamera();
+    const weaponView = createWeaponView(camera);
+    const { group, gun: pistolPlaceholder } = parts(camera);
+
+    const mgModel = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+    weaponView.setModel(mgModel, {}, 'machinegun'); // pistol is still active
+
+    expect(group.getObjectByName('weaponVisual')).toBe(pistolPlaceholder);
+    expect(group.children).not.toContain(mgModel);
+
+    weaponView.setHeldWeapon('machinegun');
+    expect(group.getObjectByName('weaponVisual')).toBe(mgModel);
+  });
 });

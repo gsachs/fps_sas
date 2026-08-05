@@ -7,7 +7,7 @@ import { createArena } from './arena/arena.js';
 import { selectSpawnPoint } from './arena/spawnPlacement.js';
 import { createSimulation } from './sim/index.js';
 import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/movement.js';
-import { createWeaponSystem } from './sim/weapon.js';
+import { createWeaponSystem, MACHINEGUN_MAX_AMMO } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createBotAI } from './sim/bot/fsm.js';
 import { getActiveBotCount, buildOccupiedPositions } from './shell/botRamp.js';
@@ -113,7 +113,7 @@ const sim = createSimulation({
       if (!active) continue; // not yet unlocked by the ramp -- frozen in place, no command at all
       const botEntity = sim.world.getEntity(id);
       if (botEntity && !botEntity.dead) {
-        commands.set(id, bot.sample(botEntity.position, playerPosition, botEntity.health));
+        commands.set(id, bot.sample(botEntity.position, playerPosition, botEntity.health, botEntity.heldWeapon));
       }
     }
     return commands;
@@ -131,6 +131,17 @@ const spawn = selectSpawnPoint(arena.rapierWorld, arena.spawnPoints, {
 occupiedSpawns.push(spawn);
 sim.world.addEntity(LOCAL_PLAYER_ID, { position: { ...spawn } });
 movementSystem.addCharacter(LOCAL_PLAYER_ID, spawn);
+
+// TEMPORARY: U2 debug MG grant -- pickups (U3) don't exist yet, so this is
+// the only way to play-check the machine gun's feel this unit. U3's plan
+// explicitly removes this once a real pickup can grant it instead; grep
+// "U2 debug grant" or DEBUG_GRANT_MACHINEGUN to find it.
+const DEBUG_GRANT_MACHINEGUN = true; // U2 debug grant
+if (DEBUG_GRANT_MACHINEGUN) {
+  const localPlayer = sim.world.getEntity(LOCAL_PLAYER_ID);
+  localPlayer.heldWeapon = 'machinegun';
+  localPlayer.ammo = MACHINEGUN_MAX_AMMO;
+}
 
 const bots = [];
 for (let i = 0; i < BOT_COUNT; i++) {
@@ -374,6 +385,14 @@ document.addEventListener('mousedown', (event) => {
     inputSampler.onFirePressed();
   }
 });
+// Not pointer-lock-gated, unlike mousedown above: pointer lock can exit
+// (e.g. Esc) while the button is still physically held, and the real
+// mouseup that eventually follows must still clear the held-fire level --
+// gating it the same way as mousedown would leave fireHeld stuck true
+// across a resumed session.
+document.addEventListener('mouseup', (event) => {
+  if (event.button === 0) inputSampler.onFireReleased();
+});
 document.addEventListener('keydown', (event) => inputSampler.onKeyDown(event));
 document.addEventListener('keyup', (event) => inputSampler.onKeyUp(event));
 
@@ -460,7 +479,13 @@ const loop = createRenderLoop({
     for (const event of events) {
       if (event.type === 'fire' && event.shooterId === LOCAL_PLAYER_ID) {
         weaponView.fire();
-        gunshots.playLocal();
+        // R10: MG shots sound distinct from pistol shots -- resolved from
+        // the shooter's *current* heldWeapon, which is accurate for every
+        // shot except the one that empties the last round (weapon.js's
+        // auto-revert already flipped it back to 'pistol' by the time this
+        // event is read); a one-shot cosmetic edge case, not a correctness
+        // one.
+        gunshots.playLocal(sim.world.getEntity(event.shooterId)?.heldWeapon);
         if (debugMode) debugCounters.fires += 1;
       }
       if (event.type === 'fire') {
@@ -469,7 +494,9 @@ const loop = createRenderLoop({
         impacts.spawn(event.endPoint, landedShooters.has(event.shooterId) ? 'body' : 'surface');
         // event.origin is the shooter's own eye position, so it doubles as
         // where the shot should be heard from.
-        if (event.shooterId !== LOCAL_PLAYER_ID) gunshots.playAt(event.origin);
+        if (event.shooterId !== LOCAL_PLAYER_ID) {
+          gunshots.playAt(event.origin, sim.world.getEntity(event.shooterId)?.heldWeapon);
+        }
       }
       if (event.type === 'hit' && event.shooterId === LOCAL_PLAYER_ID) {
         hud.flashCrosshair(event.killed ? 'kill' : 'hit');
@@ -491,6 +518,9 @@ const loop = createRenderLoop({
     // but the shot still lands where the crosshair was (R5, R17).
     camera.rotation.x -= weaponView.getCameraKick();
 
+    // R10: shows whichever weapon the local player currently holds --
+    // cheap no-op internally when unchanged from last frame.
+    weaponView.setHeldWeapon(playerEntity.heldWeapon);
     weaponView.update(delta);
     tracers.update(delta);
     impacts.update(delta);
@@ -499,6 +529,8 @@ const loop = createRenderLoop({
       score: playerEntity.score,
       dead: playerEntity.dead,
       respawnSecondsRemaining: healthSystem.getRespawnTicksRemaining(LOCAL_PLAYER_ID) * sim.dt,
+      ammo: playerEntity.ammo,
+      grenadeCount: playerEntity.grenadeCount,
     });
     // Latest non-interpolated transform, same as the camera above (KTD2) --
     // the map should react exactly as fast as aiming does, not lag a frame
