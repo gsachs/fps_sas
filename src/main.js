@@ -4,7 +4,7 @@ import { createScene } from './render/scene.js';
 import { createRenderLoop } from './render/loop.js';
 import { buildArenaMeshes } from './render/arenaMesh.js';
 import { createArena } from './arena/arena.js';
-import { pickSpawnPoint } from './arena/spawns.js';
+import { selectSpawnPoint } from './arena/spawnPlacement.js';
 import { createSimulation } from './sim/index.js';
 import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/movement.js';
 import { createWeaponSystem } from './sim/weapon.js';
@@ -76,7 +76,7 @@ const inputSampler = createInputSampler();
 const movementSystem = createMovementSystem(arena.rapierWorld);
 const weaponSystem = createWeaponSystem({ rapierWorld: arena.rapierWorld, movementSystem });
 const healthSystem = createHealthSystem({
-  pickSpawnPoint,
+  rapierWorld: arena.rapierWorld,
   spawnPoints: arena.spawnPoints,
   movementSystem,
 });
@@ -118,8 +118,14 @@ const sim = createSimulation({
   },
 });
 
+// R11: match start additionally places no two entities in mutual view --
+// placing each in turn out of every already-placed entity's sight gives
+// the whole set that for free (line of sight is symmetric).
 const occupiedSpawns = [];
-const spawn = pickSpawnPoint(arena.spawnPoints, occupiedSpawns);
+const spawn = selectSpawnPoint(arena.rapierWorld, arena.spawnPoints, {
+  enemyPositions: occupiedSpawns,
+  occupiedPositions: occupiedSpawns,
+});
 occupiedSpawns.push(spawn);
 sim.world.addEntity(LOCAL_PLAYER_ID, { position: { ...spawn } });
 movementSystem.addCharacter(LOCAL_PLAYER_ID, spawn);
@@ -127,7 +133,10 @@ movementSystem.addCharacter(LOCAL_PLAYER_ID, spawn);
 const bots = [];
 for (let i = 0; i < BOT_COUNT; i++) {
   const botId = `bot${i}`;
-  const botSpawn = pickSpawnPoint(arena.spawnPoints, occupiedSpawns);
+  const botSpawn = selectSpawnPoint(arena.rapierWorld, arena.spawnPoints, {
+    enemyPositions: occupiedSpawns,
+    occupiedPositions: occupiedSpawns,
+  });
   occupiedSpawns.push(botSpawn);
   sim.world.addEntity(botId, { position: { ...botSpawn } });
   movementSystem.addCharacter(botId, botSpawn);
@@ -207,7 +216,13 @@ function parkBotsBeyondRampCount() {
 
 function activateBot(botEntry) {
   const occupied = buildOccupiedPositions(sim.world.allEntities(), botEntry.id);
-  const spawn = pickSpawnPoint(arena.spawnPoints, occupied);
+  // R11/AE3: a ramp reinforcement gets the same LOS-safety filter respawn
+  // uses -- this call site previously shipped a spawn-on-player bug
+  // (744f7de/aadeb8c) from skipping exactly this kind of check.
+  const spawn = selectSpawnPoint(arena.rapierWorld, arena.spawnPoints, {
+    enemyPositions: occupied,
+    occupiedPositions: occupied,
+  });
   sim.world.getEntity(botEntry.id).position = { ...spawn };
   movementSystem.teleport(botEntry.id, spawn);
   botEntry.mesh.visible = true;
@@ -238,12 +253,16 @@ const gameShell = createGameShell({
   lockElement: renderer.domElement,
   localPlayerId: LOCAL_PLAYER_ID,
   onRestart: () => {
-    resetMatch(sim.world, { spawnPoints: arena.spawnPoints, pickSpawnPoint, movementSystem, healthSystem });
+    resetMatch(sim.world, { rapierWorld: arena.rapierWorld, spawnPoints: arena.spawnPoints, movementSystem, healthSystem });
     // resetMatch repositions every entity in the world, including bots the
     // ramp hadn't unlocked yet -- re-park those so the new match starts the
     // ramp over instead of carrying over the previous match's bot count.
     matchElapsedSeconds = 0;
     parkBotsBeyondRampCount();
+    // KTD5: bot AI (phase, last-seen memory, search dwell, nav path) is
+    // otherwise a persistent closure that outlives the match it was built
+    // for -- reinitialize every bot's, not just the entities they drive.
+    for (const botEntry of bots) botEntry.bot.reset();
   },
 });
 

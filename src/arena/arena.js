@@ -1,77 +1,41 @@
-// The v1 arena: an enclosed space with cover geometry and multiple spawn
-// points (R8). Builds the shared Rapier physics world every sim system
-// (movement, combat, bot line-of-sight) queries against.
+// Builds the shared Rapier physics world every sim system (movement, combat,
+// bot line-of-sight) queries against. Colliders are derived entirely from
+// layout.js's descriptor dataset (KTD6) -- this file turns data into
+// physics, nothing here decides the shape of the map.
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CAPSULE_GROUND_OFFSET, EYE_HEIGHT } from '../sim/movement.js';
-
-// Doubled from an initial 15 after playtest feedback that the arena felt
-// cramped with 4 bots converging at once (Outstanding Questions).
-const ARENA_HALF_SIZE = 30;
-const WALL_HEIGHT = 4;
-const WALL_THICKNESS = 0.5;
-
-// Cover boxes must clear standing eye height with real margin, derived
-// rather than a fixed literal -- a previous fixed literal here already went
-// stale once when CAPSULE_RADIUS widened, silently turning the centre box
-// into geometry that blocked nothing (eye height rose to just above its old
-// fixed top).
-const STANDING_EYE_HEIGHT = CAPSULE_GROUND_OFFSET + EYE_HEIGHT;
-const COVER_CLEARANCE = 0.5;
-// Box translation puts its center at y = halfY (sitting on the ground), so
-// its top is 2 * halfY -- halve the target top height back into a halfY.
-const COVER_BOX_HALF_HEIGHT = (STANDING_EYE_HEIGHT + COVER_CLEARANCE) / 2;
-
-const COVER_BOXES = [
-  { x: 10, z: 10, halfX: 1, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1 },
-  { x: -10, z: 10, halfX: 1, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1 },
-  { x: 10, z: -10, halfX: 1, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1 },
-  { x: -10, z: -10, halfX: 1, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1 },
-  { x: 0, z: 0, halfX: 1.5, halfY: COVER_BOX_HALF_HEIGHT, halfZ: 1.5 },
-];
-
-const SPAWN_POINTS = [
-  { x: 20, y: 1, z: 20 },
-  { x: -20, y: 1, z: 20 },
-  { x: 20, y: 1, z: -20 },
-  { x: -20, y: 1, z: -20 },
-  { x: 0, y: 1, z: 24 },
-  { x: 0, y: 1, z: -24 },
-];
+import { LAYOUT } from './layout.js';
 
 export function createArena() {
   const rapierWorld = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
   rapierWorld.createCollider(
-    RAPIER.ColliderDesc.cuboid(ARENA_HALF_SIZE, 0.5, ARENA_HALF_SIZE).setTranslation(0, -0.5, 0)
+    RAPIER.ColliderDesc.cuboid(LAYOUT.floorHalfSize, 0.5, LAYOUT.floorHalfSize).setTranslation(0, -0.5, 0)
   );
 
-  const walls = [
-    { x: 0, z: ARENA_HALF_SIZE, halfX: ARENA_HALF_SIZE, halfZ: WALL_THICKNESS },
-    { x: 0, z: -ARENA_HALF_SIZE, halfX: ARENA_HALF_SIZE, halfZ: WALL_THICKNESS },
-    { x: ARENA_HALF_SIZE, z: 0, halfX: WALL_THICKNESS, halfZ: ARENA_HALF_SIZE },
-    { x: -ARENA_HALF_SIZE, z: 0, halfX: WALL_THICKNESS, halfZ: ARENA_HALF_SIZE },
-  ];
-  for (const wall of walls) {
+  for (const wall of LAYOUT.walls) {
     rapierWorld.createCollider(
-      RAPIER.ColliderDesc.cuboid(wall.halfX, WALL_HEIGHT / 2, wall.halfZ).setTranslation(
-        wall.x,
-        WALL_HEIGHT / 2,
-        wall.z
-      )
+      RAPIER.ColliderDesc.cuboid(wall.halfX, wall.halfY, wall.halfZ).setTranslation(wall.x, wall.halfY, wall.z)
     );
   }
 
-  for (const box of COVER_BOXES) {
+  for (const pillar of LAYOUT.pillars) {
     rapierWorld.createCollider(
-      RAPIER.ColliderDesc.cuboid(box.halfX, box.halfY, box.halfZ).setTranslation(box.x, box.halfY, box.z)
+      RAPIER.ColliderDesc.cuboid(pillar.halfX, pillar.halfY, pillar.halfZ).setTranslation(
+        pillar.x,
+        pillar.halfY,
+        pillar.z
+      )
     );
   }
 
   return {
     rapierWorld,
-    groundHalfSize: ARENA_HALF_SIZE,
-    wallHeight: WALL_HEIGHT,
-    coverBoxes: COVER_BOXES,
-    spawnPoints: SPAWN_POINTS,
+    floorHalfSize: LAYOUT.floorHalfSize,
+    wallHeight: LAYOUT.wallHeight,
+    walls: LAYOUT.walls,
+    pillars: LAYOUT.pillars,
+    rooms: LAYOUT.rooms,
+    doorways: LAYOUT.doorways,
+    spawnPoints: LAYOUT.spawnPoints,
   };
 }

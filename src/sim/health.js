@@ -3,11 +3,12 @@
 // delay -- restoring full health and continuing arena state, not resetting
 // it (AE2).
 import { creditKill } from './score.js';
+import { selectSpawnPoint } from '../arena/spawnPlacement.js';
 
 const DAMAGE_PER_HIT = 20;
 const RESPAWN_DELAY_TICKS = 180; // 3s at a 60Hz tick rate
 
-export function createHealthSystem({ pickSpawnPoint, spawnPoints, movementSystem }) {
+export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem }) {
   const respawnTicksRemaining = new Map(); // entityId -> ticks left until respawn
 
   // Returns a hit event ({ shooterId, targetId, damage, killed,
@@ -49,7 +50,13 @@ export function createHealthSystem({ pickSpawnPoint, spawnPoints, movementSystem
       const entity = entityAccessor.getEntity(entityId);
       if (!entity) continue;
 
-      const spawn = pickSpawnPoint(spawnPoints, occupiedPositions);
+      // occupiedPositions is every currently-living entity -- exactly R11's
+      // "enemy" set (KTD4), and the respawning entity is itself dead until
+      // this call finishes, so it's never in its own way here.
+      const spawn = selectSpawnPoint(rapierWorld, spawnPoints, {
+        enemyPositions: occupiedPositions,
+        occupiedPositions,
+      });
       entity.position = { ...spawn };
       entity.health = 100;
       entity.dead = false;

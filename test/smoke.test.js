@@ -29,18 +29,21 @@ describe('createScene', () => {
     const sun = scene.children.find((child) => child.isDirectionalLight);
     expect(sun).toBeDefined();
     expect(sun.castShadow).toBe(true);
-    // The arena is 30 units half-size; geometry outside the shadow camera's
-    // box stops casting with no error, so this guards the extent (R12).
-    expect(sun.shadow.camera.right).toBeGreaterThanOrEqual(30);
-    expect(sun.shadow.camera.top).toBeGreaterThanOrEqual(30);
+    // The rooms-and-corridors floor is 34 units half-size (layout.js);
+    // geometry outside the shadow camera's box stops casting with no error,
+    // so this guards the extent (R12).
+    expect(sun.shadow.camera.right).toBeGreaterThanOrEqual(34);
+    expect(sun.shadow.camera.top).toBeGreaterThanOrEqual(34);
     expect(sun.shadow.camera.far).toBeGreaterThan(sun.position.length());
   });
 
-  it('keeps fog clear of the arena so distant bots stay readable', () => {
+  it('keeps fog clear of hunt-and-ambush engagement range so bots stay readable', () => {
     const { scene } = createScene();
 
-    // Cover sits out to 10 units and the far wall to 30; fog closing in
-    // before that would hide targets at the range they matter most (R15).
-    expect(scene.fog.near).toBeGreaterThan(30);
+    // R10: engagements in the new map tend to start at closer range than
+    // the old open arena's. Fog closing in before that would hide targets
+    // at exactly the range they matter most (R15); the precise distance is
+    // a U6 live-play retuning surface, not fixed here.
+    expect(scene.fog.near).toBeGreaterThanOrEqual(15);
   });
 });

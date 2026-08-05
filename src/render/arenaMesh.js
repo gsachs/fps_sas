@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 
-// Low-poly meshes matching the arena's Rapier colliders (ground, boundary
-// walls, cover boxes); callers add the returned group to their scene.
+// Low-poly meshes matching the arena's Rapier colliders (ground, walls,
+// landmark pillars); callers add the returned group to their scene. Walls
+// and pillars are built straight off arena.walls/arena.pillars (KTD6) --
+// one mesh per collider, so mesh count can never drift from collider count
+// the way the old fixed-4-wall layout could.
 //
 // The geometry stays deliberately simple -- box silhouettes are not what
 // makes an untextured arena read as unfinished. What sells it as a place is
@@ -12,7 +15,7 @@ export function buildArenaMeshes(arena) {
   group.name = 'arena';
 
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(arena.groundHalfSize * 2, arena.groundHalfSize * 2),
+    new THREE.PlaneGeometry(arena.floorHalfSize * 2, arena.floorHalfSize * 2),
     new THREE.MeshStandardMaterial({ color: 0x6b8f5a, roughness: 0.95 })
   );
   ground.rotation.x = -Math.PI / 2;
@@ -23,32 +26,26 @@ export function buildArenaMeshes(arena) {
   group.add(ground);
 
   const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xa89f8a, roughness: 0.9 });
-  const half = arena.groundHalfSize;
-  const wallDescs = [
-    { x: 0, z: half, sx: half * 2, sz: 0.5 },
-    { x: 0, z: -half, sx: half * 2, sz: 0.5 },
-    { x: half, z: 0, sx: 0.5, sz: half * 2 },
-    { x: -half, z: 0, sx: 0.5, sz: half * 2 },
-  ];
-  for (const wall of wallDescs) {
+  for (const wall of arena.walls) {
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(wall.sx, arena.wallHeight, wall.sz),
+      new THREE.BoxGeometry(wall.halfX * 2, wall.halfY * 2, wall.halfZ * 2),
       wallMaterial
     );
-    mesh.position.set(wall.x, arena.wallHeight / 2, wall.z);
+    mesh.position.set(wall.x, wall.halfY, wall.z);
+    mesh.name = 'wall';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
   }
 
-  const coverMaterial = new THREE.MeshStandardMaterial({ color: 0x8a6a4f, roughness: 0.85 });
-  for (const box of arena.coverBoxes) {
+  const pillarMaterial = new THREE.MeshStandardMaterial({ color: 0x8a6a4f, roughness: 0.85 });
+  for (const pillar of arena.pillars) {
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(box.halfX * 2, box.halfY * 2, box.halfZ * 2),
-      coverMaterial
+      new THREE.BoxGeometry(pillar.halfX * 2, pillar.halfY * 2, pillar.halfZ * 2),
+      pillarMaterial
     );
-    mesh.position.set(box.x, box.halfY, box.z);
-    mesh.name = 'cover';
+    mesh.position.set(pillar.x, pillar.halfY, pillar.z);
+    mesh.name = 'pillar';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);

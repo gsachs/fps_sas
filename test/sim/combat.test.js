@@ -7,7 +7,6 @@ import { createWeaponSystem } from '../../src/sim/weapon.js';
 import { createHealthSystem } from '../../src/sim/health.js';
 import { createSimulation } from '../../src/sim/index.js';
 import { createInputSampler } from '../../src/input/sampler.js';
-import { pickSpawnPoint } from '../../src/arena/spawns.js';
 
 await RAPIER.init();
 
@@ -29,7 +28,7 @@ function buildCombatRig({ obstacles = [], spawnPoints = [{ x: 0, y: 1, z: 0 }], 
 
   const movementSystem = createMovementSystem(rapierWorld);
   const weaponSystem = createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks });
-  const healthSystem = createHealthSystem({ pickSpawnPoint, spawnPoints, movementSystem });
+  const healthSystem = createHealthSystem({ rapierWorld, spawnPoints, movementSystem });
   const combat = {
     resolveFire: weaponSystem.resolveFire,
     applyHit: healthSystem.applyHit,

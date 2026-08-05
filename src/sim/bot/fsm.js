@@ -1,32 +1,89 @@
-// Bot decision-making (KTD4): Idle/Patrol -> Chase -> Attack -> Retreat,
-// sensed via distance plus a line-of-sight raycast against the sim world.
+// Bot decision-making (KTD4): Idle/Patrol -> Chase -> Attack -> Search ->
+// Retreat, sensed via distance plus a line-of-sight raycast against the sim
+// world. Acquisition is line-of-sight gated (R13): occluded proximity alone
+// never starts or holds a chase, so a target lost mid-chase drops to Search
+// (KTD3) -- hunting the last-seen position, not a live occluded one.
 // transitionBotState is a pure reducer (mirrors shell/states.js's
 // transition() shape, but over a continuous sensor bundle rather than a
 // discrete event, so it owns its own distance/health thresholds rather than
 // deferring to difficulty.js's per-bot tunables). createBotAI is the
 // stateful wrapper that senses, decides, steers, and emits a Command --
 // still the same shape the player emits (KTD2).
-import RAPIER from '@dimforge/rapier3d-compat';
 import { createCommand, createFireLatch } from '../command.js';
-import { EYE_HEIGHT, CAPSULE_RADIUS } from '../movement.js';
-import { seek, flee, wander, avoidObstacles } from './steering.js';
+import { hasLineOfSight as checkLineOfSight } from '../lineOfSight.js';
+import { seek, avoidObstacles } from './steering.js';
 import { DEFAULT_DIFFICULTY } from './difficulty.js';
+import { createNavigator, createPatrolPicker, nearestNodeId, GRAPH, ROOM_IDS } from './navigation.js';
+import { ROOMS, DOORWAYS } from '../../arena/layout.js';
 
-// Sized against the arena's actual scale (arena.js: ARENA_HALF_SIZE = 30, so
-// a ~60x60 floor with spawn points up to ~55 units apart) -- these were
-// first written smaller, before that resize, and left bots unable to ever
-// notice or engage the player across a realistic spawn separation (caught
-// by live play, not by unit tests using close-together synthetic positions).
+// Sized against the old open-box arena's scale (a ~60x60 floor with spawn
+// points up to ~55 units apart) -- these were first written smaller, before
+// that resize, and left bots unable to ever notice or engage the player
+// across a realistic spawn separation (caught by live play, not by unit
+// tests using close-together synthetic positions). The rooms-and-corridors
+// map (src/arena/layout.js) is a different scale and shape entirely, and
+// this is a U6 retuning surface: live play, not a computed guess, decides
+// the new values (this codebase has miscalibrated ranges against synthetic
+// assumptions before -- see the paragraph above). Verified reference
+// geometry for that session: corner rooms are 16x16 (diagonal ~22.6),
+// the central room is 20x20 (diagonal ~28.3), a loop corridor run is ~36
+// units end to end, and a spoke into the centre is ~14.5 units -- so most
+// occluded-free sightlines top out well under AWARENESS_RANGE's current 50,
+// and ATTACK_RANGE's current 25 already exceeds most single-room diagonals.
 export const ATTACK_RANGE = 25;
 export const AWARENESS_RANGE = 50;
 export const RETREAT_HEALTH_THRESHOLD = 30;
 export const RETREAT_DURATION_TICKS = 180; // ~3s at 60Hz
+// How long a bot holds at a last-seen point before giving up (GameAI Pro's
+// "brief pursuit on intuition, then search, then give up," simplified to
+// one search spot for v1). Tick-denominated per KTD5, like retreat's window.
+export const SEARCH_DWELL_TICKS = 90; // ~1.5s at 60Hz
 const MOVE_DEADZONE = 1.5; // stop closing once this close, so bots don't shove into the player
 const FIRE_INTERVAL_TICKS = 45; // intent to fire ~1.3x/sec; weapon.js's cooldown still bounds actual rate
-const LOS_SURFACE_BACKOFF = 0.05; // extra margin past CAPSULE_RADIUS so the ray clears the target's own surface
+
+function nearestRoomId(position) {
+  let bestId = null;
+  let bestDistance = Infinity;
+  for (const room of ROOMS) {
+    const distance = Math.hypot(room.x - position.x, room.z - position.z);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestId = room.id;
+    }
+  }
+  return bestId;
+}
+
+// R9: retreat targets a doorway, not a bare away-vector -- specifically the
+// current room's exit farthest from the attacker, so fleeing routes toward
+// cover instead of into whichever wall happens to be directly behind the bot.
+function farthestDoorway(roomId, awayFromPosition) {
+  const roomDoorways = DOORWAYS.filter((d) => d.connects.includes(roomId));
+  let best = roomDoorways[0];
+  let bestDistance = -Infinity;
+  for (const doorway of roomDoorways) {
+    const distance = Math.hypot(doorway.x - awayFromPosition.x, doorway.z - awayFromPosition.z);
+    if (distance > bestDistance) {
+      bestDistance = distance;
+      best = doorway;
+    }
+  }
+  return best;
+}
+
+// Once a fleeing bot reaches its chosen doorway, continue one hop further
+// (any other node the doorway connects to) so it actually passes through
+// into the space beyond and breaks line of sight, rather than stopping and
+// standing in the open threshold it just reached.
+function continuationTarget(doorwayId, avoidNodeId) {
+  for (const neighborId of GRAPH.edges.get(doorwayId).keys()) {
+    if (neighborId !== avoidNodeId) return neighborId;
+  }
+  return avoidNodeId; // no alternative -- R3 guarantees this doesn't happen on the shipped map
+}
 
 export function createInitialBotState() {
-  return { phase: 'idle', retreatArmed: true, retreatEndTick: 0 };
+  return { phase: 'idle', retreatArmed: true, retreatEndTick: 0, lastSeenPosition: null };
 }
 
 // Pure: given the bot's current state, this tick's sensor readings, and the
@@ -39,11 +96,11 @@ export function createInitialBotState() {
 // retreat expired, since health never recovers to clear the guard. Retreat
 // only re-arms once health rises again (i.e., after a respawn).
 export function transitionBotState(state, sensors, tick) {
-  const { distanceToPlayer, hasLineOfSight, health } = sensors;
+  const { distanceToPlayer, hasLineOfSight, health, playerPosition, searchExhausted } = sensors;
   const armed = health >= RETREAT_HEALTH_THRESHOLD ? true : state.retreatArmed;
 
   if (armed && health < RETREAT_HEALTH_THRESHOLD && state.phase !== 'retreat') {
-    return { phase: 'retreat', retreatArmed: false, retreatEndTick: tick + RETREAT_DURATION_TICKS };
+    return { ...state, phase: 'retreat', retreatArmed: false, retreatEndTick: tick + RETREAT_DURATION_TICKS };
   }
   if (state.phase === 'retreat') {
     // Stay in retreat only while still unarmed (health hasn't recovered)
@@ -59,57 +116,94 @@ export function transitionBotState(state, sensors, tick) {
     // reducer isn't called and `tick` doesn't advance while dead, but
     // retreatEndTick is an absolute tick value).
     if (!armed && tick < state.retreatEndTick) {
-      return { phase: 'retreat', retreatArmed: armed, retreatEndTick: state.retreatEndTick };
+      return { ...state, phase: 'retreat', retreatArmed: armed, retreatEndTick: state.retreatEndTick };
     }
-    return { phase: 'chase', retreatArmed: armed, retreatEndTick: 0 };
+    return { ...state, phase: 'chase', retreatArmed: armed, retreatEndTick: 0 };
   }
 
-  if (hasLineOfSight && distanceToPlayer <= ATTACK_RANGE) {
-    return { phase: 'attack', retreatArmed: armed, retreatEndTick: 0 };
-  }
-  if (hasLineOfSight || distanceToPlayer <= AWARENESS_RANGE) {
-    return { phase: 'chase', retreatArmed: armed, retreatEndTick: 0 };
-  }
-  return { phase: 'idle', retreatArmed: armed, retreatEndTick: 0 };
-}
+  // R13: acquisition is line-of-sight gated -- occluded proximity alone
+  // (AE5) never starts or continues a chase.
+  const acquired = hasLineOfSight && distanceToPlayer <= AWARENESS_RANGE;
 
-function checkLineOfSight(rapierWorld, fromPosition, toPosition, excludeCollider) {
-  const origin = { x: fromPosition.x, y: fromPosition.y + EYE_HEIGHT, z: fromPosition.z };
-  const target = { x: toPosition.x, y: toPosition.y + EYE_HEIGHT, z: toPosition.z };
-  const dx = target.x - origin.x;
-  const dy = target.y - origin.y;
-  const dz = target.z - origin.z;
-  const distance = Math.hypot(dx, dy, dz);
-  if (distance < 1e-6) return true;
-  const direction = { x: dx / distance, y: dy / distance, z: dz / distance };
-
-  // Stop short of the target's own capsule surface, not just its center --
-  // otherwise the ray reaches in, legitimately hits the target itself, and
-  // that hit gets misread as "something is blocking the view of them" (this
-  // is exactly what happened here: with only a flat 0.1 buffer, a target
-  // 3.2 units away -- well within its own 0.3-radius capsule surface at
-  // ~2.9 units -- registered as blocked even with a dead-clear line to it).
-  const hit = rapierWorld.castRay(
-    new RAPIER.Ray(origin, direction),
-    Math.max(distance - CAPSULE_RADIUS - LOS_SURFACE_BACKOFF, 0),
-    true,
-    undefined,
-    undefined,
-    excludeCollider
-  );
-  return !hit;
+  if (acquired && distanceToPlayer <= ATTACK_RANGE) {
+    return { ...state, phase: 'attack', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: playerPosition };
+  }
+  if (acquired) {
+    return { ...state, phase: 'chase', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: playerPosition };
+  }
+  if (state.phase === 'attack') {
+    // "sight or range lost" -- existing transition, unchanged (KTD3's
+    // honest-sensing rework only adds the chase -> search edge below).
+    return { ...state, phase: 'chase', retreatArmed: armed, retreatEndTick: 0 };
+  }
+  if (state.phase === 'chase' && state.lastSeenPosition) {
+    // Honest sensing (KTD3): hunt where the target *was*, never steer at a
+    // live occluded position. lastSeenPosition already holds the last
+    // acquired sighting (set above, on whichever earlier tick still had
+    // sight) -- search steers at that frozen point.
+    return { ...state, phase: 'search', retreatArmed: armed, retreatEndTick: 0 };
+  }
+  if (state.phase === 'chase') {
+    // Reached chase with no sighting ever made -- e.g. retreat's
+    // unconditional exit-to-chase above, entered straight from idle by a
+    // health-only trigger (the hitscan weapon's range exceeds
+    // AWARENESS_RANGE, so a bot can take enough damage to retreat without
+    // ever having acquired the shooter). There is nothing to search for;
+    // searching a null point would crash navigateToPoint (Core Invariant:
+    // never pass null) -- fall back to patrol instead.
+    return { ...state, phase: 'idle', retreatArmed: armed, retreatEndTick: 0 };
+  }
+  if (state.phase === 'search') {
+    if (searchExhausted) {
+      return { ...state, phase: 'idle', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: null };
+    }
+    return { ...state, phase: 'search', retreatArmed: armed, retreatEndTick: 0 };
+  }
+  return { ...state, phase: 'idle', retreatArmed: armed, retreatEndTick: 0 };
 }
 
 export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = DEFAULT_DIFFICULTY, random = Math.random }) {
   const fireLatch = createFireLatch();
   const excludeCollider = movementSystem.getCollider(botId);
+  const navigator = createNavigator();
+  const patrolPicker = createPatrolPicker(ROOM_IDS);
   let state = createInitialBotState();
   let tick = 0;
   let ticksSinceEnteredAttack = 0;
   let ticksSinceFire = 0;
-  let wanderYaw = 0;
+  let previousHealth = 100;
+  let searchDwellStartTick = null;
+  let retreatOriginRoomId = null;
+  let retreatDoorwayId = null;
+  let retreatContinued = false;
+
+  // KTD5: a Search dwell deadline is an absolute-tick budget, structurally
+  // identical to the bugged retreat deadline -- a bot that dies mid-search
+  // must not resume searching a stale point post-respawn. This game has no
+  // health regen (only a full heal on respawn), so a health increase since
+  // the last sample() call unambiguously means "just respawned," the same
+  // invariant transitionBotState's retreat latch already relies on.
+  function clearTargetMemory() {
+    state = createInitialBotState();
+    navigator.reset();
+    searchDwellStartTick = null;
+  }
+
+  // Full reinitialization for a fresh match (KTD5), not just target memory.
+  function reset() {
+    clearTargetMemory();
+    tick = 0;
+    ticksSinceEnteredAttack = 0;
+    ticksSinceFire = 0;
+    previousHealth = 100;
+    retreatOriginRoomId = null;
+    retreatDoorwayId = null;
+    retreatContinued = false;
+  }
 
   function sample(botPosition, playerPosition, botHealth) {
+    if (botHealth > previousHealth) clearTargetMemory();
+    previousHealth = botHealth;
     tick += 1;
     const dx = playerPosition.x - botPosition.x;
     const dz = playerPosition.z - botPosition.z;
@@ -117,22 +211,85 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     const facingYaw = Math.atan2(dx, dz);
     const hasLineOfSight = checkLineOfSight(rapierWorld, botPosition, playerPosition, excludeCollider);
 
+    // Advances (but does not yet consume) last tick's search dwell status --
+    // mirrors hasLineOfSight: computed before the pure reducer runs and fed
+    // in as a sensor, not decided by the reducer itself. A pure isDone()
+    // read (no navigator.tick() call) avoids double-advancing the search
+    // path in the same tick this dwell timer starts.
+    if (state.phase === 'search' && navigator.isDone() && searchDwellStartTick === null) {
+      searchDwellStartTick = tick;
+    }
+    const searchExhausted =
+      state.phase === 'search' && searchDwellStartTick !== null && tick - searchDwellStartTick >= SEARCH_DWELL_TICKS;
+
     const previousPhase = state.phase;
-    state = transitionBotState(state, { distanceToPlayer, hasLineOfSight, health: botHealth }, tick);
+    state = transitionBotState(
+      state,
+      { distanceToPlayer, hasLineOfSight, health: botHealth, playerPosition, searchExhausted },
+      tick
+    );
     if (state.phase === 'attack') {
       ticksSinceEnteredAttack = previousPhase === 'attack' ? ticksSinceEnteredAttack + 1 : 0;
+    }
+    if (previousPhase !== 'search' && state.phase === 'search') {
+      navigator.navigateToPoint(state.lastSeenPosition, botPosition);
+      searchDwellStartTick = null;
+    } else if (previousPhase === 'search' && state.phase !== 'search') {
+      searchDwellStartTick = null; // reacquired, or gave up -- either way, done dwelling
     }
 
     let moveDirection;
     let yaw;
     if (state.phase === 'retreat') {
-      moveDirection = flee(botPosition, playerPosition);
+      // Flee toward the current room's exit farthest from the attacker
+      // (R9), regardless of sight -- timer-expiry semantics (transitionBotState)
+      // are unchanged; only how retreat steers changes.
+      if (previousPhase !== 'retreat') {
+        retreatOriginRoomId = nearestRoomId(botPosition);
+        const doorway = farthestDoorway(retreatOriginRoomId, playerPosition);
+        retreatDoorwayId = doorway.id;
+        retreatContinued = false;
+        navigator.navigateTo(retreatDoorwayId, botPosition);
+      } else if (!retreatContinued && navigator.isDone()) {
+        // Reached the doorway -- continue through it into the space beyond
+        // so the bot actually breaks line of sight (F3), not just stands
+        // in the open threshold it just arrived at.
+        retreatContinued = true;
+        navigator.navigateTo(continuationTarget(retreatDoorwayId, retreatOriginRoomId), botPosition);
+      }
+      const { subgoalPosition } = navigator.tick(botPosition);
+      moveDirection = seek(botPosition, subgoalPosition);
       yaw = Math.atan2(moveDirection.x, moveDirection.z);
     } else if (state.phase === 'idle') {
-      const drift = wander(wanderYaw, random);
-      wanderYaw = drift.yaw;
-      moveDirection = { x: drift.x, z: drift.z };
-      yaw = wanderYaw;
+      // No target: patrol between rooms via the waypoint graph (R7) rather
+      // than idling in place. Picks a fresh least-recently-visited room
+      // once the current patrol leg is complete.
+      if (navigator.isDone()) {
+        const currentRoomId = nearestNodeId(GRAPH, botPosition);
+        navigator.navigateTo(patrolPicker.pickNext(currentRoomId, tick), botPosition);
+      }
+      const { subgoalPosition } = navigator.tick(botPosition);
+      moveDirection = seek(botPosition, subgoalPosition);
+      yaw = Math.atan2(moveDirection.x, moveDirection.z);
+    } else if (state.phase === 'search') {
+      // Go to the last-seen point, hold briefly once there, then give up
+      // (AE2) -- never steers toward the target's current, still-hidden
+      // position; only ever the frozen sighting from the last acquired tick.
+      if (navigator.isDone()) {
+        moveDirection = { x: 0, z: 0 };
+        // Face the frozen last-seen point, not facingYaw (which tracks the
+        // player's live position every tick regardless of phase) -- using
+        // facingYaw here visibly "stares" the bot through the wall at the
+        // still-hidden player for the whole dwell window, contradicting the
+        // honest-sensing guarantee this phase exists to enforce (R13/AE2).
+        const dxSeen = state.lastSeenPosition.x - botPosition.x;
+        const dzSeen = state.lastSeenPosition.z - botPosition.z;
+        yaw = Math.atan2(dxSeen, dzSeen);
+      } else {
+        const { subgoalPosition } = navigator.tick(botPosition);
+        moveDirection = seek(botPosition, subgoalPosition);
+        yaw = Math.atan2(moveDirection.x, moveDirection.z);
+      }
     } else {
       // chase or attack: close the distance, aim at the player (+ jitter);
       // movement and aim are decoupled (steering vs aim -- KTD4), so
@@ -143,9 +300,10 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
       yaw = facingYaw + (random() * 2 - 1) * difficulty.aimSpread;
     }
 
-    if (state.phase !== 'idle') {
-      moveDirection = avoidObstacles(rapierWorld, botPosition, moveDirection, excludeCollider);
-    }
+    // Runs for every phase, including patrol (U3): real corridor/pillar
+    // geometry means patrol movement needs avoidance now too, unlike the
+    // old idle-phase wander(), which never left a wide-open box.
+    moveDirection = avoidObstacles(rapierWorld, botPosition, moveDirection, excludeCollider);
 
     // ticksSinceFire runs unconditionally (not just while attacking), so a
     // bot that already spent a while chasing enters attack with its fire
@@ -180,5 +338,5 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     });
   }
 
-  return { sample, getPhase: () => state.phase };
+  return { sample, getPhase: () => state.phase, reset };
 }

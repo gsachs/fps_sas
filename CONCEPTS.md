@@ -14,7 +14,26 @@ A simulation object with position, orientation, health, alive/dead status, score
 An AI-controlled Entity that produces its own Command every tick by sensing the world and deciding, rather than from human input. A Bot's decision-making moves through a small set of stages (see Bot Phase), and its steering (movement direction) and aim (look direction) are decided independently — obstacle avoidance can redirect where a Bot moves while it keeps aiming at its target.
 
 ### Bot Phase
-The current stage of a Bot's decision-making: idle/patrolling (no target engaged), chasing (closing distance on a sensed target), attacking (target in range and in sight, actively engaging), or retreating (disengaging due to low health). Transitions are sensed from distance and line-of-sight to the target. Retreat is health-gated and, once entered, holds until either its duration elapses or health recovers — health recovering while retreating only happens via a full heal (this game has no gradual regen), so recovered health while still retreating doubles as a signal that the Bot has just returned to play after dying.
+The current stage of a Bot's decision-making: idle/patrolling (no target engaged), chasing (closing distance on a sensed target), attacking (target in range and in sight, actively engaging), searching (target lost — see Last-Seen Position), or retreating (disengaging due to low health). Transitions are sensed from distance and line-of-sight to the target: acquisition requires line of sight, not proximity alone, so a Bot never tracks a target through a wall. Retreat is health-gated and, once entered, holds until either its duration elapses or health recovers — health recovering while retreating only happens via a full heal (this game has no gradual regen), so recovered health while still retreating doubles as a signal that the Bot has just returned to play after dying.
+
+### Last-Seen Position
+The remembered world position where a Bot last had line of sight to its target. Honest sensing steers chase and search behavior at this remembered point, never at the target's live position while occluded — losing sight of a target means hunting where it *was*, not where it *is*. Cleared on the Bot's death and on match reset.
+
+### Waypoint Graph
+The map's rooms and doorways treated as nodes a Bot can plan a route across, with an edge between any two nodes that are directly reachable without crossing a wall. A* search over this graph produces a sequence of nodes; each becomes, one at a time, the next subgoal steering seeks toward — the graph decides *where* to go next, and existing steering (seek, obstacle avoidance) decides *how* to actually move there. A doorway that stays impassably blocked long enough gets temporarily excluded and the route replanned around it, rather than the Bot waiting at it forever.
+
+## Map
+
+### Room
+A distinct, walled space in the arena — four corner rooms and one central landmark room, connected by a corridor loop so no reachable position sees the whole map. Rooms are told apart by interior landmark geometry (a pillar's presence, count, or placement) rather than differing footprints, so the outer wall perimeter stays a simple closed shape. Walls, rooms, doorways, pillars, and spawn points are all authored as one descriptor dataset (`src/arena/layout.js`) that both physics and rendering consume, so the two can never derive the map's shape differently.
+
+### Doorway
+A gap cut into a room or corridor wall where two spaces connect — the only points where a Bot or player can cross between them. Every doorway is wide enough to pass through without the character controller snagging, and every room has at least two, so no space is a dead end a Bot or player can get trapped in.
+
+## Match & Pacing
+
+### Hunt-and-Ambush Pacing
+The target match rhythm for the arena overhaul: engagements are deliberately less frequent than constant contact, start at closer range with partial information, and reward knowing the map — stalking, ambushing at doorways, disengaging to reposition. Chosen over the original arena's constant contact, which kept the player permanently in a fight. Pacing is tuned through contact-density knobs (awareness ranges, spawn placement, bot ramp, kill target), not by making individual bots harder.
 
 ## Presentation & Feedback
 

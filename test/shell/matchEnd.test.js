@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { checkMatchEnd, resetMatch, KILLS_TO_WIN } from '../../src/shell/matchEnd.js';
+
+await RAPIER.init();
+
+function buildFlatRapierWorld() {
+  const rapierWorld = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  rapierWorld.createCollider(RAPIER.ColliderDesc.cuboid(30, 0.5, 30).setTranslation(0, -0.5, 0));
+  rapierWorld.step(); // index the floor collider before any LOS raycast queries it
+  return rapierWorld;
+}
 
 function makeEntity(id, score) {
   return { id, score, health: 100, dead: false, position: { x: 0, y: 1, z: 0 }, animHint: 'idle' };
@@ -31,17 +41,17 @@ describe('resetMatch', () => {
       { id: 'b', score: 2, health: 40, dead: false, position: { x: 2, y: 1, z: 2 }, animHint: 'idle' },
     ];
     const accessor = createFakeEntityAccessor(entities);
+    const rapierWorld = buildFlatRapierWorld();
     const spawnPoints = [
       { x: 10, y: 1, z: 10 },
       { x: -10, y: 1, z: -10 },
     ];
-    const pickSpawnPoint = (points, occupied) => points[occupied.length % points.length];
     const teleportCalls = [];
     const movementSystem = { teleport: (id, pos) => teleportCalls.push({ id, pos }) };
     const clearedTimers = [];
     const healthSystem = { clearRespawnTimer: (id) => clearedTimers.push(id) };
 
-    resetMatch(accessor, { spawnPoints, pickSpawnPoint, movementSystem, healthSystem });
+    resetMatch(accessor, { rapierWorld, spawnPoints, movementSystem, healthSystem });
 
     for (const entity of entities) {
       expect(entity.health).toBe(100);
@@ -53,23 +63,23 @@ describe('resetMatch', () => {
     expect(clearedTimers.sort()).toEqual(['a', 'b']);
   });
 
-  it('threads a shared occupied list across entities so spawns are assigned distinctly', () => {
+  it('assigns entities to distinct spawns rather than stacking them (occupied list threads across entities)', () => {
     const entities = [makeEntity('a', 0), makeEntity('b', 0)];
     const accessor = createFakeEntityAccessor(entities);
+    const rapierWorld = buildFlatRapierWorld();
     const spawnPoints = [
       { x: 10, y: 1, z: 10 },
       { x: -10, y: 1, z: -10 },
     ];
-    const seenOccupiedLengths = [];
-    const pickSpawnPoint = (points, occupied) => {
-      seenOccupiedLengths.push(occupied.length);
-      return points[occupied.length % points.length];
-    };
-    const movementSystem = { teleport: () => {} };
+    const teleportCalls = [];
+    const movementSystem = { teleport: (id, pos) => teleportCalls.push({ id, pos }) };
     const healthSystem = { clearRespawnTimer: () => {} };
 
-    resetMatch(accessor, { spawnPoints, pickSpawnPoint, movementSystem, healthSystem });
+    resetMatch(accessor, { rapierWorld, spawnPoints, movementSystem, healthSystem });
 
-    expect(seenOccupiedLengths).toEqual([0, 1]); // the second call sees the first spawn as occupied
+    expect(teleportCalls).toHaveLength(2);
+    // The second entity's placement must have seen the first as occupied --
+    // otherwise both would land on the same (first) spawn point.
+    expect(teleportCalls[0].pos).not.toEqual(teleportCalls[1].pos);
   });
 });

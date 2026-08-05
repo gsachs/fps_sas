@@ -1,6 +1,7 @@
 // Match lifecycle (F3): the match-end condition and the play-again reset.
 // KTD7: first-to-N kills, timer left as a later addition.
 import { getLeaderboard } from '../sim/score.js';
+import { selectSpawnPoint } from '../arena/spawnPlacement.js';
 
 export const KILLS_TO_WIN = 10; // tuned during playtest (Outstanding Questions)
 
@@ -14,10 +15,18 @@ export function checkMatchEnd(entityAccessor) {
 // fresh match -- distinct from in-match respawn, which continues state
 // (AE2). Also cancels any pending respawn timers so a stale one can't fire
 // mid-new-match and reposition an already-reset entity.
-export function resetMatch(entityAccessor, { spawnPoints, pickSpawnPoint, movementSystem, healthSystem }) {
+//
+// R11: placing each entity out of every already-placed entity's sight, in
+// turn, also gives the whole set mutual invisibility for free -- line of
+// sight is symmetric, so "the new entity can't see anyone placed so far"
+// and "no one placed so far can see the new entity" are the same fact.
+export function resetMatch(entityAccessor, { rapierWorld, spawnPoints, movementSystem, healthSystem }) {
   const assignedSpawns = [];
   for (const entity of entityAccessor.allEntities()) {
-    const spawn = pickSpawnPoint(spawnPoints, assignedSpawns);
+    const spawn = selectSpawnPoint(rapierWorld, spawnPoints, {
+      enemyPositions: assignedSpawns,
+      occupiedPositions: assignedSpawns,
+    });
     assignedSpawns.push(spawn);
 
     entity.position = { ...spawn };

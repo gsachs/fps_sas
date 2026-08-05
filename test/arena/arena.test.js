@@ -11,11 +11,11 @@ await RAPIER.init();
 // returns the world-space eye height a real standing character would have
 // -- the same height the LOS ray (fsm.js) and the hitscan ray (weapon.js)
 // actually use.
-function measureStandingEyeHeight(arena) {
+function measureStandingEyeHeight(arena, dropPosition) {
   const movementSystem = createMovementSystem(arena.rapierWorld);
   const world = createWorld({ physics: movementSystem });
-  world.addEntity('probe', { position: { x: -10, y: 5, z: 0 } }); // clear of the centre cover box
-  movementSystem.addCharacter('probe', { x: -10, y: 5, z: 0 });
+  world.addEntity('probe', { position: dropPosition });
+  movementSystem.addCharacter('probe', dropPosition);
   movementSystem.commit();
   for (let i = 0; i < 60; i++) {
     world.step(new Map([['probe', createCommand()]]), 1 / 60);
@@ -23,19 +23,25 @@ function measureStandingEyeHeight(arena) {
   return world.getEntity('probe').position.y + EYE_HEIGHT;
 }
 
-describe('createArena: cover blocks line of sight at standing eye height (regression)', () => {
-  it('the centre cover box blocks a ray between two characters standing on opposite sides', () => {
-    // Regression: widening CAPSULE_RADIUS once already raised standing eye
-    // height just above the centre box's then-fixed literal height,
-    // silently turning it into geometry that blocks nothing. Deriving the
-    // box height from the capsule/eye-height constants (instead of a
-    // literal) means a future capsule tuning pass fails this test instead
-    // of silently disabling cover again.
+describe('createArena: rooms-and-corridors line of sight (R2)', () => {
+  it('blocks a ray between two rooms on opposite corners of the map', () => {
     const arena = createArena();
-    const eyeHeight = measureStandingEyeHeight(arena);
+    // Real spawn points (already verified inside their room and clear of
+    // all geometry, including landmark pillars, by test/arena/layout.test.js)
+    // rather than hand-picked coordinates: a ray cast from inside a
+    // collider reports an immediate hit against that collider regardless
+    // of the real wall/corridor topology between the rooms, which would
+    // make this test pass even if that topology broke -- verified this
+    // specific pair's line actually crosses NW's solid east wall face, not
+    // a pillar or a doorway gap, before picking it.
+    const origin3d = arena.spawnPoints.find((p) => p.x === -21 && p.z === 23);
+    const target3d = arena.spawnPoints.find((p) => p.x === 22 && p.z === -22);
+    expect(origin3d).toBeDefined();
+    expect(target3d).toBeDefined();
+    const eyeHeight = measureStandingEyeHeight(arena, { ...origin3d, y: 5 });
 
-    const origin = { x: -5, y: eyeHeight, z: 0 };
-    const target = { x: 5, y: eyeHeight, z: 0 };
+    const origin = { x: origin3d.x, y: eyeHeight, z: origin3d.z };
+    const target = { x: target3d.x, y: eyeHeight, z: target3d.z };
     const dx = target.x - origin.x;
     const dz = target.z - origin.z;
     const distance = Math.hypot(dx, dz);

@@ -8,11 +8,15 @@ import * as THREE from 'three';
 // Sky and horizon haze share a colour so distant geometry dissolves into the
 // sky rather than ending at a visible line.
 const SKY_COLOR = 0xa8bed6;
-// Fog starts well beyond the arena's cover and only reaches full density past
-// its far corner. Close fog would hide bots at exactly the range where the
-// player most needs to pick them out (R15).
-const FOG_NEAR = 35;
-const FOG_FAR = 110;
+// Retuned for the rooms-and-corridors map (KTD8): walls cap real sightlines
+// far short of the old open arena's ~85-unit diagonal -- the longest is a
+// ~36-unit loop corridor or a ~30-unit corridor-through-spoke line into the
+// central room. Fog starts near that range and reaches full density with
+// margin past it, so it actually contributes instead of sitting unused
+// beyond where any line of sight can reach. Close fog would hide bots at
+// exactly the range where the player most needs to pick them out (R15).
+const FOG_NEAR = 20;
+const FOG_FAR = 60;
 
 const SUN_COLOR = 0xfff2df;
 const SUN_INTENSITY = 2.6;
@@ -30,8 +34,9 @@ const AMBIENT_INTENSITY = 1.4;
 
 // The shadow camera is an orthographic box that must contain everything
 // meant to cast a shadow; anything outside it silently stops casting. Sized
-// to the arena (half-size 30) with margin for the walls.
-const SHADOW_EXTENT = 34;
+// to the rooms-and-corridors map's floor (half-size 34, layout.js) with
+// margin for outermost wall thickness.
+const SHADOW_EXTENT = 36;
 const SHADOW_MAP_SIZE = 2048;
 const SHADOW_CAMERA_NEAR = 1;
 const SHADOW_CAMERA_FAR = 90;
