@@ -392,6 +392,48 @@ describe('createBotAI: difficulty is tunable', () => {
   });
 });
 
+describe('createBotAI: weapon-aware fire cadence (KTD6)', () => {
+  it('an MG-holding bot fires far more often than a pistol-holding bot over the same window, tracking each weapon\'s real cooldown', () => {
+    // Counts real 'fire' events off world.step() (not landed hits) -- MG
+    // spread jitters direction with real randomness, which would make a
+    // hit-count assertion flaky; the fire rate itself is deterministic given
+    // a fixed AI random source, so that's what this proves (KTD6 is about
+    // cadence, not accuracy).
+    function shotsFiredOverWindow(heldWeapon, ticks) {
+      const rig = buildBotRig({ cooldownTicks: 6 }); // the pistol's real cadence, not the rig's fast-test default
+      addEntity(rig, 'bot', { x: 0, y: 1, z: 0 });
+      addEntity(rig, 'target', { x: 0, y: 1, z: ATTACK_RANGE - 2 });
+      rig.world.getEntity('bot').heldWeapon = heldWeapon;
+      if (heldWeapon === 'machinegun') rig.world.getEntity('bot').ammo = 1000; // isolates cadence from the revert
+      rig.movementSystem.commit();
+
+      const bot = createBotAI({
+        rapierWorld: rig.rapierWorld,
+        movementSystem: rig.movementSystem,
+        botId: 'bot',
+        difficulty: { aimSpread: 0, reactionDelayTicks: 0 },
+        random: () => 0.5,
+      });
+
+      let shotsFired = 0;
+      for (let tick = 0; tick < ticks; tick++) {
+        const botPosition = rig.world.getEntity('bot').position;
+        const targetPosition = rig.world.getEntity('target').position;
+        const command = bot.sample(botPosition, targetPosition, 100, heldWeapon);
+        const events = rig.world.step(new Map([['bot', command], ['target', createCommand()]]), 1 / 60);
+        shotsFired += events.filter((event) => event.type === 'fire' && event.shooterId === 'bot').length;
+      }
+      return shotsFired;
+    }
+
+    const WINDOW_TICKS = 120; // 2 sim-seconds
+    const pistolShots = shotsFiredOverWindow('pistol', WINDOW_TICKS);
+    const mgShots = shotsFiredOverWindow('machinegun', WINDOW_TICKS);
+
+    expect(mgShots).toBeGreaterThan(pistolShots);
+  });
+});
+
 describe('createBotAI: patrol crosses doorways without sticking (AE1, R7)', () => {
   it('a bot with no target crosses at least one doorway within 20 sim-seconds, with no sustained stuck run', () => {
     const arena = createArena();

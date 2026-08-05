@@ -13,6 +13,7 @@ import { createCommand, createFireLatch } from '../command.js';
 import { hasLineOfSight as checkLineOfSight } from '../lineOfSight.js';
 import { seek, avoidObstacles } from './steering.js';
 import { DEFAULT_DIFFICULTY } from './difficulty.js';
+import { isHeldFireWeapon } from '../weapon.js';
 import { createNavigator, createPatrolPicker, nearestNodeId, GRAPH, ROOM_IDS } from './navigation.js';
 import { ROOMS, DOORWAYS } from '../../arena/layout.js';
 
@@ -201,7 +202,7 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     retreatContinued = false;
   }
 
-  function sample(botPosition, playerPosition, botHealth) {
+  function sample(botPosition, playerPosition, botHealth, heldWeapon = 'pistol') {
     if (botHealth > previousHealth) clearTargetMemory();
     previousHealth = botHealth;
     tick += 1;
@@ -311,11 +312,16 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     // an independent, additional gate on the *first* shot of a fresh attack
     // episode, not a delay stacked before the interval timer even starts.
     ticksSinceFire += 1;
-    const readyToFire =
-      state.phase === 'attack' &&
-      ticksSinceEnteredAttack >= difficulty.reactionDelayTicks &&
-      ticksSinceFire >= FIRE_INTERVAL_TICKS;
-    if (readyToFire) {
+    const attackReady = state.phase === 'attack' && ticksSinceEnteredAttack >= difficulty.reactionDelayTicks;
+    // KTD6: cadence is weapon-aware, not just a swapped-in interval number.
+    // A held-fire weapon (the machine gun) sprays exactly like a player
+    // holding the trigger -- the level stays up for the whole attack phase
+    // and weapon.js's real per-tick cooldown is the only rate limiter, so
+    // this module's own FIRE_INTERVAL_TICKS never applies to it. An
+    // edge-fire weapon (the pistol) keeps today's intent-to-fire interval
+    // exactly as before.
+    const fireHeld = attackReady && isHeldFireWeapon(heldWeapon);
+    if (attackReady && !fireHeld && ticksSinceFire >= FIRE_INTERVAL_TICKS) {
       ticksSinceFire = 0;
       fireLatch.press();
     }
@@ -336,7 +342,9 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
       moveZ,
       yaw,
       pitch: 0,
-      buttons: { fire: fireLatch.consume(), jump: false },
+      // Bots never throw (KD3: grenade pickups are player-only) -- throwGrenade
+      // stays permanently false rather than wiring a latch nothing presses.
+      buttons: { fire: fireLatch.consume(), fireHeld, jump: false, throwGrenade: false },
     });
   }
 

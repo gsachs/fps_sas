@@ -5,12 +5,16 @@ import { CAPSULE_RADIUS } from '../../src/sim/movement.js';
 import { createSimulation } from '../../src/sim/index.js';
 import { createInputSampler } from '../../src/input/sampler.js';
 import { computeAngleFromPlayer } from '../../src/render/feedback.js';
+import { MACHINEGUN_SPREAD_RADIANS } from '../../src/sim/weapon.js';
 import { buildBotRig, addEntity, primeBroadPhase } from '../support/rig.js';
 
 await RAPIER.init();
 
-const FIRE = createCommand({ yaw: 0, pitch: 0, buttons: { fire: true, jump: false } });
-const HOLD = createCommand({ yaw: 0, pitch: 0, buttons: { fire: false, jump: false } });
+const FIRE = createCommand({ yaw: 0, pitch: 0, buttons: { fire: true, fireHeld: false, jump: false, throwGrenade: false } });
+const HOLD = createCommand({ yaw: 0, pitch: 0, buttons: { fire: false, fireHeld: false, jump: false, throwGrenade: false } });
+// The machine gun gates on the held-fire level, not the edge latch (KTD2) --
+// tests exercising it directly need this instead of FIRE.
+const HELD_FIRE = createCommand({ yaw: 0, pitch: 0, buttons: { fire: false, fireHeld: true, jump: false, throwGrenade: false } });
 
 // This file's rig used to be its own hand-rolled copy of test/support/rig.js
 // (same Rapier floor, same weapon/health wiring) -- folded into the shared
@@ -246,6 +250,106 @@ describe('combat: simultaneous lethal hits credit exactly one killer', () => {
   });
 });
 
+describe('combat: pistol held-fire regression (U2 -- R2, click-per-shot unchanged)', () => {
+  it('fires exactly once while the mouse stays held down, never once per tick', () => {
+    // The single most important regression this unit can introduce: the MG
+    // needs a held-fire *level*, but the pistol must keep firing strictly on
+    // the edge latch. If held-fire ever leaked into the pistol's gate, this
+    // test would see many hits (one per cooldown window) instead of exactly
+    // one -- see this unit's report for the red-then-green verification that
+    // this test actually catches that failure mode.
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    rig.movementSystem.addCharacter('shooter', { x: 0, y: 1, z: 0 });
+    rig.movementSystem.addCharacter('target', { x: 0, y: 1, z: 5 });
+    primeBroadPhase(rig);
+
+    const sampler = createInputSampler();
+    const combatSim = createSimulation({
+      physics: rig.movementSystem,
+      combat: {
+        resolveFire: rig.weaponSystem.resolveFire,
+        applyHit: rig.healthSystem.applyHit,
+        tickRespawns: rig.healthSystem.tickRespawns,
+      },
+      gatherCommands: () => {
+        const command = sampler.sample();
+        return new Map([
+          ['shooter', createCommand({ ...command, yaw: 0, pitch: 0 })],
+          ['target', HOLD],
+        ]);
+      },
+    });
+    combatSim.world.addEntity('shooter', { position: { x: 0, y: 1, z: 0 } });
+    combatSim.world.addEntity('target', { position: { x: 0, y: 1, z: 5 } });
+
+    sampler.onFirePressed(); // mousedown: queues the edge shot and, once fireHeld exists, starts the level
+    // The mouse never comes up (no onFireReleased call) for many ticks and
+    // several cooldown windows -- exactly the shape a real held click makes.
+    for (let i = 0; i < 30; i++) combatSim.tick(1 / 60);
+
+    expect(combatSim.world.getEntity('target').health).toBe(80); // exactly one 20-damage hit, not several
+  });
+});
+
+describe('combat: machine gun sprays while held, drains ammo, and auto-reverts (AE1, R1)', () => {
+  it('fires every cooldown window while fireHeld stays true, decrements ammo, and reverts to the pistol with no new input once dry', () => {
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
+    const shooter = rig.world.getEntity('shooter');
+    shooter.heldWeapon = 'machinegun';
+    shooter.ammo = 3; // small magazine so the revert is reachable within a short loop
+    primeBroadPhase(rig);
+
+    let shotsFired = 0;
+    for (let tick = 0; tick < 20; tick++) {
+      const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), HELD_FIRE);
+      if (result.fired) shotsFired += 1;
+    }
+
+    expect(shotsFired).toBe(3); // exactly the magazine size, not more
+    expect(rig.world.getEntity('shooter').heldWeapon).toBe('pistol'); // R1's auto-revert
+    expect(rig.world.getEntity('shooter').ammo).toBeNull(); // reads as infinite again, like any pistol
+
+    // The mouse is still held (fireHeld never goes false), but the entity is
+    // the pistol now -- KTD2's whole point is that a stale level alone,
+    // with the edge queue empty, must not fire it.
+    const afterRevert = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), HELD_FIRE);
+    expect(afterRevert.fired).toBe(false);
+  });
+});
+
+describe('combat: machine-gun spread (R1, KTD2)', () => {
+  it('consecutive shots from a fixed pose vary in direction but stay within the configured spread bound', () => {
+    const rig = buildBotRig();
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    const shooter = rig.world.getEntity('shooter');
+    shooter.heldWeapon = 'machinegun';
+    shooter.ammo = 1000; // plenty -- this test is about direction, not the revert
+    primeBroadPhase(rig);
+
+    const yawAngles = [];
+    for (let tick = 0; tick < 100 && yawAngles.length < 20; tick++) {
+      const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), HELD_FIRE);
+      if (!result.fired) continue;
+      const dx = result.endPoint.x - result.origin.x;
+      const dz = result.endPoint.z - result.origin.z;
+      yawAngles.push(Math.atan2(dx, dz)); // yaw-plane angle of this shot, relative to world +Z
+    }
+
+    expect(yawAngles.length).toBeGreaterThanOrEqual(20);
+    // Bounded: distribution never exceeds the configured spread constant --
+    // never asserting an exact PRNG value, only the guaranteed bound.
+    for (const angle of yawAngles) {
+      expect(Math.abs(angle)).toBeLessThanOrEqual(MACHINEGUN_SPREAD_RADIANS + 1e-9);
+    }
+    // Varies: spread is actually applied, not a no-op -- not every shot landed
+    // at the exact same angle.
+    const distinctAngles = new Set(yawAngles.map((a) => a.toFixed(6)));
+    expect(distinctAngles.size).toBeGreaterThan(1);
+  });
+});
+
 describe('combat: per-weapon config resolves from heldWeapon (U1 foundation)', () => {
   it('an entity holding the machine gun fires with different damage than the pistol default', () => {
     const rig = buildBotRig({ cooldownTicks: 6 });
@@ -255,7 +359,7 @@ describe('combat: per-weapon config resolves from heldWeapon (U1 foundation)', (
     primeBroadPhase(rig);
 
     const pistolResult = rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
-    const mgResult = rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), FIRE);
+    const mgResult = rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), HELD_FIRE);
 
     // The pistol's shipped damage must stay exactly 20 (R2: zero behavior
     // change) -- the machine gun's own value only needs to differ from it.
@@ -275,13 +379,13 @@ describe('combat: per-weapon config resolves from heldWeapon (U1 foundation)', (
     primeBroadPhase(rig);
 
     rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
-    rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), FIRE);
+    rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), HELD_FIRE);
 
     let pistolReadyTick = null;
     let mgReadyTick = null;
     for (let tick = 1; tick <= 10 && (pistolReadyTick === null || mgReadyTick === null); tick++) {
       const pistolAgain = rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
-      const mgAgain = rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), FIRE);
+      const mgAgain = rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), HELD_FIRE);
       if (pistolAgain.fired && pistolReadyTick === null) pistolReadyTick = tick;
       if (mgAgain.fired && mgReadyTick === null) mgReadyTick = tick;
     }
