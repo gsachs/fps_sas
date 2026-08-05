@@ -10,7 +10,7 @@ describe('createCommand', () => {
       moveZ: 0,
       yaw: 0,
       pitch: 0,
-      buttons: { fire: false, jump: false },
+      buttons: { fire: false, fireHeld: false, jump: false, throwGrenade: false },
     });
   });
 

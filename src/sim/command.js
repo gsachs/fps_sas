@@ -1,8 +1,11 @@
 // The single Command shape every entity (local player, bot, future remote
 // peer) emits into the simulation. Continuous fields (movement, look) apply
-// every sub-tick; the fire button is edge-triggered (see createFireLatch)
-// so shot count stays framerate-independent regardless of how many sim
-// ticks a render frame runs.
+// every sub-tick. `fire` and `throwGrenade` are edge-triggered (see
+// createFireLatch) so their counts stay framerate-independent regardless of
+// how many sim ticks a render frame runs; `fireHeld` is the one *level*
+// field -- true for every tick the trigger is physically down, read only by
+// weapons whose config marks them held-fire (KTD2). The pistol never reads
+// it, which is what keeps its click-per-shot feel unchanged.
 export function createCommand(overrides = {}) {
   return {
     tick: 0,
@@ -10,7 +13,7 @@ export function createCommand(overrides = {}) {
     moveZ: 0,
     yaw: 0,
     pitch: 0,
-    buttons: { fire: false, jump: false },
+    buttons: { fire: false, fireHeld: false, jump: false, throwGrenade: false },
     ...overrides,
   };
 }

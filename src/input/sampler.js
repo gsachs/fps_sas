@@ -6,11 +6,23 @@ import { createCommand, createFireLatch } from '../sim/command.js';
 
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
 
+// A key code this sampler treats as a discrete, edge-latched action key
+// (never movement) -- checked in onKeyDown so a throw press is queued from
+// the same unconditional keydown listener main.js already wires for WASD,
+// with no new main.js listener needed for it.
+const THROW_KEY_CODE = 'KeyG';
+
 export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
   let yaw = 0;
   let pitch = 0;
   const keys = new Set();
   const fireLatch = createFireLatch();
+  const throwLatch = createFireLatch();
+  // The held-fire level (KTD2): true for every tick between a fire-button
+  // press and its release, read only by weapons whose config marks them
+  // held-fire. Distinct from fireLatch, which stays edge-triggered for the
+  // pistol regardless of how long the button stays down.
+  let fireHeld = false;
 
   function onMouseMove(event) {
     yaw -= event.movementX * lookSpeed;
@@ -19,6 +31,14 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
   }
 
   function onKeyDown(event) {
+    // Edge-latch the throw key here, before adding it to `keys`, so the
+    // membership check below doubles as the native-key-repeat guard: a held
+    // key re-fires keydown every frame in most browsers, but every repeat
+    // after the first finds KeyG already present and queues nothing more --
+    // one physical key-down, one queued throw.
+    if (event.code === THROW_KEY_CODE && !keys.has(THROW_KEY_CODE)) {
+      throwLatch.press();
+    }
     keys.add(event.code);
   }
 
@@ -26,11 +46,21 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
     keys.delete(event.code);
   }
 
-  // One discrete fire-button press (e.g. a mouse click), queued for the
-  // next sample() -- see createFireLatch for why this is edge-triggered
-  // rather than a held-down level.
+  // One discrete fire-button press (e.g. a mouse going down): queues the
+  // pistol's next edge-triggered shot (see createFireLatch) and starts the
+  // held-fire level for any weapon that reads it -- the trigger going down
+  // is both events at once, so both fire immediately with no extra
+  // cooldown-window gap.
   function onFirePressed() {
     fireLatch.press();
+    fireHeld = true;
+  }
+
+  // The fire button coming back up: ends the held-fire level. Never touches
+  // fireLatch -- a pistol click's queued edge shot is unaffected by however
+  // quickly the button comes back up.
+  function onFireReleased() {
+    fireHeld = false;
   }
 
   function sample() {
@@ -46,7 +76,12 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
       moveZ,
       yaw,
       pitch,
-      buttons: { fire: fireLatch.consume(), jump: keys.has('Space') },
+      buttons: {
+        fire: fireLatch.consume(),
+        fireHeld,
+        jump: keys.has('Space'),
+        throwGrenade: throwLatch.consume(),
+      },
     });
   }
 
@@ -55,6 +90,7 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
     onKeyDown,
     onKeyUp,
     onFirePressed,
+    onFireReleased,
     sample,
     getYawPitch: () => ({ yaw, pitch }),
     setYaw: (newYaw) => {

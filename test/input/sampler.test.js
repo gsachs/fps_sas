@@ -43,6 +43,42 @@ describe('createInputSampler', () => {
     expect(sampler.sample().buttons.fire).toBe(false);
   });
 
+  it('tracks a held-fire level: true from press until release, independent of the fire edge latch', () => {
+    const sampler = createInputSampler();
+    expect(sampler.sample().buttons.fireHeld).toBe(false);
+
+    sampler.onFirePressed();
+    expect(sampler.sample().buttons.fireHeld).toBe(true);
+    expect(sampler.sample().buttons.fireHeld).toBe(true); // still held on a later sample, unlike the edge latch
+    expect(sampler.sample().buttons.fire).toBe(false); // the edge was already consumed by the first sample() above
+
+    sampler.onFireReleased();
+    expect(sampler.sample().buttons.fireHeld).toBe(false);
+  });
+
+  it('latches a throw-key press to exactly one sampled command', () => {
+    const sampler = createInputSampler();
+    expect(sampler.sample().buttons.throwGrenade).toBe(false);
+
+    sampler.onKeyDown({ code: 'KeyG' });
+    expect(sampler.sample().buttons.throwGrenade).toBe(true);
+    expect(sampler.sample().buttons.throwGrenade).toBe(false);
+  });
+
+  it('ignores the browser repeating keydown while KeyG is held, queuing only one throw per physical press', () => {
+    const sampler = createInputSampler();
+    sampler.onKeyDown({ code: 'KeyG' }); // physical key-down
+    sampler.onKeyDown({ code: 'KeyG' }); // native key-repeat, still held
+    sampler.onKeyDown({ code: 'KeyG' }); // native key-repeat, still held
+
+    expect(sampler.sample().buttons.throwGrenade).toBe(true);
+    expect(sampler.sample().buttons.throwGrenade).toBe(false); // only one press was ever queued
+
+    sampler.onKeyUp({ code: 'KeyG' });
+    sampler.onKeyDown({ code: 'KeyG' }); // a fresh physical press queues a fresh throw
+    expect(sampler.sample().buttons.throwGrenade).toBe(true);
+  });
+
   it('setYaw sets the yaw directly without touching pitch', () => {
     const sampler = createInputSampler();
     sampler.onMouseMove({ movementX: 0, movementY: -50 }); // establish a non-zero pitch
