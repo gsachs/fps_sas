@@ -11,8 +11,16 @@ export { createFixedStepLoop } from './loop.js';
 // returns every combat event (hits/kills) produced by however many sim
 // ticks that frame ran, so observers (U7's HUD) see each one exactly once
 // regardless of framerate.
-export function createSimulation({ dt = 1 / 60, maxFrameSeconds = 0.25, gatherCommands, physics, combat, pickups }) {
-  const world = createWorld({ physics, combat, pickups });
+export function createSimulation({
+  dt = 1 / 60,
+  maxFrameSeconds = 0.25,
+  gatherCommands,
+  physics,
+  combat,
+  pickups,
+  grenades,
+}) {
+  const world = createWorld({ physics, combat, pickups, grenades });
   let pendingEvents = [];
   const loop = createFixedStepLoop({
     dt,

@@ -16,9 +16,13 @@ const LOS_SURFACE_BACKOFF = 0.05;
 // one (an entity casting the ray, per fsm.js) so the ray doesn't
 // immediately self-hit at its own origin; omit it when the origin has no
 // collider at all (an unoccupied candidate point, per spawnPlacement.js).
-export function hasLineOfSight(rapierWorld, fromPosition, toPosition, excludeCollider) {
-  const origin = { x: fromPosition.x, y: fromPosition.y + EYE_HEIGHT, z: fromPosition.z };
-  const target = { x: toPosition.x, y: toPosition.y + EYE_HEIGHT, z: toPosition.z };
+// eyeOffset defaults to EYE_HEIGHT (bot/spawn sensing, eye-to-eye) but a
+// blast query (KTD4) has no eye -- a detonation point is not an entity --
+// so it passes 0 via hasLineOfSightFromBlastCenter below instead of
+// duplicating this function's target-capsule-surface backoff math.
+export function hasLineOfSight(rapierWorld, fromPosition, toPosition, excludeCollider, eyeOffset = EYE_HEIGHT) {
+  const origin = { x: fromPosition.x, y: fromPosition.y + eyeOffset, z: fromPosition.z };
+  const target = { x: toPosition.x, y: toPosition.y + eyeOffset, z: toPosition.z };
   const dx = target.x - origin.x;
   const dy = target.y - origin.y;
   const dz = target.z - origin.z;
@@ -35,4 +39,14 @@ export function hasLineOfSight(rapierWorld, fromPosition, toPosition, excludeCol
     excludeCollider
   );
   return !hit;
+}
+
+// Blast-center variant (KTD4): a grenade's detonation point has no collider
+// to exclude and, per KTD4, no eye-height offset on either end -- distance
+// is measured center-to-center. Shares hasLineOfSight's exact backoff logic
+// via eyeOffset: 0 rather than re-deriving it, so the self-block bug this
+// file's own backoff exists to prevent (see LOS_SURFACE_BACKOFF above)
+// can't silently reappear for blast queries through a second copy.
+export function hasLineOfSightFromBlastCenter(rapierWorld, blastCenter, toPosition) {
+  return hasLineOfSight(rapierWorld, blastCenter, toPosition, undefined, 0);
 }

@@ -37,7 +37,7 @@ function createEntity(id, overrides = {}) {
   };
 }
 
-export function createWorld({ physics, combat, pickups } = {}) {
+export function createWorld({ physics, combat, pickups, grenades } = {}) {
   const entities = new Map();
   const prevTransforms = new Map();
 
@@ -104,6 +104,14 @@ export function createWorld({ physics, combat, pickups } = {}) {
       // check inside pickups.js itself.
       if (pickups) pickups.tryCollect(entity);
 
+      // Throw reads a different command field (throwGrenade) than combat's
+      // fire fields below, so their relative order here doesn't matter
+      // (KTD3).
+      if (grenades) {
+        const thrown = grenades.tryThrow(entity, command);
+        if (thrown) events.push({ type: 'grenadeThrown', ...thrown });
+      }
+
       if (combat) {
         const fireResult = combat.resolveFire(entity, command);
         if (fireResult.fired) {
@@ -144,6 +152,12 @@ export function createWorld({ physics, combat, pickups } = {}) {
       combat.tickRespawns(entityAccessor, occupiedPositions);
     }
     if (pickups) pickups.tick();
+    // World-scope, unconditional, same as pickups.tick() above -- every
+    // in-flight grenade burns fuse and integrates regardless of which
+    // entities had commands this tick. Concatenated into this same step()
+    // call's events, not deferred, so a blast's kills are visible to
+    // callers (e.g. match-end) in the call that produced them.
+    if (grenades) events.push(...grenades.tick(entityAccessor, dt));
     return events;
   }
 

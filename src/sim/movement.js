@@ -5,7 +5,10 @@
 // does not violate the sim module's Three.js-free guard.
 import RAPIER from '@dimforge/rapier3d-compat';
 
-const GRAVITY = -9.81;
+// Exported: grenades.js (U4) integrates the same free-falling arc by hand
+// (KTD3) and must reuse this exact value rather than declaring a second
+// gravity constant that could drift from this one.
+export const GRAVITY = -9.81;
 const JUMP_SPEED = 5;
 const MOVE_SPEED = 4;
 const CONTROLLER_OFFSET = 0.01;

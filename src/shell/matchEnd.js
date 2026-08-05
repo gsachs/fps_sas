@@ -23,12 +23,17 @@ export function checkMatchEnd(entityAccessor) {
 //
 // R8: also restores the armory economy -- every pickup returns (via
 // pickupSystem, optional so callers that predate U3 keep working) and every
-// entity reverts to the pistol with an empty grenade pocket.
+// entity reverts to the pistol with an empty grenade pocket. grenadeSystem
+// (also optional, U4) clears every in-flight grenade and pending blast --
+// distinct from grenadeCount below, which is per-entity pocket state the
+// per-entity loop already zeroes; a mid-air grenade is a projectile, not a
+// pocket, and needs its own clear hook (KTD5).
 export function resetMatch(
   entityAccessor,
-  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem }
+  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem, grenadeSystem }
 ) {
   if (pickupSystem) pickupSystem.resetAll();
+  if (grenadeSystem) grenadeSystem.resetAll();
 
   const assignedSpawns = [];
   for (const entity of entityAccessor.allEntities()) {
