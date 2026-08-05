@@ -37,5 +37,6 @@ export function createArena() {
     rooms: LAYOUT.rooms,
     doorways: LAYOUT.doorways,
     spawnPoints: LAYOUT.spawnPoints,
+    pickups: LAYOUT.pickups,
   };
 }

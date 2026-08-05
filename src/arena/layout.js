@@ -263,12 +263,29 @@ export const ROOM_ACCENTS = {
 // independently-hardcoded copies of the same value).
 export const NEUTRAL_ACCENT_COLOR = 0xa89f8a;
 
+// Map pickups (R5, KD4): the machine gun spawns in the central landmark
+// room; one grenade pickup sits in each corner room. Hand-placed the same
+// way SPAWN_POINTS above is -- clear of that room's own pillar(s) and clear
+// of its doorway openings (a diagonal offset from the room centre, away from
+// both of that room's doorway walls, keeps well clear of both at once) --
+// and validated the same way in layout.test.js. `type` decides what the
+// pickup grants (src/sim/pickups.js); `roomId` is for the render layer and
+// debugging, not gameplay logic.
+export const PICKUPS = [
+  { id: 'pickup-mg-central', type: 'machinegun', x: 5, y: 1, z: 5, roomId: 'central' },
+  { id: 'pickup-grenade-nw', type: 'grenade', x: nw.x - 6, y: 1, z: nw.z + 6, roomId: 'nw' },
+  { id: 'pickup-grenade-ne', type: 'grenade', x: ne.x + 6, y: 1, z: ne.z + 6, roomId: 'ne' },
+  { id: 'pickup-grenade-se', type: 'grenade', x: se.x + 6, y: 1, z: se.z - 6, roomId: 'se' },
+  { id: 'pickup-grenade-sw', type: 'grenade', x: sw.x - 6, y: 1, z: sw.z - 6, roomId: 'sw' },
+];
+
 export const LAYOUT = {
   rooms: ROOMS,
   doorways: DOORWAYS,
   walls: WALLS,
   pillars: PILLARS,
   spawnPoints: SPAWN_POINTS,
+  pickups: PICKUPS,
   floorHalfSize: FLOOR_HALF_SIZE,
   wallHeight: WALL_HEIGHT,
 };

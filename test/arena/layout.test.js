@@ -94,6 +94,41 @@ describe('layout: spawn points', () => {
   });
 });
 
+describe('layout: pickups (R5, KD4)', () => {
+  function insideOwnRoom(pickup) {
+    const room = ROOMS.find((r) => r.id === pickup.roomId);
+    return Boolean(
+      room && Math.abs(pickup.x - room.x) <= room.halfX && Math.abs(pickup.z - room.z) <= room.halfZ
+    );
+  }
+  function outsideAllPillars(pickup) {
+    return LAYOUT.pillars.every(
+      (pillar) =>
+        !(Math.abs(pickup.x - pillar.x) <= pillar.halfX && Math.abs(pickup.z - pillar.z) <= pillar.halfZ)
+    );
+  }
+
+  it('every pickup sits inside the room it names and outside all pillar geometry', () => {
+    for (const pickup of LAYOUT.pickups) {
+      expect(insideOwnRoom(pickup)).toBe(true);
+      expect(outsideAllPillars(pickup)).toBe(true);
+    }
+  });
+
+  it('exactly one machine-gun pickup, in the central room', () => {
+    const machineGunPickups = LAYOUT.pickups.filter((p) => p.type === 'machinegun');
+    expect(machineGunPickups).toHaveLength(1);
+    expect(machineGunPickups[0].roomId).toBe('central');
+  });
+
+  it('exactly one grenade pickup in each of the four corner rooms', () => {
+    for (const roomId of ['nw', 'ne', 'se', 'sw']) {
+      const grenadePickups = LAYOUT.pickups.filter((p) => p.type === 'grenade' && p.roomId === roomId);
+      expect(grenadePickups).toHaveLength(1);
+    }
+  });
+});
+
 describe('layout: AE4 -- no reachable position sees the whole map', () => {
   const EYE_Y = CAPSULE_GROUND_OFFSET + EYE_HEIGHT;
 
