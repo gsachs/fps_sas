@@ -475,11 +475,11 @@ const loop = createRenderLoop({
         hud.flashCrosshair(event.killed ? 'kill' : 'hit');
         if (debugMode) debugCounters.crosshairFlashes += 1;
       }
-      if (event.type === 'hit' && event.targetId === LOCAL_PLAYER_ID && event.shooterPosition) {
+      if (event.type === 'hit' && event.targetId === LOCAL_PLAYER_ID && event.damageOrigin) {
         const angle = computeAngleFromPlayer(
           playerEntity.latest.position,
           playerEntity.latest.yaw,
-          event.shooterPosition
+          event.damageOrigin
         );
         damageIndicator.show(angle);
         if (debugMode) debugCounters.damageIndicatorShows += 1;

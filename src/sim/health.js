@@ -5,24 +5,32 @@
 import { creditKill } from './score.js';
 import { selectSpawnPoint } from '../arena/spawnPlacement.js';
 
-const DAMAGE_PER_HIT = 20;
+const DEFAULT_DAMAGE_PER_HIT = 20; // pistol's damage, kept only as applyHit's fallback for callers that omit it
 const RESPAWN_DELAY_TICKS = 180; // 3s at a 60Hz tick rate
 
 export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem }) {
   const respawnTicksRemaining = new Map(); // entityId -> ticks left until respawn
 
   // Returns a hit event ({ shooterId, targetId, damage, killed,
-  // targetPosition, shooterPosition }) for observers (HUD feedback in U7),
-  // or null if the hit didn't apply (target already dead).
-  function applyHit(entityAccessor, targetId, shooterId) {
+  // targetPosition, shooterPosition, damageOrigin }) for observers (HUD
+  // feedback, damage indicator), or null if the hit didn't apply (target
+  // already dead). `damage` is the caller's resolved per-weapon amount
+  // (KTD1) -- callers that omit it get the pistol's default. `damageOrigin`
+  // is where the damage indicator should point from; for this hitscan path
+  // it's always the shooter's live position (same value as
+  // `shooterPosition`), but it's a distinct field because a future
+  // projectile source (e.g. a grenade blast) will supply an origin that
+  // isn't the shooter's current position.
+  function applyHit(entityAccessor, targetId, shooterId, damage = DEFAULT_DAMAGE_PER_HIT) {
     const target = entityAccessor.getEntity(targetId);
     if (!target || target.dead) return null;
 
     const shooter = shooterId ? entityAccessor.getEntity(shooterId) : null;
     const targetPosition = { ...target.position };
     const shooterPosition = shooter ? { ...shooter.position } : null;
+    const damageOrigin = shooterPosition;
 
-    target.health -= DAMAGE_PER_HIT;
+    target.health -= damage;
     let killed = false;
 
     if (target.health <= 0) {
@@ -34,7 +42,7 @@ export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem })
       creditKill(shooter, target);
     }
 
-    return { shooterId, targetId, damage: DAMAGE_PER_HIT, killed, targetPosition, shooterPosition };
+    return { shooterId, targetId, damage, killed, targetPosition, shooterPosition, damageOrigin };
   }
 
   // Advances every pending respawn timer by one tick; respawns any entity

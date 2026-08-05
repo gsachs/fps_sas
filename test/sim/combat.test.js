@@ -4,6 +4,7 @@ import { createCommand } from '../../src/sim/command.js';
 import { CAPSULE_RADIUS } from '../../src/sim/movement.js';
 import { createSimulation } from '../../src/sim/index.js';
 import { createInputSampler } from '../../src/input/sampler.js';
+import { computeAngleFromPlayer } from '../../src/render/feedback.js';
 import { buildBotRig, addEntity, primeBroadPhase } from '../support/rig.js';
 
 await RAPIER.init();
@@ -242,5 +243,80 @@ describe('combat: simultaneous lethal hits credit exactly one killer', () => {
     const totalScore = rig.world.getEntity('shooterA').score + rig.world.getEntity('shooterB').score;
     expect(totalScore).toBe(1);
     expect(rig.world.getEntity('target').dead).toBe(true);
+  });
+});
+
+describe('combat: per-weapon config resolves from heldWeapon (U1 foundation)', () => {
+  it('an entity holding the machine gun fires with different damage than the pistol default', () => {
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'pistolShooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'mgShooter', { x: 20, y: 1, z: 0 });
+    rig.world.getEntity('mgShooter').heldWeapon = 'machinegun';
+    primeBroadPhase(rig);
+
+    const pistolResult = rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
+    const mgResult = rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), FIRE);
+
+    // The pistol's shipped damage must stay exactly 20 (R2: zero behavior
+    // change) -- the machine gun's own value only needs to differ from it.
+    expect(pistolResult.damage).toBe(20);
+    expect(mgResult.damage).not.toBe(pistolResult.damage);
+    expect(mgResult.damage).toBeGreaterThan(0);
+  });
+
+  it('the machine gun becomes ready to fire again sooner than the pistol does', () => {
+    // cooldownTicks: 6 forces the pistol's real (non-test-shortcut) cadence
+    // so this comparison is meaningful -- the shared rig's own default (0)
+    // would make the pistol always-ready and hide the difference.
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'pistolShooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'mgShooter', { x: 20, y: 1, z: 0 });
+    rig.world.getEntity('mgShooter').heldWeapon = 'machinegun';
+    primeBroadPhase(rig);
+
+    rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
+    rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), FIRE);
+
+    let pistolReadyTick = null;
+    let mgReadyTick = null;
+    for (let tick = 1; tick <= 10 && (pistolReadyTick === null || mgReadyTick === null); tick++) {
+      const pistolAgain = rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
+      const mgAgain = rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), FIRE);
+      if (pistolAgain.fired && pistolReadyTick === null) pistolReadyTick = tick;
+      if (mgAgain.fired && mgReadyTick === null) mgReadyTick = tick;
+    }
+
+    expect(mgReadyTick).toBeLessThan(pistolReadyTick);
+  });
+});
+
+describe('combat: hit event carries damage and a damage-origin position (U1 foundation)', () => {
+  it('carries the pistol damage and a damageOrigin equal to the shooter position for a hitscan hit', () => {
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
+    primeBroadPhase(rig);
+
+    const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
+    const hitEvent = events.find((e) => e.type === 'hit');
+
+    expect(hitEvent.damage).toBe(20);
+    expect(hitEvent.damageOrigin).toEqual(hitEvent.shooterPosition);
+    expect(hitEvent.damageOrigin).toEqual(rig.world.getEntity('shooter').position);
+
+    // Main.js's damage indicator now reads event.damageOrigin instead of
+    // event.shooterPosition -- since the two are the same value for a
+    // hitscan hit, the indicator's computed bearing is unchanged.
+    const angleFromShooterPosition = computeAngleFromPlayer(
+      rig.world.getEntity('target').position,
+      0,
+      hitEvent.shooterPosition
+    );
+    const angleFromDamageOrigin = computeAngleFromPlayer(
+      rig.world.getEntity('target').position,
+      0,
+      hitEvent.damageOrigin
+    );
+    expect(angleFromDamageOrigin).toBe(angleFromShooterPosition);
   });
 });

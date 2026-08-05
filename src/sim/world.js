@@ -30,6 +30,9 @@ function createEntity(id, overrides = {}) {
     dead: false,
     score: 0,
     animHint: 'idle',
+    heldWeapon: 'pistol', // per-weapon foundation (KTD1): every entity starts on the infinite pistol
+    ammo: null, // null means infinite (the pistol); a finite weapon (the machine gun) sets a count
+    grenadeCount: 0,
     ...overrides,
   };
 }
@@ -103,7 +106,7 @@ export function createWorld({ physics, combat } = {}) {
           });
         }
         if (fireResult.hitEntityId) {
-          const hitEvent = combat.applyHit(entityAccessor, fireResult.hitEntityId, id);
+          const hitEvent = combat.applyHit(entityAccessor, fireResult.hitEntityId, id, fireResult.damage);
           if (hitEvent) events.push({ type: 'hit', ...hitEvent });
         }
       }
@@ -140,6 +143,11 @@ export function createWorld({ physics, combat } = {}) {
         dead: entity.dead,
         animHint: entity.animHint,
         score: entity.score,
+        // Armory fields (KTD1): discrete state, not continuous motion, so
+        // they pass through as-is rather than lerping like position/yaw.
+        heldWeapon: entity.heldWeapon,
+        ammo: entity.ammo,
+        grenadeCount: entity.grenadeCount,
       });
     }
     return result;
