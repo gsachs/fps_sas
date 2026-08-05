@@ -1,65 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { createWorld } from '../../src/sim/world.js';
 import { createCommand } from '../../src/sim/command.js';
-import { createMovementSystem, CAPSULE_RADIUS } from '../../src/sim/movement.js';
-import { createWeaponSystem } from '../../src/sim/weapon.js';
-import { createHealthSystem } from '../../src/sim/health.js';
+import { CAPSULE_RADIUS } from '../../src/sim/movement.js';
 import { createSimulation } from '../../src/sim/index.js';
 import { createInputSampler } from '../../src/input/sampler.js';
+import { buildBotRig, addEntity, primeBroadPhase } from '../support/rig.js';
 
 await RAPIER.init();
 
 const FIRE = createCommand({ yaw: 0, pitch: 0, buttons: { fire: true, jump: false } });
 const HOLD = createCommand({ yaw: 0, pitch: 0, buttons: { fire: false, jump: false } });
 
-function buildCombatRig({ obstacles = [], spawnPoints = [{ x: 0, y: 1, z: 0 }], cooldownTicks = 6 } = {}) {
-  const rapierWorld = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
-  rapierWorld.createCollider(RAPIER.ColliderDesc.cuboid(30, 0.5, 30).setTranslation(0, -0.5, 0));
-  for (const obstacle of obstacles) {
-    rapierWorld.createCollider(
-      RAPIER.ColliderDesc.cuboid(obstacle.hx, obstacle.hy, obstacle.hz).setTranslation(
-        obstacle.x,
-        obstacle.y,
-        obstacle.z
-      )
-    );
-  }
-
-  const movementSystem = createMovementSystem(rapierWorld);
-  const weaponSystem = createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks });
-  const healthSystem = createHealthSystem({ rapierWorld, spawnPoints, movementSystem });
-  const combat = {
-    resolveFire: weaponSystem.resolveFire,
-    applyHit: healthSystem.applyHit,
-    tickRespawns: healthSystem.tickRespawns,
-  };
-  const world = createWorld({ physics: movementSystem, combat });
-  return { world, movementSystem, weaponSystem, healthSystem };
-}
-
-// Rapier's broad-phase only indexes newly-created colliders on the next
-// world.step() -- a hitscan castRay against a collider created this same
-// tick (before any step ran) can miss even though the collider exists at
-// the right position. Priming with one step() (safe here: every body is
-// kinematic, so it has no side effect before any translation is queued)
-// mirrors what main.js does once at real startup, before the game loop
-// starts accepting commands.
-function primeBroadPhase(rig) {
-  rig.movementSystem.commit();
-}
-
-function addCombatant(rig, id, position) {
-  rig.world.addEntity(id, { position: { ...position } });
-  rig.movementSystem.addCharacter(id, position);
-}
+// This file's rig used to be its own hand-rolled copy of test/support/rig.js
+// (same Rapier floor, same weapon/health wiring) -- folded into the shared
+// buildBotRig/addEntity/primeBroadPhase so there is one rig-construction
+// path for both bot-AI and combat tests. Every call below that omitted
+// cooldownTicks relied on the pistol's real 6-tick cooldown (this file's old
+// default), so it's passed explicitly here to keep that behavior identical
+// under the shared builder's own (bot-AI-oriented) default of 0.
 
 describe('combat: kill, score, and respawn (AE1)', () => {
   it('kills the target after enough hits, credits the shooter once, and respawns the target with full health', () => {
     const spawnPoints = [{ x: 0, y: 1, z: 0 }, { x: 20, y: 1, z: 20 }];
-    const rig = buildCombatRig({ spawnPoints });
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addCombatant(rig, 'target', { x: 0, y: 1, z: 5 });
+    const rig = buildBotRig({ spawnPoints, cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
     primeBroadPhase(rig);
 
     for (let i = 0; i < 60 && !rig.world.getEntity('target').dead; i++) {
@@ -83,10 +48,10 @@ describe('combat: kill, score, and respawn (AE1)', () => {
 describe('combat: respawn continues arena state (AE2)', () => {
   it('restores the respawned entity without resetting unrelated entities', () => {
     const spawnPoints = [{ x: 0, y: 1, z: 0 }, { x: 20, y: 1, z: 20 }];
-    const rig = buildCombatRig({ spawnPoints });
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addCombatant(rig, 'target', { x: 0, y: 1, z: 5 });
-    addCombatant(rig, 'bystander', { x: 15, y: 1, z: 15 });
+    const rig = buildBotRig({ spawnPoints, cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
+    addEntity(rig, 'bystander', { x: 15, y: 1, z: 15 });
     rig.world.getEntity('bystander').score = 3;
     primeBroadPhase(rig);
 
@@ -108,9 +73,9 @@ describe('combat: respawn continues arena state (AE2)', () => {
 
 describe('combat: miss', () => {
   it('does not change health when the shot does not hit anything', () => {
-    const rig = buildCombatRig();
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addCombatant(rig, 'target', { x: 50, y: 1, z: 50 }); // well outside the ray's path
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 50, y: 1, z: 50 }); // well outside the ray's path
     primeBroadPhase(rig);
 
     rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
@@ -121,9 +86,9 @@ describe('combat: miss', () => {
 
 describe('combat: step() reports fire and hit events (U7 feedback source)', () => {
   it('reports a fire event even on a miss, with no accompanying hit event', () => {
-    const rig = buildCombatRig();
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addCombatant(rig, 'target', { x: 50, y: 1, z: 50 });
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 50, y: 1, z: 50 });
     primeBroadPhase(rig);
 
     const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
@@ -136,9 +101,9 @@ describe('combat: step() reports fire and hit events (U7 feedback source)', () =
   });
 
   it('reports both a fire event and a hit event on a landed shot', () => {
-    const rig = buildCombatRig();
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addCombatant(rig, 'target', { x: 0, y: 1, z: 5 });
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
     primeBroadPhase(rig);
 
     const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
@@ -157,8 +122,8 @@ describe('combat: step() reports fire and hit events (U7 feedback source)', () =
   });
 
   it('reports no events when nobody fires', () => {
-    const rig = buildCombatRig();
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     primeBroadPhase(rig);
 
     const events = rig.world.step(new Map([['shooter', HOLD]]), 1 / 60);
@@ -169,11 +134,12 @@ describe('combat: step() reports fire and hit events (U7 feedback source)', () =
 
 describe('combat: cover blocks hits', () => {
   it('does not hit an entity fully occluded by cover geometry', () => {
-    const rig = buildCombatRig({
+    const rig = buildBotRig({
       obstacles: [{ x: 0, y: 1, z: 5, hx: 2, hy: 2, hz: 0.5 }],
+      cooldownTicks: 6,
     });
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addCombatant(rig, 'target', { x: 0, y: 1, z: 10 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 10 });
     primeBroadPhase(rig);
 
     for (let i = 0; i < 10; i++) {
@@ -193,9 +159,9 @@ describe('combat: hitbox width matches the capsule radius (regression)', () => {
     // future narrowing of CAPSULE_RADIUS fails this test instead of
     // silently reintroducing the "hits at the edges miss" bug.
     const edgeOffset = (CAPSULE_RADIUS + 0.3) / 2; // between the old and current radius
-    const rig = buildCombatRig();
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addCombatant(rig, 'target', { x: edgeOffset, y: 1, z: 5 }); // shooter fires straight down x=0
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: edgeOffset, y: 1, z: 5 }); // shooter fires straight down x=0
     primeBroadPhase(rig);
 
     rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
@@ -206,8 +172,8 @@ describe('combat: hitbox width matches the capsule radius (regression)', () => {
 
 describe('combat: self-hit exclusion', () => {
   it('excludes the shooter from its own hitscan ray', () => {
-    const rig = buildCombatRig();
-    addCombatant(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     primeBroadPhase(rig);
 
     const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), FIRE);
@@ -218,7 +184,7 @@ describe('combat: self-hit exclusion', () => {
 
 describe('combat: framerate-independent fire rate', () => {
   it('resolves exactly one shot per fire press even when a frame runs multiple sim ticks', () => {
-    const rig = buildCombatRig();
+    const rig = buildBotRig({ cooldownTicks: 6 });
     rig.movementSystem.addCharacter('shooter', { x: 0, y: 1, z: 0 });
     rig.movementSystem.addCharacter('target', { x: 0, y: 1, z: 5 });
     primeBroadPhase(rig);
@@ -254,10 +220,10 @@ describe('combat: framerate-independent fire rate', () => {
 describe('combat: simultaneous lethal hits credit exactly one killer', () => {
   it('does not double-count a kill when two shooters land lethal hits in the same tick', () => {
     const spawnPoints = [{ x: 0, y: 1, z: 0 }];
-    const rig = buildCombatRig({ spawnPoints, cooldownTicks: 0 });
-    addCombatant(rig, 'shooterA', { x: 0, y: 1, z: 0 });
-    addCombatant(rig, 'shooterB', { x: 0, y: 1, z: 10 });
-    addCombatant(rig, 'target', { x: 0, y: 1, z: 5 });
+    const rig = buildBotRig({ spawnPoints, cooldownTicks: 0 });
+    addEntity(rig, 'shooterA', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'shooterB', { x: 0, y: 1, z: 10 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
     rig.world.getEntity('target').health = 15; // one hit (20 dmg) is already lethal
     primeBroadPhase(rig);
 

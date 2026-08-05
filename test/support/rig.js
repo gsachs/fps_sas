@@ -9,8 +9,12 @@ import { createWeaponSystem } from '../../src/sim/weapon.js';
 import { createHealthSystem } from '../../src/sim/health.js';
 
 // A flat 60x60 floor plus optional box obstacles -- enough for any bot-AI
-// test that needs real Rapier geometry but not the full arena layout.
-export function buildBotRig({ obstacles = [] } = {}) {
+// or combat test that needs real Rapier geometry but not the full arena
+// layout. `spawnPoints` and `cooldownTicks` default to the single-spawn,
+// zero-cooldown shape bot-AI tests have always gotten, so existing callers
+// that omit them see no behavior change; combat tests that need the real
+// pistol cooldown or multiple spawns pass them explicitly.
+export function buildBotRig({ obstacles = [], spawnPoints = [{ x: 0, y: 1, z: 0 }], cooldownTicks = 0 } = {}) {
   const rapierWorld = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   rapierWorld.createCollider(RAPIER.ColliderDesc.cuboid(30, 0.5, 30).setTranslation(0, -0.5, 0));
   for (const obstacle of obstacles) {
@@ -24,22 +28,29 @@ export function buildBotRig({ obstacles = [] } = {}) {
   }
 
   const movementSystem = createMovementSystem(rapierWorld);
-  const weaponSystem = createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks: 0 });
-  const healthSystem = createHealthSystem({
-    rapierWorld,
-    spawnPoints: [{ x: 0, y: 1, z: 0 }],
-    movementSystem,
-  });
+  const weaponSystem = createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks });
+  const healthSystem = createHealthSystem({ rapierWorld, spawnPoints, movementSystem });
   const combat = {
     resolveFire: weaponSystem.resolveFire,
     applyHit: healthSystem.applyHit,
     tickRespawns: healthSystem.tickRespawns,
   };
   const world = createWorld({ physics: movementSystem, combat });
-  return { world, movementSystem, rapierWorld };
+  return { world, movementSystem, weaponSystem, healthSystem, rapierWorld };
 }
 
 export function addEntity(rig, id, position) {
   rig.world.addEntity(id, { position: { ...position } });
   rig.movementSystem.addCharacter(id, position);
+}
+
+// Rapier's broad-phase only indexes newly-created colliders on the next
+// world.step() -- a hitscan castRay against a collider created this same
+// tick (before any step ran) can miss even though the collider exists at
+// the right position. Priming with one step() (safe here: every body is
+// kinematic, so it has no side effect before any translation is queued)
+// mirrors what main.js does once at real startup, before the game loop
+// starts accepting commands.
+export function primeBroadPhase(rig) {
+  rig.movementSystem.commit();
 }
