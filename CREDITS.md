@@ -16,3 +16,25 @@ By [Quaternius](https://poly.pizza/u/Quaternius), via [Poly Pizza](https://poly.
 
 - **Sci-Fi Sounds** — [Kenney](https://kenney.nl/assets/sci-fi-sounds).
   `laserSmall_000/001/002`, shipped as `gunshot-000/001/002.ogg`.
+
+## Open gaps
+
+Two assets from the armory-loop plan (U5) are not yet sourced: a dedicated
+machine-gun model and a dedicated explosion sample. Both currently ship as
+placeholders built from what's already in the game rather than new binaries —
+per the plan's own stop condition ("if MG asset sourcing fails, ship the
+placeholder and record the gap, don't block the loop on art"):
+
+- **Machine gun** — still the placeholder box `weaponView.js` registers for
+  `'machinegun'`, not a loaded model. A real Quaternius-style GLB (see the
+  Models section above for the pattern) drops in through
+  `weaponView.js`'s existing `setModel(model, transform, 'machinegun')` call
+  — the same seam the pistol model already loads through in `main.js` — with
+  no other wiring changes needed.
+- **Explosion sound** — reuses the existing gunshot samples above, pitched
+  down (see `EXPLOSION_SOUND` in `src/audio/gunshots.js`), the same
+  pitched-placeholder trick the machine gun's own gunshot sound already
+  uses. A real Kenney-style explosion sample drops in by adding its path to
+  the `urls` array `gunshots.js` already loads from (`GUNSHOT_PATHS` in
+  `src/render/modelAssets.js`) and pointing `playExplosion` at it instead of
+  a pitched gunshot buffer.
