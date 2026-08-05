@@ -10,6 +10,7 @@ import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/m
 import { createWeaponSystem } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createPickupSystem } from './sim/pickups.js';
+import { createGrenadeSystem } from './sim/grenades.js';
 import { createBotAI } from './sim/bot/fsm.js';
 import { getActiveBotCount, buildOccupiedPositions } from './shell/botRamp.js';
 import { createInputSampler } from './input/sampler.js';
@@ -99,6 +100,7 @@ const pickupSystem = createPickupSystem({
   pickups: arena.pickups,
   isLocalPlayer: (entity) => entity.id === LOCAL_PLAYER_ID,
 });
+const grenadeSystem = createGrenadeSystem({ rapierWorld: arena.rapierWorld, healthSystem, movementSystem });
 const BOT_COUNT = 4; // v1 target bot count (Success Criteria); tune here during playtest
 // Reinforcements not yet unlocked by the ramp (shell/botRamp.js) sit parked
 // here -- far enough below the arena that no hitscan ray reaches them
@@ -117,6 +119,7 @@ const sim = createSimulation({
   physics: movementSystem,
   combat,
   pickups: pickupSystem,
+  grenades: grenadeSystem,
   gatherCommands: () => {
     const commands = new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]);
     const playerPosition = sim.world.getEntity(LOCAL_PLAYER_ID).position;
@@ -272,6 +275,7 @@ const gameShell = createGameShell({
       movementSystem,
       healthSystem,
       pickupSystem,
+      grenadeSystem,
     });
     // resetMatch repositions every entity in the world, including bots the
     // ramp hadn't unlocked yet -- re-park those so the new match starts the
