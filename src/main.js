@@ -7,8 +7,9 @@ import { createArena } from './arena/arena.js';
 import { selectSpawnPoint } from './arena/spawnPlacement.js';
 import { createSimulation } from './sim/index.js';
 import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/movement.js';
-import { createWeaponSystem, MACHINEGUN_MAX_AMMO } from './sim/weapon.js';
+import { createWeaponSystem } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
+import { createPickupSystem } from './sim/pickups.js';
 import { createBotAI } from './sim/bot/fsm.js';
 import { getActiveBotCount, buildOccupiedPositions } from './shell/botRamp.js';
 import { createInputSampler } from './input/sampler.js';
@@ -22,6 +23,7 @@ import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback
 import { createWeaponView } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
 import { createImpactSystem, shooterIdsThatHit } from './render/impacts.js';
+import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGunshotAudio } from './audio/gunshots.js';
 import { createGameShell } from './shell/states.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
@@ -63,6 +65,7 @@ const damageIndicator = createDamageIndicator(app);
 const weaponView = createWeaponView(camera);
 const tracers = createTracerSystem(scene);
 const impacts = createImpactSystem(scene);
+const pickupMeshes = createPickupMeshes(scene, arena.pickups);
 const gunshots = createGunshotAudio({
   camera,
   scene,
@@ -89,6 +92,13 @@ const combat = {
 };
 
 const LOCAL_PLAYER_ID = 'player';
+// R7: grenade pickups are player-only -- pickups.js has no concept of a
+// local-player id of its own, so this predicate is the seam that decides
+// eligibility without leaking a render/DOM concern into the sim layer.
+const pickupSystem = createPickupSystem({
+  pickups: arena.pickups,
+  isLocalPlayer: (entity) => entity.id === LOCAL_PLAYER_ID,
+});
 const BOT_COUNT = 4; // v1 target bot count (Success Criteria); tune here during playtest
 // Reinforcements not yet unlocked by the ramp (shell/botRamp.js) sit parked
 // here -- far enough below the arena that no hitscan ray reaches them
@@ -106,6 +116,7 @@ let lastRenderState = [];
 const sim = createSimulation({
   physics: movementSystem,
   combat,
+  pickups: pickupSystem,
   gatherCommands: () => {
     const commands = new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]);
     const playerPosition = sim.world.getEntity(LOCAL_PLAYER_ID).position;
@@ -131,17 +142,6 @@ const spawn = selectSpawnPoint(arena.rapierWorld, arena.spawnPoints, {
 occupiedSpawns.push(spawn);
 sim.world.addEntity(LOCAL_PLAYER_ID, { position: { ...spawn } });
 movementSystem.addCharacter(LOCAL_PLAYER_ID, spawn);
-
-// TEMPORARY: U2 debug MG grant -- pickups (U3) don't exist yet, so this is
-// the only way to play-check the machine gun's feel this unit. U3's plan
-// explicitly removes this once a real pickup can grant it instead; grep
-// "U2 debug grant" or DEBUG_GRANT_MACHINEGUN to find it.
-const DEBUG_GRANT_MACHINEGUN = true; // U2 debug grant
-if (DEBUG_GRANT_MACHINEGUN) {
-  const localPlayer = sim.world.getEntity(LOCAL_PLAYER_ID);
-  localPlayer.heldWeapon = 'machinegun';
-  localPlayer.ammo = MACHINEGUN_MAX_AMMO;
-}
 
 const bots = [];
 for (let i = 0; i < BOT_COUNT; i++) {
@@ -266,7 +266,13 @@ const gameShell = createGameShell({
   lockElement: renderer.domElement,
   localPlayerId: LOCAL_PLAYER_ID,
   onRestart: () => {
-    resetMatch(sim.world, { rapierWorld: arena.rapierWorld, spawnPoints: arena.spawnPoints, movementSystem, healthSystem });
+    resetMatch(sim.world, {
+      rapierWorld: arena.rapierWorld,
+      spawnPoints: arena.spawnPoints,
+      movementSystem,
+      healthSystem,
+      pickupSystem,
+    });
     // resetMatch repositions every entity in the world, including bots the
     // ramp hadn't unlocked yet -- re-park those so the new match starts the
     // ramp over instead of carrying over the previous match's bot count.
@@ -524,6 +530,7 @@ const loop = createRenderLoop({
     weaponView.update(delta);
     tracers.update(delta);
     impacts.update(delta);
+    pickupMeshes.update(pickupSystem.getPickupStates());
     hud.update({
       health: playerEntity.health,
       score: playerEntity.score,
