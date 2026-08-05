@@ -3,7 +3,9 @@
 A browser-based 3D shooter: hunt AI bots through a rooms-and-corridors map
 in deathmatch, built with Three.js and Rapier physics. Bots patrol,
 chase, search a last-seen position when they lose sight of you, and
-retreat toward a doorway when hurt.
+retreat toward a doorway when hurt. Each corner room carries its own accent
+color, echoed on a player-only rotating minimap, so you always know where
+you are without giving away anything about the bots.
 
 ## Run locally
 

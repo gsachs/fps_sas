@@ -33,23 +33,27 @@ function splitAroundGaps(from, to, gaps) {
 }
 
 // A wall run along the X axis: fixed z, spanning x in [from, to], split
-// around any doorway gaps.
-function wallAlongX(z, from, to, gaps = []) {
+// around any doorway gaps. spaceId (KTD4) is the room or corridor/spoke id
+// this wall belongs to -- every resulting segment carries it, so a doorway
+// gap never produces an unowned piece.
+function wallAlongX(z, from, to, spaceId, gaps = []) {
   return splitAroundGaps(from, to, gaps).map(([x0, x1]) => ({
     x: (x0 + x1) / 2,
     z,
     halfX: (x1 - x0) / 2,
     halfZ: WALL_THICKNESS,
+    spaceId,
   }));
 }
 
 // A wall run along the Z axis: fixed x, spanning z in [from, to].
-function wallAlongZ(x, from, to, gaps = []) {
+function wallAlongZ(x, from, to, spaceId, gaps = []) {
   return splitAroundGaps(from, to, gaps).map(([z0, z1]) => ({
     x,
     z: (z0 + z1) / 2,
     halfX: WALL_THICKNESS,
     halfZ: (z1 - z0) / 2,
+    spaceId,
   }));
 }
 
@@ -90,6 +94,18 @@ function room(id) {
   const found = ROOMS.find((r) => r.id === id);
   if (!found) throw new Error(`Unknown room id: ${id}`);
   return found;
+}
+
+// The room whose bounds contain a position, or null in a corridor/spoke.
+// Shared by both render consumers (arenaMesh.js's per-room accents,
+// minimap.js's room-cell lookup) so the point-in-room test can't drift
+// between them the way two independently-written copies could (KTD6).
+export function findRoomAt(position, rooms) {
+  return (
+    rooms.find(
+      (r) => Math.abs(position.x - r.x) <= r.halfX && Math.abs(position.z - r.z) <= r.halfZ
+    ) || null
+  );
 }
 
 // One entry per doorway threshold: its centre point, width, and the two
@@ -147,57 +163,57 @@ const central = room('central');
 
 const WALLS = [
   // Corner rooms: two solid outward walls, two inward walls gapped for a doorway.
-  ...wallAlongX(nw.z + nw.halfZ, nw.x - nw.halfX, nw.x + nw.halfX), // nw north, solid
-  ...wallAlongZ(nw.x - nw.halfX, nw.z - nw.halfZ, nw.z + nw.halfZ), // nw west, solid
-  ...wallAlongZ(nw.x + nw.halfX, nw.z - nw.halfZ, nw.z + nw.halfZ, [doorGap('nw-top', nw.z)]), // nw east -> top corridor
-  ...wallAlongX(nw.z - nw.halfZ, nw.x - nw.halfX, nw.x + nw.halfX, [doorGap('nw-left', nw.x)]), // nw south -> left corridor
+  ...wallAlongX(nw.z + nw.halfZ, nw.x - nw.halfX, nw.x + nw.halfX, 'nw'), // nw north, solid
+  ...wallAlongZ(nw.x - nw.halfX, nw.z - nw.halfZ, nw.z + nw.halfZ, 'nw'), // nw west, solid
+  ...wallAlongZ(nw.x + nw.halfX, nw.z - nw.halfZ, nw.z + nw.halfZ, 'nw', [doorGap('nw-top', nw.z)]), // nw east -> top corridor
+  ...wallAlongX(nw.z - nw.halfZ, nw.x - nw.halfX, nw.x + nw.halfX, 'nw', [doorGap('nw-left', nw.x)]), // nw south -> left corridor
 
-  ...wallAlongX(ne.z + ne.halfZ, ne.x - ne.halfX, ne.x + ne.halfX), // ne north, solid
-  ...wallAlongZ(ne.x + ne.halfX, ne.z - ne.halfZ, ne.z + ne.halfZ), // ne east, solid
-  ...wallAlongZ(ne.x - ne.halfX, ne.z - ne.halfZ, ne.z + ne.halfZ, [doorGap('ne-top', ne.z)]), // ne west -> top corridor
-  ...wallAlongX(ne.z - ne.halfZ, ne.x - ne.halfX, ne.x + ne.halfX, [doorGap('ne-right', ne.x)]), // ne south -> right corridor
+  ...wallAlongX(ne.z + ne.halfZ, ne.x - ne.halfX, ne.x + ne.halfX, 'ne'), // ne north, solid
+  ...wallAlongZ(ne.x + ne.halfX, ne.z - ne.halfZ, ne.z + ne.halfZ, 'ne'), // ne east, solid
+  ...wallAlongZ(ne.x - ne.halfX, ne.z - ne.halfZ, ne.z + ne.halfZ, 'ne', [doorGap('ne-top', ne.z)]), // ne west -> top corridor
+  ...wallAlongX(ne.z - ne.halfZ, ne.x - ne.halfX, ne.x + ne.halfX, 'ne', [doorGap('ne-right', ne.x)]), // ne south -> right corridor
 
-  ...wallAlongX(se.z - se.halfZ, se.x - se.halfX, se.x + se.halfX), // se south, solid
-  ...wallAlongZ(se.x + se.halfX, se.z - se.halfZ, se.z + se.halfZ), // se east, solid
-  ...wallAlongX(se.z + se.halfZ, se.x - se.halfX, se.x + se.halfX, [doorGap('se-bottom', se.x)]), // se north -> right corridor
-  ...wallAlongZ(se.x - se.halfX, se.z - se.halfZ, se.z + se.halfZ, [doorGap('se-right', se.z)]), // se west -> bottom corridor
+  ...wallAlongX(se.z - se.halfZ, se.x - se.halfX, se.x + se.halfX, 'se'), // se south, solid
+  ...wallAlongZ(se.x + se.halfX, se.z - se.halfZ, se.z + se.halfZ, 'se'), // se east, solid
+  ...wallAlongX(se.z + se.halfZ, se.x - se.halfX, se.x + se.halfX, 'se', [doorGap('se-bottom', se.x)]), // se north -> right corridor
+  ...wallAlongZ(se.x - se.halfX, se.z - se.halfZ, se.z + se.halfZ, 'se', [doorGap('se-right', se.z)]), // se west -> bottom corridor
 
-  ...wallAlongX(sw.z - sw.halfZ, sw.x - sw.halfX, sw.x + sw.halfX), // sw south, solid
-  ...wallAlongZ(sw.x - sw.halfX, sw.z - sw.halfZ, sw.z + sw.halfZ), // sw west, solid
-  ...wallAlongZ(sw.x + sw.halfX, sw.z - sw.halfZ, sw.z + sw.halfZ, [doorGap('sw-bottom', sw.z)]), // sw east -> bottom corridor
-  ...wallAlongX(sw.z + sw.halfZ, sw.x - sw.halfX, sw.x + sw.halfX, [doorGap('sw-left', sw.x)]), // sw north -> left corridor
+  ...wallAlongX(sw.z - sw.halfZ, sw.x - sw.halfX, sw.x + sw.halfX, 'sw'), // sw south, solid
+  ...wallAlongZ(sw.x - sw.halfX, sw.z - sw.halfZ, sw.z + sw.halfZ, 'sw'), // sw west, solid
+  ...wallAlongZ(sw.x + sw.halfX, sw.z - sw.halfZ, sw.z + sw.halfZ, 'sw', [doorGap('sw-bottom', sw.z)]), // sw east -> bottom corridor
+  ...wallAlongX(sw.z + sw.halfZ, sw.x - sw.halfX, sw.x + sw.halfX, 'sw', [doorGap('sw-left', sw.x)]), // sw north -> left corridor
 
   // Central landmark room: all four walls gapped, one doorway per spoke.
-  ...wallAlongX(central.z + central.halfZ, central.x - central.halfX, central.x + central.halfX, [doorGap('central-north', 0)]),
-  ...wallAlongX(central.z - central.halfZ, central.x - central.halfX, central.x + central.halfX, [doorGap('central-south', 0)]),
-  ...wallAlongZ(central.x + central.halfX, central.z - central.halfZ, central.z + central.halfZ, [doorGap('central-east', 0)]),
-  ...wallAlongZ(central.x - central.halfX, central.z - central.halfZ, central.z + central.halfZ, [doorGap('central-west', 0)]),
+  ...wallAlongX(central.z + central.halfZ, central.x - central.halfX, central.x + central.halfX, 'central', [doorGap('central-north', 0)]),
+  ...wallAlongX(central.z - central.halfZ, central.x - central.halfX, central.x + central.halfX, 'central', [doorGap('central-south', 0)]),
+  ...wallAlongZ(central.x + central.halfX, central.z - central.halfZ, central.z + central.halfZ, 'central', [doorGap('central-east', 0)]),
+  ...wallAlongZ(central.x - central.halfX, central.z - central.halfZ, central.z + central.halfZ, 'central', [doorGap('central-west', 0)]),
 
   // Loop corridors: one solid outward wall, one inward wall gapped for the spoke into the centre.
-  ...wallAlongX(nw.z + DOOR_HALF, nw.x + nw.halfX, ne.x - ne.halfX), // top corridor, outward (north)
-  ...wallAlongX(nw.z - DOOR_HALF, nw.x + nw.halfX, ne.x - ne.halfX, [doorGap('spoke-north-top', 0)]), // top corridor, inward (south) -> north spoke
+  ...wallAlongX(nw.z + DOOR_HALF, nw.x + nw.halfX, ne.x - ne.halfX, 'corridor-top'), // top corridor, outward (north)
+  ...wallAlongX(nw.z - DOOR_HALF, nw.x + nw.halfX, ne.x - ne.halfX, 'corridor-top', [doorGap('spoke-north-top', 0)]), // top corridor, inward (south) -> north spoke
 
-  ...wallAlongZ(ne.x + DOOR_HALF, se.z + se.halfZ, ne.z - ne.halfZ), // right corridor, outward (east)
-  ...wallAlongZ(ne.x - DOOR_HALF, se.z + se.halfZ, ne.z - ne.halfZ, [doorGap('spoke-east-right', 0)]), // right corridor, inward (west) -> east spoke
+  ...wallAlongZ(ne.x + DOOR_HALF, se.z + se.halfZ, ne.z - ne.halfZ, 'corridor-right'), // right corridor, outward (east)
+  ...wallAlongZ(ne.x - DOOR_HALF, se.z + se.halfZ, ne.z - ne.halfZ, 'corridor-right', [doorGap('spoke-east-right', 0)]), // right corridor, inward (west) -> east spoke
 
-  ...wallAlongX(se.z - DOOR_HALF, sw.x + sw.halfX, se.x - se.halfX), // bottom corridor, outward (south)
-  ...wallAlongX(se.z + DOOR_HALF, sw.x + sw.halfX, se.x - se.halfX, [doorGap('spoke-south-bottom', 0)]), // bottom corridor, inward (north) -> south spoke
+  ...wallAlongX(se.z - DOOR_HALF, sw.x + sw.halfX, se.x - se.halfX, 'corridor-bottom'), // bottom corridor, outward (south)
+  ...wallAlongX(se.z + DOOR_HALF, sw.x + sw.halfX, se.x - se.halfX, 'corridor-bottom', [doorGap('spoke-south-bottom', 0)]), // bottom corridor, inward (north) -> south spoke
 
-  ...wallAlongZ(sw.x - DOOR_HALF, sw.z + sw.halfZ, nw.z - nw.halfZ), // left corridor, outward (west)
-  ...wallAlongZ(sw.x + DOOR_HALF, sw.z + sw.halfZ, nw.z - nw.halfZ, [doorGap('spoke-west-left', 0)]), // left corridor, inward (east) -> west spoke
+  ...wallAlongZ(sw.x - DOOR_HALF, sw.z + sw.halfZ, nw.z - nw.halfZ, 'corridor-left'), // left corridor, outward (west)
+  ...wallAlongZ(sw.x + DOOR_HALF, sw.z + sw.halfZ, nw.z - nw.halfZ, 'corridor-left', [doorGap('spoke-west-left', 0)]), // left corridor, inward (east) -> west spoke
 
   // Spokes: two side walls each, open at both ends (room doorway <-> corridor gap).
-  ...wallAlongZ(DOOR_HALF, central.halfZ, nw.z - DOOR_HALF), // north spoke, east side
-  ...wallAlongZ(-DOOR_HALF, central.halfZ, nw.z - DOOR_HALF), // north spoke, west side
+  ...wallAlongZ(DOOR_HALF, central.halfZ, nw.z - DOOR_HALF, 'spoke-north'), // north spoke, east side
+  ...wallAlongZ(-DOOR_HALF, central.halfZ, nw.z - DOOR_HALF, 'spoke-north'), // north spoke, west side
 
-  ...wallAlongZ(DOOR_HALF, -(sw.z - DOOR_HALF), -central.halfZ), // south spoke, east side
-  ...wallAlongZ(-DOOR_HALF, -(sw.z - DOOR_HALF), -central.halfZ), // south spoke, west side
+  ...wallAlongZ(DOOR_HALF, -(sw.z - DOOR_HALF), -central.halfZ, 'spoke-south'), // south spoke, east side
+  ...wallAlongZ(-DOOR_HALF, -(sw.z - DOOR_HALF), -central.halfZ, 'spoke-south'), // south spoke, west side
 
-  ...wallAlongX(DOOR_HALF, central.halfX, ne.x - DOOR_HALF), // east spoke, north side
-  ...wallAlongX(-DOOR_HALF, central.halfX, ne.x - DOOR_HALF), // east spoke, south side
+  ...wallAlongX(DOOR_HALF, central.halfX, ne.x - DOOR_HALF, 'spoke-east'), // east spoke, north side
+  ...wallAlongX(-DOOR_HALF, central.halfX, ne.x - DOOR_HALF, 'spoke-east'), // east spoke, south side
 
-  ...wallAlongX(DOOR_HALF, -(sw.x - DOOR_HALF), -central.halfX), // west spoke, north side
-  ...wallAlongX(-DOOR_HALF, -(sw.x - DOOR_HALF), -central.halfX), // west spoke, south side
+  ...wallAlongX(DOOR_HALF, -(sw.x - DOOR_HALF), -central.halfX, 'spoke-west'), // west spoke, north side
+  ...wallAlongX(-DOOR_HALF, -(sw.x - DOOR_HALF), -central.halfX, 'spoke-west'), // west spoke, south side
 ].map((w) => ({ ...w, halfY: WALL_HEIGHT / 2 }));
 
 export const PILLARS = [
@@ -227,6 +243,25 @@ export const SPAWN_POINTS = [
 // approximation (Dependencies/Assumptions: the map keeps one floor collider,
 // so U5's PARK_POSITION at y=-100 stays clear of it either way).
 export const FLOOR_HALF_SIZE = GRID_OFFSET + CORNER_HALF;
+
+// U1 spike verdict (docs/plans/2026-08-06-001-feat-wayfinding-minimap-plan.md):
+// Okabe-Ito colorblind-safe subset, no blue member (the fog is pale blue --
+// R6). Lives here, not in arenaMesh.js or minimap.js individually, so world
+// accents (KTD3) and the map's room-cell tints (R4) can never disagree about
+// what a room's colour is (KTD6's one-dataset principle). Central stays
+// neutral (R5) and has no entry.
+export const ROOM_ACCENTS = {
+  nw: 0xe69f00,
+  ne: 0xd55e00,
+  se: 0xcc79a7,
+  sw: 0x009e73,
+};
+
+// The neutral material/cell colour for corridors, spokes, and the central
+// room -- shared for the same reason as ROOM_ACCENTS above (arenaMesh.js's
+// wall material and minimap.js's neutral cell tint must agree, not carry two
+// independently-hardcoded copies of the same value).
+export const NEUTRAL_ACCENT_COLOR = 0xa89f8a;
 
 export const LAYOUT = {
   rooms: ROOMS,

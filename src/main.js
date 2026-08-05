@@ -17,6 +17,7 @@ import { loadCharacterModel, loadPropModel, disposeObject3D } from './render/mod
 import { BOT_MODEL, WEAPON_MODEL, GUNSHOT_PATHS } from './render/modelAssets.js';
 import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
+import { createMinimap } from './ui/minimap.js';
 import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
@@ -57,6 +58,7 @@ scene.add(buildArenaMeshes(arena));
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 
 const hud = createHud(app);
+const minimap = createMinimap(app, arena);
 const damageIndicator = createDamageIndicator(app);
 const weaponView = createWeaponView(camera);
 const tracers = createTracerSystem(scene);
@@ -498,6 +500,10 @@ const loop = createRenderLoop({
       dead: playerEntity.dead,
       respawnSecondsRemaining: healthSystem.getRespawnTicksRemaining(LOCAL_PLAYER_ID) * sim.dt,
     });
+    // Latest non-interpolated transform, same as the camera above (KTD2) --
+    // the map should react exactly as fast as aiming does, not lag a frame
+    // behind it.
+    minimap.update(playerEntity.latest.position, playerEntity.latest.yaw);
 
     const matchResult = checkMatchEnd(sim.world);
     if (matchResult.ended) {

@@ -6,6 +6,38 @@ import { EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from '../../src/sim/movement.js';
 
 await RAPIER.init();
 
+describe('layout: wall ownership (KTD4)', () => {
+  // Union of every id a wall could legitimately belong to: every room, plus
+  // every corridor/spoke space named in a doorway's connects list.
+  const SPACE_IDS = new Set([...ROOMS.map((r) => r.id), ...DOORWAYS.flatMap((d) => d.connects)]);
+  const ROOM_IDS = new Set(ROOMS.map((r) => r.id));
+
+  function roomContaining(x, z) {
+    return ROOMS.find((r) => Math.abs(x - r.x) <= r.halfX && Math.abs(z - r.z) <= r.halfZ);
+  }
+
+  it('no wall entry is unowned, and every spaceId references a real room or corridor/spoke space', () => {
+    for (const wall of LAYOUT.walls) {
+      expect(wall.spaceId).toBeTruthy();
+      expect(SPACE_IDS.has(wall.spaceId)).toBe(true);
+    }
+  });
+
+  it('every wall sitting on a room boundary carries that room\'s own id', () => {
+    for (const wall of LAYOUT.walls) {
+      const owner = roomContaining(wall.x, wall.z);
+      if (owner) expect(wall.spaceId).toBe(owner.id);
+    }
+  });
+
+  it('every corridor/spoke wall (outside all room boundaries) carries a non-room space id', () => {
+    for (const wall of LAYOUT.walls) {
+      const owner = roomContaining(wall.x, wall.z);
+      if (!owner) expect(ROOM_IDS.has(wall.spaceId)).toBe(false);
+    }
+  });
+});
+
 describe('layout: doorways (KTD9)', () => {
   it('every doorway is at least 2 units wide', () => {
     for (const doorway of DOORWAYS) {

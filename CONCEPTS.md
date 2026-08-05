@@ -30,12 +30,29 @@ A distinct, walled space in the arena — four corner rooms and one central land
 ### Doorway
 A gap cut into a room or corridor wall where two spaces connect — the only points where a Bot or player can cross between them. Every doorway is wide enough to pass through without the character controller snagging, and every room has at least two, so no space is a dead end a Bot or player can get trapped in.
 
+### Minimap
+The player-only, always-on corner overlay showing the whole arena's layout and the player's own position and facing — never any other entity, in any state. It rotates player-up (the player's facing always points to the top) rather than staying fixed-north, so reading it never costs a mental rotation. The rotation pivots on the arena's own fixed center, not the player — the whole layout spins in place rather than panning to re-center on them, which is what lets a single circular frame keep the entire map visible at every rotation angle. The player's own marker is the one piece that doesn't spin with the layout: its position moves to track them, but its shape always points up.
+
+### Room Accent
+The single accent color a corner Room owns, carried in the world through tinted wall/pillar surfaces plus trim strips at doorway thresholds — never a light, since a real per-room light would bleed through this arena's open-topped walls — and by the matching cell tint on the minimap. World and map share this one color language so naming your location is a glance, not a read. The central Room stays neutral and reads as the landmark reference. Accents live within the existing clean style: no texture pass, no geometry or collider change. Enemy information never rides on wayfinding surfaces.
+
+## Combat & Items
+
+### Armory Loop
+The room-control incentive created by weapons living on the map as respawning pickups: the machine gun spawns in the central landmark room, grenade pickups in corner rooms, and taken pickups return after a delay — so knowing and holding spawn rooms stays valuable all match. Bots join the loop only opportunistically (a bot takes the machine gun when its path crosses it); grenades are player-only.
+
+### Gun Slot & Grenade Pocket
+The loadout model: one gun slot (infinite pistol by default; a picked-up machine gun auto-equips and auto-reverts to the pistol when its ammo runs dry — no switch input exists) plus a separate grenade pocket thrown with its own key. The two never share a slot, so a player can hold the machine gun and grenades simultaneously.
+
 ## Match & Pacing
 
 ### Hunt-and-Ambush Pacing
 The target match rhythm for the arena overhaul: engagements are deliberately less frequent than constant contact, start at closer range with partial information, and reward knowing the map — stalking, ambushing at doorways, disengaging to reposition. Chosen over the original arena's constant contact, which kept the player permanently in a fight. Pacing is tuned through contact-density knobs (awareness ranges, spawn placement, bot ramp, kill target), not by making individual bots harder.
 
 ## Presentation & Feedback
+
+### Killfeed
+The under-score feed narrating every kill as killer ▸ victim with a weapon glyph — the player's kills gold, their death red, blast multi-kills stacking as one burst. It carries kill events only, never positions or health: the match becomes readable without the hunt-and-ambush partial-information pillar giving anything away. Entries dim, fade, and cap; the feed observes scoring and never affects it.
 
 ### Cosmetic Recoil
 Weapon kick that animates the viewmodel and the camera but never moves the aim point — shots still land where the crosshair was when the trigger was pulled. The distinction matters because real recoil (aim that climbs and must be fought back down) would be a gameplay change: it reaches into hitscan resolution and invalidates the tuned Bot aim spread and reaction delay. Cosmetic Recoil stays entirely in the render layer, so weapon feel can be tuned freely without re-tuning difficulty.
