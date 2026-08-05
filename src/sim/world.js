@@ -37,7 +37,7 @@ function createEntity(id, overrides = {}) {
   };
 }
 
-export function createWorld({ physics, combat } = {}) {
+export function createWorld({ physics, combat, pickups } = {}) {
   const entities = new Map();
   const prevTransforms = new Map();
 
@@ -95,6 +95,15 @@ export function createWorld({ physics, combat } = {}) {
 
       entity.animHint = command.moveX !== 0 || command.moveZ !== 0 ? 'moving' : 'idle';
 
+      // Collection reads this tick's actual (post-movement) position, and
+      // runs before combat so an entity that just picked up the MG this
+      // tick can fire it the same tick. Dead/parked entities never reach
+      // here at all -- they have no command in commandsByEntityId, or were
+      // skipped by the dead-entity guard above -- which is what excludes
+      // them from collection "by construction" (KTD7), not a liveness
+      // check inside pickups.js itself.
+      if (pickups) pickups.tryCollect(entity);
+
       if (combat) {
         const fireResult = combat.resolveFire(entity, command);
         if (fireResult.fired) {
@@ -107,7 +116,23 @@ export function createWorld({ physics, combat } = {}) {
         }
         if (fireResult.hitEntityId) {
           const hitEvent = combat.applyHit(entityAccessor, fireResult.hitEntityId, id, fireResult.damage);
-          if (hitEvent) events.push({ type: 'hit', ...hitEvent });
+          if (hitEvent) {
+            events.push({ type: 'hit', ...hitEvent });
+            // R13: death strips the carrier's machine gun and ammo -- bot or
+            // player. The grenade pocket (grenadeCount) is untouched here,
+            // it survives death, and so does the taken pickup's own respawn
+            // countdown (KD6): that countdown started the instant the
+            // pickup was taken and runs independent of what later happens
+            // to the taker, so death must never reach into pickups.js at
+            // all, only reset the dying entity's own weapon fields.
+            if (hitEvent.killed) {
+              const target = entityAccessor.getEntity(hitEvent.targetId);
+              if (target) {
+                target.heldWeapon = 'pistol';
+                target.ammo = null;
+              }
+            }
+          }
         }
       }
     }
@@ -118,6 +143,7 @@ export function createWorld({ physics, combat } = {}) {
         .map((entity) => entity.position);
       combat.tickRespawns(entityAccessor, occupiedPositions);
     }
+    if (pickups) pickups.tick();
     return events;
   }
 

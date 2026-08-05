@@ -15,6 +15,21 @@ function makeEntity(id, score) {
   return { id, score, health: 100, dead: false, position: { x: 0, y: 1, z: 0 }, animHint: 'idle' };
 }
 
+function makeArmedEntity(id, overrides = {}) {
+  return {
+    id,
+    score: 3,
+    health: 40,
+    dead: false,
+    position: { x: 1, y: 1, z: 1 },
+    animHint: 'idle',
+    heldWeapon: 'machinegun',
+    ammo: 12,
+    grenadeCount: 2,
+    ...overrides,
+  };
+}
+
 function createFakeEntityAccessor(entities) {
   const map = new Map(entities.map((e) => [e.id, e]));
   return { getEntity: (id) => map.get(id), allEntities: () => Array.from(map.values()) };
@@ -81,5 +96,46 @@ describe('resetMatch', () => {
     // The second entity's placement must have seen the first as occupied --
     // otherwise both would land on the same (first) spawn point.
     expect(teleportCalls[0].pos).not.toEqual(teleportCalls[1].pos);
+  });
+
+  // AE4/R8 (U3's slice): every entity reverts to the pistol with an empty
+  // grenade pocket, and every pickup is restored -- asserted through
+  // resetMatch directly, extended with a fake pickupSystem the same way the
+  // existing tests fake movementSystem/healthSystem.
+  it('reverts every entity to the pistol, empties the grenade pocket, and restores all pickups (AE4)', () => {
+    const entities = [makeArmedEntity('a'), makeArmedEntity('b', { heldWeapon: 'pistol', ammo: null, grenadeCount: 3 })];
+    const accessor = createFakeEntityAccessor(entities);
+    const rapierWorld = buildFlatRapierWorld();
+    const spawnPoints = [
+      { x: 10, y: 1, z: 10 },
+      { x: -10, y: 1, z: -10 },
+    ];
+    const movementSystem = { teleport: () => {} };
+    const healthSystem = { clearRespawnTimer: () => {} };
+    let resetAllCalls = 0;
+    const pickupSystem = { resetAll: () => { resetAllCalls += 1; } };
+
+    resetMatch(accessor, { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem });
+
+    expect(resetAllCalls).toBe(1); // called once, not per-entity
+    for (const entity of entities) {
+      expect(entity.heldWeapon).toBe('pistol');
+      expect(entity.ammo).toBeNull();
+      expect(entity.grenadeCount).toBe(0);
+    }
+  });
+
+  it('still resets health/dead/score/position without a pickupSystem (back-compat)', () => {
+    const entities = [makeEntity('a', 5)];
+    const accessor = createFakeEntityAccessor(entities);
+    const rapierWorld = buildFlatRapierWorld();
+    const spawnPoints = [{ x: 10, y: 1, z: 10 }];
+    const movementSystem = { teleport: () => {} };
+    const healthSystem = { clearRespawnTimer: () => {} };
+
+    expect(() =>
+      resetMatch(accessor, { rapierWorld, spawnPoints, movementSystem, healthSystem })
+    ).not.toThrow();
+    expect(entities[0].score).toBe(0);
   });
 });

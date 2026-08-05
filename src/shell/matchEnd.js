@@ -20,7 +20,16 @@ export function checkMatchEnd(entityAccessor) {
 // turn, also gives the whole set mutual invisibility for free -- line of
 // sight is symmetric, so "the new entity can't see anyone placed so far"
 // and "no one placed so far can see the new entity" are the same fact.
-export function resetMatch(entityAccessor, { rapierWorld, spawnPoints, movementSystem, healthSystem }) {
+//
+// R8: also restores the armory economy -- every pickup returns (via
+// pickupSystem, optional so callers that predate U3 keep working) and every
+// entity reverts to the pistol with an empty grenade pocket.
+export function resetMatch(
+  entityAccessor,
+  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem }
+) {
+  if (pickupSystem) pickupSystem.resetAll();
+
   const assignedSpawns = [];
   for (const entity of entityAccessor.allEntities()) {
     const spawn = selectSpawnPoint(rapierWorld, spawnPoints, {
@@ -34,6 +43,9 @@ export function resetMatch(entityAccessor, { rapierWorld, spawnPoints, movementS
     entity.dead = false;
     entity.animHint = 'idle';
     entity.score = 0;
+    entity.heldWeapon = 'pistol';
+    entity.ammo = null;
+    entity.grenadeCount = 0;
 
     movementSystem.teleport(entity.id, spawn);
     healthSystem.clearRespawnTimer(entity.id);
