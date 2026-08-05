@@ -25,6 +25,7 @@ import { createWeaponView } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
 import { createImpactSystem, shooterIdsThatHit } from './render/impacts.js';
 import { createPickupMeshes } from './render/pickupMeshes.js';
+import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio } from './audio/gunshots.js';
 import { createGameShell } from './shell/states.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
@@ -67,6 +68,7 @@ const weaponView = createWeaponView(camera);
 const tracers = createTracerSystem(scene);
 const impacts = createImpactSystem(scene);
 const pickupMeshes = createPickupMeshes(scene, arena.pickups);
+const grenadeFX = createGrenadeFX(scene);
 const gunshots = createGunshotAudio({
   camera,
   scene,
@@ -521,6 +523,14 @@ const loop = createRenderLoop({
         damageIndicator.show(angle);
         if (debugMode) debugCounters.damageIndicatorShows += 1;
       }
+      // R11: visible burst plus light flash, and an audible blast -- U4's
+      // grenades.js pushes exactly one 'explosion' event per detonation, so
+      // "once per blast" falls out of iterating events once rather than
+      // needing dedup logic here.
+      if (event.type === 'explosion') {
+        grenadeFX.spawnExplosion(event.position);
+        gunshots.playExplosion(event.position);
+      }
     }
 
     // Layered on top of the simulation's pitch, which was applied above and
@@ -535,6 +545,8 @@ const loop = createRenderLoop({
     tracers.update(delta);
     impacts.update(delta);
     pickupMeshes.update(pickupSystem.getPickupStates());
+    grenadeFX.syncInFlight(grenadeSystem.getInFlightGrenades());
+    grenadeFX.update(delta);
     hud.update({
       health: playerEntity.health,
       score: playerEntity.score,

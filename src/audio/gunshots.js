@@ -27,6 +27,22 @@ export const WEAPON_SOUND_SETS = {
 };
 const DEFAULT_SOUND_SET_ID = 'pistol'; // unheld/unknown weapon ids fall back here
 
+// KTD8: the explosion is not a weapon set (nothing ever "holds" it), so it
+// gets its own sibling constant rather than a WEAPON_SOUND_SETS entry --
+// pickVariantForSet's per-set cursor works the same either way, keyed by
+// this id. Pitched well below the pistol's 1.0 (and the MG's 1.6) so the
+// same shared gunshot buffers read as a boom, not a shot -- the identical
+// pitched-placeholder trick U2 validated for the MG, applied here until a
+// real explosion sample lands (see CREDITS.md).
+const EXPLOSION_SOUND_SET_ID = 'explosion';
+export const EXPLOSION_SOUND = { playbackRate: 0.45 };
+// R11: audible information for everyone who hears it, and farther-reaching
+// than a gunshot -- louder than REMOTE_SHOT_VOLUME (0.8) and a wider linear
+// falloff than gunshots' REFERENCE_DISTANCE/MAX_DISTANCE (5/70).
+const EXPLOSION_VOLUME = 1.4;
+const EXPLOSION_REFERENCE_DISTANCE = 12;
+const EXPLOSION_MAX_DISTANCE = 140;
+
 // Which named set a weapon id's shot plays through -- unknown ids (or none,
 // e.g. a caller that hasn't resolved a shooter yet) fall back to the pistol
 // set rather than throwing, matching the "never pass null, degrade
@@ -78,6 +94,10 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
   let buffers = [];
   let localVoice = null;
   const positionalVoices = [];
+  // KTD8: unpooled -- one dedicated voice, constructed once and never cycled
+  // through positionalVoices, so an explosion is never silently dropped or
+  // stolen by gunfire competing for the same pool.
+  let explosionVoice = null;
   const cursorsBySetId = new Map(); // KTD8: each named sound set cycles its own don't-repeat pointer
   let voiceCursor = 0;
   // Browsers refuse to start an audio context outside a user gesture, so
@@ -112,6 +132,12 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
       scene.add(voice);
       positionalVoices.push(voice);
     }
+
+    explosionVoice = new THREE.PositionalAudio(listener);
+    explosionVoice.setDistanceModel('linear');
+    explosionVoice.setRefDistance(EXPLOSION_REFERENCE_DISTANCE);
+    explosionVoice.setMaxDistance(EXPLOSION_MAX_DISTANCE);
+    scene.add(explosionVoice);
   });
 
   function pickBuffer(setId) {
@@ -145,6 +171,20 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
     voice.play();
   }
 
+  // KTD8: the explosion's one-shot positional buffer -- no weaponId, since
+  // nothing holds an explosion; position is the blast center (grenades.js's
+  // event already carries it, so no owner lookup is needed the way playAt's
+  // weaponId is).
+  function playExplosion(position) {
+    if (!explosionVoice) return;
+    explosionVoice.position.set(position.x, position.y, position.z);
+    if (explosionVoice.isPlaying) explosionVoice.stop();
+    explosionVoice.setBuffer(pickBuffer(EXPLOSION_SOUND_SET_ID));
+    explosionVoice.setPlaybackRate(EXPLOSION_SOUND.playbackRate);
+    explosionVoice.setVolume(EXPLOSION_VOLUME);
+    explosionVoice.play();
+  }
+
   // Call from a real user gesture -- the click-to-play/resume click.
   function unlock() {
     unlocked = true;
@@ -160,5 +200,5 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
     if (action === 'suspend') listener.context.suspend().catch(() => {});
   }
 
-  return { playLocal, playAt, unlock, setRunning };
+  return { playLocal, playAt, playExplosion, unlock, setRunning };
 }
