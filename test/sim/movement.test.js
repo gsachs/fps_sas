@@ -30,6 +30,47 @@ function buildTestRig({ obstacles = [] } = {}) {
   return { world, movement };
 }
 
+describe('movement: strafe direction matches the rendered camera (regression)', () => {
+  // The camera's world-forward direction is entityMesh.js's
+  // computeCameraYaw(simYaw) = simYaw + PI fed into a standard Three.js
+  // Y-axis rotation of the camera's local forward (0,0,-1): working that
+  // through algebraically gives (sin(simYaw), cos(simYaw)) -- exactly this
+  // module's own `forward` vector, confirmed live via the camera and
+  // matching what the hitscan/aim already relies on. The camera's *visual
+  // right* (what a player watching the screen would call "right") is
+  // forward x up in this Y-up, right-handed scene: (-cos(simYaw), sin(simYaw)).
+  // Verified directly against the real rendered camera in a headless
+  // browser before writing this (window.__debugCameraForward()) -- a
+  // strafe-direction bug like this is exactly the kind that reads fine on
+  // a code review pass (the variable is named `right`) and only shows up
+  // against the actual screen, which is how it shipped and was found live.
+  function visualRight(yaw) {
+    return { x: -Math.cos(yaw), z: Math.sin(yaw) };
+  }
+
+  it('pressing the strafe-right key (D) moves the player toward the camera-visual-right direction, not left', () => {
+    const { world, movement } = buildTestRig();
+    world.addEntity('player', { position: { x: 0, y: 1, z: 0 } });
+    movement.addCharacter('player', { x: 0, y: 1, z: 0 });
+
+    const yaw = 0;
+    const command = createCommand({ moveX: 1, moveZ: 0, yaw }); // D held, facing sim yaw 0
+    for (let i = 0; i < 30; i++) {
+      world.step(new Map([['player', command]]), 1 / 60);
+    }
+
+    const position = world.getEntity('player').position;
+    const moved = { x: position.x, z: position.z }; // started at the origin
+    const distance = Math.hypot(moved.x, moved.z);
+    expect(distance).toBeGreaterThan(0.1); // sanity: it actually moved
+    const normalizedMoved = { x: moved.x / distance, z: moved.z / distance };
+
+    const expectedRight = visualRight(yaw);
+    const dot = normalizedMoved.x * expectedRight.x + normalizedMoved.z * expectedRight.z;
+    expect(dot).toBeGreaterThan(0.9); // moved toward camera-visual-right, not away from it
+  });
+});
+
 describe('movement: wall collision (AE3)', () => {
   it('stops at the wall surface instead of passing through', () => {
     const { world, movement } = buildTestRig({

@@ -1,7 +1,9 @@
 # FPS Arena
 
-A browser-based 3D arena shooter: fight AI bots in deathmatch, built with
-Three.js and Rapier physics.
+A browser-based 3D shooter: hunt AI bots through a rooms-and-corridors map
+in deathmatch, built with Three.js and Rapier physics. Bots patrol,
+chase, search a last-seen position when they lose sight of you, and
+retreat toward a doorway when hurt.
 
 ## Run locally
 

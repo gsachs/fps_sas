@@ -73,7 +73,13 @@ export function createMovementSystem(rapierWorld) {
 
     const yaw = command.yaw;
     const forward = { x: Math.sin(yaw), z: Math.cos(yaw) };
-    const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+    // Camera-visual right (forward x up, in this Y-up right-handed scene),
+    // not just "whichever perpendicular" -- the earlier (cos, -sin) form
+    // was the camera's visual *left*, so strafe-right (D) moved the player
+    // opposite their own screen (regression, found live). fsm.js's bot
+    // command-encoding must keep this exact same basis or bot movement
+    // desyncs from its intended world-space direction.
+    const right = { x: -Math.cos(yaw), z: Math.sin(yaw) };
     const moveX = forward.x * command.moveZ + right.x * command.moveX;
     const moveZ = forward.z * command.moveZ + right.z * command.moveX;
 

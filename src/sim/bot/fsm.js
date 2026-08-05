@@ -321,11 +321,13 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     }
 
     // Command expresses movement relative to facing (movement.js: forward =
-    // (sin(yaw), cos(yaw)), right = (cos(yaw), -sin(yaw))); project the
-    // world-space moveDirection onto that orthonormal basis to recover
-    // yaw-relative moveZ/moveX.
+    // (sin(yaw), cos(yaw)), right = (-cos(yaw), sin(yaw)) -- camera-visual
+    // right, not just any perpendicular; must match movement.js's basis
+    // exactly or a bot's intended world-space direction desyncs on decode);
+    // project the world-space moveDirection onto that orthonormal basis to
+    // recover yaw-relative moveZ/moveX.
     const forward = { x: Math.sin(yaw), z: Math.cos(yaw) };
-    const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+    const right = { x: -Math.cos(yaw), z: Math.sin(yaw) };
     const moveZ = moveDirection.x * forward.x + moveDirection.z * forward.z;
     const moveX = moveDirection.x * right.x + moveDirection.z * right.z;
 
