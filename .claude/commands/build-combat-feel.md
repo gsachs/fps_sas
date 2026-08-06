@@ -31,7 +31,7 @@ These hold for every group. Violating one is a failed run, not a tradeoff.
 - **Never change `src/arena/arena.js`.** It owns every Rapier collider. Visuals read from it; they do not alter it.
 - **Keep the placeholder fallback.** A failed asset load must still render placeholder geometry and never block startup (R18).
 - **`npm test` passes before you stop.** Full suite, not the files you touched.
-- **Credit every new asset in `CREDITS.md`** with source and license before you finish. Existing assets are CC BY 3.0 — attribution is required.
+- **Credit every new asset in `CREDITS.md`** with source and license before you finish. Existing assets are CC0 — no attribution required, but keep the source links; credit new assets under whatever license they actually carry.
 - **Do not commit, branch, or push.** Leave the working tree dirty for review.
 
 ## Known landmines
