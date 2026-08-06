@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { disposeObject3D, loadCharacterModel, loadPropModel } from '../../src/render/models.js';
+import { DEFAULT_INIT_TIMEOUT_MS } from '../../src/shell/initTimeout.js';
 
 // No URL scheme this loader can resolve -- fails fast and deterministically
 // (GLTFLoader's fetch rejects synchronously with "Failed to parse URL"),
@@ -82,6 +83,56 @@ describe('loadGltf cache (U14: a failed load must not be cached forever)', () =>
     const thirdResult = await loadPropModel(url, { onError });
     expect(load).toHaveBeenCalledTimes(2);
     expect(thirdResult).toEqual({ scene: clonedScene, loaded: true });
+
+    vi.doUnmock('three/addons/loaders/GLTFLoader.js');
+    vi.resetModules();
+  });
+});
+
+describe('loadGltf timeout (U29: a load that never settles must not hang forever)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('times out to the failure sentinel, calls onError, and still lets a later call retry', async () => {
+    // Isolate this test's module graph, same rationale as the U14 test above.
+    vi.resetModules();
+    vi.useFakeTimers();
+
+    const load = vi.fn();
+    vi.doMock('three/addons/loaders/GLTFLoader.js', () => ({
+      GLTFLoader: vi.fn().mockImplementation(() => ({ load })),
+    }));
+
+    const { loadPropModel } = await import('../../src/render/models.js');
+    const url = 'stalled-model.glb';
+    const onError = vi.fn();
+
+    // First call: the underlying loader never calls back at all -- neither
+    // onLoad nor onError -- the stalled-connection case this test targets.
+    load.mockImplementationOnce(() => {});
+    const firstResultPromise = loadPropModel(url, { onError });
+    await vi.advanceTimersByTimeAsync(DEFAULT_INIT_TIMEOUT_MS);
+    const firstResult = await firstResultPromise;
+
+    expect(firstResult).toEqual({ scene: null, loaded: false });
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    // Second call, same URL: the underlying loader now succeeds. A cache
+    // that keeps the timed-out (never-settling) promise forever would never
+    // call `load` again and would just hang or replay the timeout.
+    const clonedScene = { cloned: true };
+    const scene = { clone: () => clonedScene };
+    load.mockImplementationOnce((_url, onLoad) => {
+      onLoad({ scene, animations: [] });
+    });
+    const secondResultPromise = loadPropModel(url, { onError });
+    await vi.advanceTimersByTimeAsync(0);
+    const secondResult = await secondResultPromise;
+
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(secondResult).toEqual({ scene: clonedScene, loaded: true });
+    expect(onError).toHaveBeenCalledTimes(1);
 
     vi.doUnmock('three/addons/loaders/GLTFLoader.js');
     vi.resetModules();

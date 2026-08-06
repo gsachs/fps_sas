@@ -1,5 +1,6 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js';
+import { raceInitWithTimeout } from '../shell/initTimeout.js';
 
 // Loads a GLTF model, caching the parsed result so multiple instances
 // (e.g. several bots) clone cheaply via SkeletonUtils rather than
@@ -8,6 +9,13 @@ import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js'
 // successful load is cached: a failure is evicted immediately (U14) so a
 // transient error (network blip, asset briefly unavailable) gets retried on
 // the next call instead of failing the same URL for the rest of the session.
+// U29: a stalled connection calls neither GLTFLoader's onLoad nor its
+// onError, so the raw load promise would sit pending forever -- U14's
+// eviction .catch never runs (it only runs on rejection) and no retry is
+// ever possible. Racing the load against the same timeout used for RAPIER's
+// init (raceInitWithTimeout) turns "never settles" into a rejection, which
+// then flows through the existing eviction .catch below exactly like any
+// other load error.
 const loader = new GLTFLoader();
 const gltfCache = new Map(); // url -> Promise<GLTF>
 
@@ -15,9 +23,12 @@ function loadGltf(url) {
   if (!gltfCache.has(url)) {
     gltfCache.set(
       url,
-      new Promise((resolve, reject) => {
-        loader.load(url, resolve, undefined, reject);
-      }).catch((error) => {
+      raceInitWithTimeout(
+        () =>
+          new Promise((resolve, reject) => {
+            loader.load(url, resolve, undefined, reject);
+          })
+      ).catch((error) => {
         // Never cache a failure: a transient error (network blip, asset
         // briefly unavailable) shouldn't doom every later request for this
         // URL for the rest of the session. Evict so the next call retries.
