@@ -15,6 +15,7 @@ function buildCollaborators(overrides = {}) {
     bots: [],
     tracers: { spawn: vi.fn() },
     impacts: { spawn: vi.fn() },
+    decals: { spawnFromFireEvent: vi.fn() },
     sim: { world: { getEntity: () => undefined } },
     hud: { flashCrosshair: vi.fn() },
     killfeed: { addKill: vi.fn() },
@@ -39,7 +40,7 @@ describe('applyFrameEvents', () => {
     expect(collaborators.gunshots.playAt).not.toHaveBeenCalled();
   });
 
-  it("a 'fire' event from a bot spawns a tracer/impact and calls gunshots.playAt(), not playLocal()", () => {
+  it("a 'fire' event from a bot spawns a tracer/impact/decal and calls gunshots.playAt(), not playLocal()", () => {
     const collaborators = buildCollaborators({
       sim: { world: { getEntity: () => ({ heldWeapon: 'machinegun' }) } },
     });
@@ -51,8 +52,27 @@ describe('applyFrameEvents', () => {
 
     expect(collaborators.tracers.spawn).toHaveBeenCalledWith(origin, endPoint);
     expect(collaborators.impacts.spawn).toHaveBeenCalledWith(endPoint, 'surface');
+    expect(collaborators.decals.spawnFromFireEvent).toHaveBeenCalledWith(origin, endPoint);
     expect(collaborators.gunshots.playAt).toHaveBeenCalledWith(origin, 'machinegun');
     expect(collaborators.gunshots.playLocal).not.toHaveBeenCalled();
+  });
+
+  // KTD2: a shot that already landed on an entity this tick is covered by
+  // impacts.js's 'body' spark -- the arena raycast is skipped entirely
+  // rather than risk landing a decal on whatever's behind the target.
+  it("a 'fire' event whose shooter also landed a 'hit' this tick does not raycast for a decal", () => {
+    const collaborators = buildCollaborators();
+    const origin = { x: 0, y: 0, z: 0 };
+    const endPoint = { x: 1, y: 0, z: 1 };
+    const events = [
+      { type: 'fire', shooterId: 'bot0', origin, endPoint },
+      { type: 'hit', shooterId: 'bot0', targetId: 'player' },
+    ];
+
+    applyFrameEvents(events, collaborators);
+
+    expect(collaborators.impacts.spawn).toHaveBeenCalledWith(endPoint, 'body');
+    expect(collaborators.decals.spawnFromFireEvent).not.toHaveBeenCalled();
   });
 
   it("a 'hit' event calls killfeed.addKill()", () => {

@@ -7,7 +7,22 @@ import { shooterIdsThatHit } from './impacts.js';
 // pulling in main.js's entire composition-root state.
 export function applyFrameEvents(
   events,
-  { weaponView, gunshots, debugMode, debugCounters, bots, tracers, impacts, sim, hud, killfeed, playerEntity, damageIndicator, grenadeFX }
+  {
+    weaponView,
+    gunshots,
+    debugMode,
+    debugCounters,
+    bots,
+    tracers,
+    impacts,
+    decals,
+    sim,
+    hud,
+    killfeed,
+    playerEntity,
+    damageIndicator,
+    grenadeFX,
+  }
 ) {
   // Resolved up front because the impact spark's colour depends on whether
   // the shot landed on someone, and the 'hit' event that says so is pushed
@@ -29,7 +44,13 @@ export function applyFrameEvents(
     if (event.type === 'fire') {
       bots.find((b) => b.id === event.shooterId)?.animatedCharacter?.playFireReaction();
       tracers.spawn(event.origin, event.endPoint);
-      impacts.spawn(event.endPoint, landedShooters.has(event.shooterId) ? 'body' : 'surface');
+      const landedOnEntity = landedShooters.has(event.shooterId);
+      impacts.spawn(event.endPoint, landedOnEntity ? 'body' : 'surface');
+      // KTD2: decals mark world surfaces only -- a shot that landed on an
+      // entity this tick is already covered by the 'body' impact spark
+      // above, so skip the arena raycast entirely rather than let it
+      // (possibly) land a decal on whatever's directly behind the target.
+      if (!landedOnEntity) decals.spawnFromFireEvent(event.origin, event.endPoint);
       // event.origin is the shooter's own eye position, so it doubles as
       // where the shot should be heard from.
       if (event.shooterId !== LOCAL_PLAYER_ID) {

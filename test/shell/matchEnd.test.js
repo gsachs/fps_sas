@@ -144,6 +144,26 @@ describe('resetMatch', () => {
     expect(resetAllCalls).toBe(1);
   });
 
+  // U4/R5: decals persist through a match under a cap, but a fresh match
+  // must open with a clean surface -- same rationale/pattern as
+  // killfeed/pickupSystem/grenadeSystem above, exercised through the real
+  // reset path (not a direct decals.resetAll() call) so a wiring regression
+  // of the killfeed-bug shape would be caught here too.
+  it('clears the decal pool on restart', () => {
+    const entities = [makeEntity('a', 0)];
+    const accessor = createFakeEntityAccessor(entities);
+    const rapierWorld = buildFlatRapierWorld();
+    const spawnPoints = [{ x: 10, y: 1, z: 10 }];
+    const movementSystem = { teleport: () => {} };
+    const healthSystem = { clearRespawnTimer: () => {} };
+    let resetAllCalls = 0;
+    const decals = { resetAll: () => { resetAllCalls += 1; } };
+
+    resetMatch(accessor, { rapierWorld, spawnPoints, movementSystem, healthSystem, decals });
+
+    expect(resetAllCalls).toBe(1);
+  });
+
   it('still resets health/dead/score/position without a pickupSystem (back-compat)', () => {
     const entities = [makeEntity('a', 5)];
     const accessor = createFakeEntityAccessor(entities);

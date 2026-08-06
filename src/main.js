@@ -27,6 +27,7 @@ import { createDamageIndicator } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
 import { createImpactSystem } from './render/impacts.js';
+import { createDecalSystem } from './render/decals.js';
 import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio } from './audio/gunshots.js';
@@ -82,7 +83,12 @@ const { scene, camera } = createScene({ aspect: window.innerWidth / window.inner
 const postfx = createPostFX({ renderer, scene, camera, width: window.innerWidth, height: window.innerHeight });
 
 const arena = createArena();
-scene.add(buildArenaMeshes(arena));
+// Captured (not just added) so the decal system below has a target group to
+// raycast against -- raycasting the whole scene instead would also hit
+// bots, the weapon viewmodel, tracers, impacts, pickups, and decals
+// themselves, none of which should ever be decal-raycast targets.
+const arenaMeshes = buildArenaMeshes(arena);
+scene.add(arenaMeshes);
 
 // BASE_URL-relative, not a hard-coded leading slash: this must resolve
 // correctly when deployed under a subpath (e.g. a GitHub Pages project
@@ -103,6 +109,7 @@ const weaponView = createWeaponView(camera);
 postfx.addWeaponPass(weaponView.weaponCamera);
 const tracers = createTracerSystem(scene);
 const impacts = createImpactSystem(scene);
+const decals = createDecalSystem(scene, arenaMeshes);
 const pickupMeshes = createPickupMeshes(scene, arena.pickups);
 const grenadeFX = createGrenadeFX(scene);
 const gunshots = createGunshotAudio({
@@ -309,6 +316,7 @@ const gameShell = createGameShell({
       pickupSystem,
       grenadeSystem,
       killfeed,
+      decals,
     });
     // resetMatch repositions every entity in the world, including bots the
     // ramp hadn't unlocked yet -- re-park those so the new match starts the
@@ -459,6 +467,7 @@ const loop = createRenderLoop({
       bots,
       tracers,
       impacts,
+      decals,
       sim,
       hud,
       killfeed,
@@ -478,6 +487,7 @@ const loop = createRenderLoop({
     weaponView.update(delta);
     tracers.update(delta);
     impacts.update(delta);
+    decals.update(delta);
     pickupMeshes.update(pickupSystem.getPickupStates());
     grenadeFX.syncInFlight(grenadeSystem.getInFlightGrenades());
     grenadeFX.update(delta);
