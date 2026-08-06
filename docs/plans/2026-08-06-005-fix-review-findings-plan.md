@@ -182,7 +182,7 @@ Only `DEFAULT_WEAPON_ID` is exported from `weapon.js`; every other reference to 
 - Store a shallow copy (`{ x: playerPosition.x, z: playerPosition.z }`) at both return sites that set `lastSeenPosition`.
 - **Test first:** move the player after a sighting is recorded; assert the bot's Search-phase facing does not track the move.
 
-### U14 — GLTF loader caches a rejected promise forever (P2)
+### U14 — GLTF loader caches a rejected promise forever (P2) — DONE (c8b2003)
 
 `src/render/models.js:11-21`
 
