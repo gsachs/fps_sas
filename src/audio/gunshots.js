@@ -197,7 +197,9 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
   function unlock() {
     unlocked = true;
     resumeFailed = false; // a fresh gesture earns resume() a fresh attempt
-    if (listener.context.state !== 'running') listener.context.resume().catch(() => {});
+    if (listener.context.state !== 'running') {
+      listener.context.resume().catch((error) => onError?.(error));
+    }
   }
 
   // Keeps audio in step with the game's run state, so a shot in flight is cut

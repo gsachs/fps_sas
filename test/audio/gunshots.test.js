@@ -231,6 +231,39 @@ describe('createGunshotAudio: setRunning stops retrying a failing resume() (#11)
   });
 });
 
+describe('createGunshotAudio: unlock() reports its own resume() failure (U23)', () => {
+  it('calls onError when the unlock gesture\'s own resume() rejects, with no setRunning() call involved', async () => {
+    const resume = vi.fn(() => Promise.reject(new Error('resume rejected')));
+    const onError = vi.fn();
+    const previousContext = THREE.AudioContext.getContext();
+    THREE.AudioContext.setContext({
+      currentTime: 0,
+      destination: {},
+      state: 'suspended',
+      resume,
+      suspend: () => Promise.resolve(),
+      createGain: fakeGainNode,
+      createPanner: fakePannerNode,
+      createBufferSource: fakeBufferSourceNode,
+    });
+
+    try {
+      const camera = new THREE.PerspectiveCamera();
+      const scene = new THREE.Scene();
+      const gunshots = createGunshotAudio({ camera, scene, urls: ['a.ogg'], onError });
+
+      gunshots.unlock();
+      await Promise.resolve(); // let unlock's own resume() rejection settle
+
+      expect(resume).toHaveBeenCalledTimes(1); // unlock's own attempt, no setRunning() call yet
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
+    } finally {
+      THREE.AudioContext.setContext(previousContext);
+    }
+  });
+});
+
 describe('createGunshotAudio: playExplosion', () => {
   it('does nothing before buffers have loaded (no explosion voice exists yet)', () => {
     const camera = new THREE.PerspectiveCamera();
