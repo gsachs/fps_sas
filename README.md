@@ -16,6 +16,19 @@ persistent impact decals, and the arena runs through a light
 post-processing pass (bloom, ambient occlusion, a skybox) on top of real
 sourced models and audio for the weapons.
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/01-start-screen.jpg" alt="Start screen, arena visible behind the play prompt"></td>
+<td width="50%"><img src="docs/screenshots/02-firefight.jpg" alt="Facing off with a bot in a corridor"></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/03-arena-wide.jpg" alt="A corner room showing its accent color and the skybox"></td>
+<td width="50%"><img src="docs/screenshots/04-pickup-closeup.jpg" alt="The machine gun pickup, grounded on the floor of the central room"></td>
+</tr>
+</table>
+
 ## Run locally
 
 ```bash
