@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import * as THREE from 'three';
 import {
   audioContextAction,
@@ -7,8 +7,10 @@ import {
   pickVariantForSet,
   WEAPON_SOUND_SETS,
   EXPLOSION_SOUND,
+  BUFFER_LOAD_TIMEOUT_MS,
   createGunshotAudio,
 } from '../../src/audio/gunshots.js';
+import { InitTimeoutError } from '../../src/shell/initTimeout.js';
 
 // The real audio context needs a browser, but THREE.AudioContext.setContext
 // lets a Web-Audio-API-shaped plain object stand in for it -- enough surface
@@ -262,6 +264,50 @@ describe('createGunshotAudio: unlock() reports its own resume() failure (U23)', 
       THREE.AudioContext.setContext(previousContext);
     }
   });
+});
+
+describe('createGunshotAudio: a stalled buffer load times out instead of hanging the whole session (U28)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('drops the stalled URL, reports a distinguishable timeout error, and still loads the rest', async () => {
+    vi.useFakeTimers();
+    const onError = vi.fn();
+    const originalLoad = THREE.AudioLoader.prototype.load;
+    // 'stuck.ogg' never calls back at all -- neither onLoad nor onError --
+    // the exact shape of a stalled connection or a silently-dropped proxy
+    // response that the explicit-failure path below can't see.
+    THREE.AudioLoader.prototype.load = (url, onLoad) => {
+      if (url === 'stuck.ogg') return; // never settles
+      onLoad({ url });
+    };
+
+    try {
+      const camera = new THREE.PerspectiveCamera();
+      const scene = new THREE.Scene();
+      createGunshotAudio({
+        camera,
+        scene,
+        urls: ['a.ogg', 'stuck.ogg', 'b.ogg'],
+        onError,
+      });
+
+      // Advance past the per-URL timeout. Against the unfixed code nothing
+      // schedules a timer for the stalled URL at all, so this settles
+      // immediately without the whole-session Promise.all ever resolving --
+      // the assertions below then fail fast on the resulting empty state
+      // instead of the test hanging on a promise that never settles.
+      await vi.advanceTimersByTimeAsync(BUFFER_LOAD_TIMEOUT_MS * 2);
+
+      expect(onError).toHaveBeenCalledWith(expect.any(InitTimeoutError));
+      // The two good URLs still load and voices get built -- one stalled
+      // sample no longer sinks the entire session's audio.
+      expect(positionalAudioChildren(scene).length).toBeGreaterThan(0);
+    } finally {
+      THREE.AudioLoader.prototype.load = originalLoad;
+    }
+  }, 5000);
 });
 
 describe('createGunshotAudio: playExplosion', () => {

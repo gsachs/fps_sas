@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { DEFAULT_WEAPON_ID, MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
+import { raceInitWithTimeout } from '../shell/initTimeout.js';
 
 // Gunshots for every shooter. The player's own shot plays flat, since it
 // happens at the listener and has no direction to convey; every other
@@ -43,6 +44,19 @@ export const EXPLOSION_SOUND = { playbackRate: 0.45 };
 const EXPLOSION_VOLUME = 1.4;
 const EXPLOSION_REFERENCE_DISTANCE = 12;
 const EXPLOSION_MAX_DISTANCE = 140;
+
+// U28: a URL that never calls back at all -- a stalled connection, a
+// silently-dropped proxy response -- isn't the explicit-failure case the
+// loader's error callback already handles below; it just leaves that one
+// promise pending forever. Promise.all only settles once every element does,
+// so one hung load leaves `buffers` empty for the rest of the session and
+// every future playLocal/playAt/playExplosion call hits its own guard and
+// does nothing, with nothing logged. Racing each URL's own load against this
+// timeout (reusing initTimeout.js's pattern, already proven for RAPIER.init)
+// bounds the worst case to one dropped sample instead of session-long
+// silence. Shorter than initTimeout's own default: these are small audio
+// assets, not a WASM payload. Not product-specified -- a defensible default.
+export const BUFFER_LOAD_TIMEOUT_MS = 8_000;
 
 // Which named set a weapon id's shot plays through -- unknown ids (or none,
 // e.g. a caller that hasn't resolved a shooter yet) fall back to the pistol
@@ -116,14 +130,17 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
 
   const loader = new THREE.AudioLoader();
   Promise.all(
-    urls.map(
-      (url) =>
-        new Promise((resolve) => {
-          loader.load(url, resolve, undefined, (error) => {
-            onError?.(error);
-            resolve(null);
-          });
-        })
+    urls.map((url) =>
+      raceInitWithTimeout(
+        () => new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject)),
+        BUFFER_LOAD_TIMEOUT_MS
+      ).catch((error) => {
+        // An explicit loader failure and a load that stalled past the
+        // timeout both land here as a rejection -- one reporting path for
+        // both, resolving to the same null sentinel the filter below expects.
+        onError?.(error);
+        return null;
+      })
     )
   ).then((loaded) => {
     // A failed load leaves the game silent but entirely playable -- the same
