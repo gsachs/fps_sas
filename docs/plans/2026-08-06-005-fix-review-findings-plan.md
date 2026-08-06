@@ -262,6 +262,85 @@ Correct the claim: existing assets are CC0, no attribution required.
 
 Cheap, same pattern as U8's already-fixed `setRunning()` path. Route through the same `onError` callback.
 
+## Round 2 re-review (2026-08-06, whole-repo `ce-code-review` after U11-U23)
+
+Same eight-reviewer roster as round 1. All 13 round-1 fixes independently re-verified as holding (correctness and performance reviewers returned zero findings; every fix traced end-to-end by at least one reviewer). 9 new findings survived, all P2/P3, no P0/P1, no recurrence of an already-fixed defect (every finding is either a genuinely new gap or a previously-deferred item now promoted with a concrete repro). Not yet P0/P1/P2-clean — the loop continues into round 3, the last allowed round.
+
+### U24 — Escape-triggered pause never drains the fire/throw latches, reopening U16's race on the primary pause path (P2)
+
+`src/shell/states.js` (`onUnlock`), `src/main.js`
+
+U16 fixed the window-`blur` pause boundary (`clearHeldInput()` now drains `fireLatch`/`throwLatch`), but `clearHeldInput()` has exactly one call site, the `blur` listener. Escape — the ordinary, far more common way this game pauses — exits pointer lock and reaches `onUnlock`, which only dispatches `lockLost`; it never calls `clearHeldInput()`. Concrete repro: fire (queues a pending shot) -> Escape before the next tick consumes it -> the press survives the whole pause (the sim doesn't tick while paused) -> Resume -> the first tick fires with no live input. Already flagged once as a lower-confidence deferred risk below; round 2 reconfirmed it live with a full repro and promotes it here.
+
+- Add an `onPause` callback to `createGameShell` (mirrors the existing `onRestart` injection pattern — the state machine shouldn't know what "clear held input" means, just that a real PLAYING->PAUSED transition happened), invoked only when `onUnlock` fires while `state === STATES.PLAYING`. Wire `onPause: () => inputSampler.clearHeldInput()` in `main.js`, alongside the existing `blur` wiring.
+- **Test first:** drive `createGameShell` through a real `lockLost` transition from `PLAYING` and assert `onPause` fires exactly once; assert it does NOT fire for a lock-loss while already at `START`/`RESULTS`.
+
+### U25 — `gatherCommands`'s `getSim` getter is unnecessary indirection built on an incorrect comment (P2)
+
+`src/sim/gatherCommands.js`, `src/main.js`
+
+U20's extraction wrapped `sim` in a `getSim: () => sim` getter, matching `testHooks.js`'s genuinely-necessary `getMatchElapsedSeconds`/`getLastRenderState` pattern — but that pattern is only needed for `let` bindings read by hooks invoked long after installation. `sim` is a `const`, never reassigned, and `gatherCommands`'s entire options object is reconstructed fresh every single tick — so a direct `sim` reference (exactly like the original pre-extraction closure already did, and exactly like `bots`/`inputSampler` still do today) resolves correctly with no wrapper needed. Verified independently with a Node repro: a closure over a not-yet-initialized `const`, invoked only after that `const`'s assignment completes, reads it fine.
+
+- Pass `sim` directly: `gatherCommands({ sim, bots, inputSampler })`. Drop `getSim`/`const sim = getSim()`. Correct the comment to state the real invariant (deferred invocation past the point of assignment, not a getter requirement).
+- No new test needed (pure simplification, no behavior change) — existing `test/sim/gatherCommands.test.js` coverage must stay green.
+
+### U26 — `gatherCommands.js` is the only `src/sim` file importing from `src/ui`, unnoticed by the sim-purity guard (P2)
+
+`src/sim/gatherCommands.js:1`, `src/ui/names.js`
+
+U20's extraction moved `LOCAL_PLAYER_ID` usage from `main.js` (a composition root, where cross-layer imports are normal) into `src/sim/`, carrying `import { LOCAL_PLAYER_ID } from '../ui/names.js'` with it — the only `src/sim -> src/ui` import in the tree. `test/sim/architecture.test.js`'s existing KTD2 guard only checks for `'three'` imports, so this crossing landed undetected.
+
+- Move `LOCAL_PLAYER_ID` out of `src/ui/names.js` into a sim-neutral home (it's an entity-id constant, not UI logic); have `ui/names.js` import it back for `displayName`. Update all six current importers.
+- Widen the KTD2 guard (or add a sibling one) to assert `src/sim` never imports from `src/ui` or `src/render`, so this class of crossing can't land unnoticed again.
+- **Test first:** the widened architecture-guard test, run against the current (pre-fix) tree, must fail on `gatherCommands.js`'s import before the fix and pass after.
+
+### U27 — Three architecture guards' regexes can be bypassed by an unusual-but-valid syntactic reintroduction (P2)
+
+`test/sim/architecture.test.js`
+
+Adversarial review found each of the three existing guards (KTD2 three-import, U12 weapon-id, U18 max-health) has at least one syntactically-valid, semantically-identical bypass the regex doesn't catch: KTD2 misses a dynamic `import('three')`; the weapon-id guard misses a template literal (`` `pistol` ``) or string concatenation; the max-health guard misses bracket-notation assignment (`entity['health'] = 100`) or a hex literal. None are currently exploited — this is a preventive fidelity gap in the guards themselves, exactly the kind of thing they exist to catch.
+
+- Add the missing alternatives to each pattern; add one offender fixture per guard proving the previously-missed form is now caught.
+- **Test first:** each new fixture must fail against the current (unpatched) regex before the fix, and be caught after.
+
+### U28 — Gunshot audio buffer loading has no timeout, only per-URL failure handling (P2)
+
+`src/audio/gunshots.js` (`createGunshotAudio`'s `Promise.all(...)`)
+
+Flagged as a residual risk in round 1, now promoted: an individual URL's *explicit* failure is handled gracefully (`onError` called, `resolve(null)`), but a URL that never settles at all (a stalled connection, a silently-dropped proxy response) leaves `Promise.all` pending forever — `buffers` stays `[]` for the rest of the session, every gunshot call silently no-ops, and unlike the explicit-failure path, nothing is ever logged.
+
+- Race each load (or the whole `Promise.all`) against a timeout, reusing `src/shell/initTimeout.js`'s `raceInitWithTimeout` pattern; on timeout, resolve that URL's slot as `null` and report through `onError`.
+- **Test first:** a load that never calls back (not even an error callback) must still resolve within the suite's fake-timer budget and call `onError`.
+
+### U29 — GLTF loader can still hang forever, not just reject, despite U14's fix (P2)
+
+`src/render/models.js` (`loadGltf`)
+
+U14 fixed the cache-poisoned-by-rejection case (evicts the cache entry on `.catch`). It does nothing for a load that never calls either `resolve` or `reject` — the cached promise never settles, the eviction `.catch` never runs, and the module's own comment ("A failed load calls onError and never throws or hangs") doesn't hold for this case. Same missing-timeout shape as U15 (RAPIER) and U28 (audio), on the third of the four external-call boundaries this remediation has now touched.
+
+- Wrap the inner load promise in the same `raceInitWithTimeout`-style race so a stalled load rejects after a bounded time, letting U14's existing eviction `.catch` and `onError` run.
+- **Test first:** a mocked loader that never calls back must still resolve to the failure sentinel within the suite's fake-timer budget, with the cache evicted afterward (proving a later call retries).
+
+### U30 — `frameEvents.test.js` never exercises the local-player-hit crosshair-flash dispatch (P2)
+
+`src/render/frameEvents.js:39`, `test/render/frameEvents.test.js`
+
+U20's new test suite covers `applyFrameEvents`' fire/hit/explosion dispatch broadly, but every `'hit'`-event test case uses a bot as `shooterId`; none set `shooterId: LOCAL_PLAYER_ID`. `hud.flashCrosshair(event.killed ? 'kill' : 'hit')` — gated on exactly that condition — has zero coverage. A regression that broke the guard, dropped the call, or swapped the `'kill'`/`'hit'` argument mapping would pass the full suite untouched.
+
+- **Test first:** add a `'hit'` case with `shooterId: LOCAL_PLAYER_ID` asserting `hud.flashCrosshair` is called with `'kill'` when `killed: true` and `'hit'` when `killed: false`.
+
+### U31 — The combat-feel plan still states the wrong asset license (P2) — docs only
+
+`docs/plans/2026-08-03-002-feat-combat-feel-and-lighting-plan.md:135`
+
+U21 fixed `build-combat-feel.md`'s CC BY 3.0 claim; `build-combat-feel.md` tells the reader to treat this plan as authoritative, and the plan itself still says "The existing assets are CC BY 3.0 and already require attribution" — the identical wrong claim, one file over. Correct to match `CREDITS.md`/the now-fixed command.
+
+### U32 — `goal.md`'s Finish section keeps singular "unit"/"commit" framing despite the new `all` mode (P2) — docs only
+
+`.claude/commands/goal.md:4,79-80`
+
+U22 added the `all` run-to-completion trigger. Two things weren't updated alongside it: the `argument-hint` still advertises a stale `[U1 … U10 | all]` range (units run through U32 as of this round); the "Finish" section's step 1-2 still say "Which unit ran" / "The commit you made" (singular), while step 3 already anticipates a multi-unit run. Genericize the hint so it never needs bumping again; pluralize the Finish steps to match.
+
 ## Accepted (not fixed)
 
 Nothing yet. Every P3 or advisory item the loop decides not to fix goes here with a one-line reason, so the decision is durable rather than re-litigated each round.
@@ -276,10 +355,12 @@ Reviewed and judged out of scope for this remediation. Listed so they are not re
 - `weaponSystem` cooldowns and `nextGrenadeId` sit outside `resetMatch`'s reset convention — same shape as `killfeed-survives-match-restart.md`. Round 1 re-review re-confirmed this (bounded impact: max ~6 stale ticks after a restart) and left it deferred.
 - `tracer.js`'s active array is unbounded, unlike `impacts.js` and `grenadeFX.js`. Round 1 re-review re-confirmed this is genuinely low-impact given `BOT_COUNT=4` and exactly one machine-gun pickup on the map (worst case ~10 short-lived objects).
 - WebGL context loss is handled nowhere.
-- `pointerLock.js:21`'s `NotSupportedError` retry has no `.catch()`. Round 1 re-review re-confirmed this is cosmetic (console warning only) — the sibling `pointerlockerror` event already backstops it functionally.
+- `pointerLock.js:21`'s `NotSupportedError` retry has no `.catch()`. Round 1 AND round 2 re-review both re-confirmed this is cosmetic (console warning only) — the sibling `pointerlockerror` event already backstops it functionally, and round 2 additionally confirmed `requestPointerLock` itself has no feature-detection guard, but judged the affected audience (a mouse-driven FPS on a platform lacking Pointer Lock) as effectively empty.
 - `createPointerLockController` has no tests at all.
-- Escape-triggered pause doesn't clear held movement keys the way window `blur` does (`states.js`'s `onUnlock` only dispatches `lockLost`) — lower-confidence, narrower version of U16; revisit if it recurs as its own report.
 - Ramp-parked (not-yet-activated) bots are filtered by `!entity.dead` rather than activity state in spawn-safety scoring — low confidence this triggers in practice given bots activate early in a match.
-- Citation drift in the three `docs/solutions/logic-errors/` docs NOT touched by U10's refresh (`killfeed-survives-match-restart.md`, `minimap-rotation-composition-sign-error.md`, `bot-obstacle-avoidance-reversal.md`), plus one passage inside an already-refreshed doc (`grenade-blast-kill-bypasses-mg-death-strip.md`'s historical grep narrative still names the pre-U9 literal `'pistol'` call sites) — all caused by later, unrelated commits shifting `main.js`/`fsm.js` line numbers. Documentation-only, P3-grade; promote to a unit only if it actively misleads someone.
+- `gunshots.js`'s `setRunning`'s `suspend()` call still has a bare, unlogged `catch(() => {})`, the identical shape U23 just fixed for `resume()` two lines away — round 2 re-confirmed, left deferred (P3: `suspend()` only rejects once the context is already closed, a terminal state with nothing left to retry).
+- Citation drift in the three `docs/solutions/logic-errors/` docs NOT touched by U10's refresh (`killfeed-survives-match-restart.md`, `minimap-rotation-composition-sign-error.md`, `bot-obstacle-avoidance-reversal.md`), plus one passage inside an already-refreshed doc (`grenade-blast-kill-bypasses-mg-death-strip.md`'s historical grep narrative still names the pre-U9 literal `'pistol'` call sites). Round 2 re-review found this has gotten qualitatively worse — `main.js`'s decomposition (U19/U20) moved `killfeed-survives-match-restart.md`'s cited `killfeed.addKill(event)` call site, and `bot-retreat-survives-death.md`'s cited `gatherCommands` block, into entirely different files, not just different line numbers — and found one additional, previously-uncaptured instance (`bot-retreat-survives-death.md`, drifted by the same `main.js` decomposition after U10 had just refreshed it). Documentation-only, P3-grade; still not promoted to a unit, but flagged here as trending worse rather than stable — promote if a future round shows it actively misleading someone.
+- The learnings corpus has no doc for the knowledge-duplication pattern (now 3 occurrences: `DEFAULT_WEAPON_ID`/U9, `MACHINEGUN_WEAPON_ID`/U12, `MAX_HEALTH`/U18) or for live-object aliasing (`lastSeenPosition`/U13, distinct from all 6 existing docs). Round 2's learnings researcher recommends writing both up, and recommends a 4th coordinate-basis-mismatch doc (or consolidating all 4 sites into one) now that `feedback.js`'s fix (U11) makes it a 4-for-4 recurring pattern the corpus's own prevention notes already flagged as crossing a "worth a named checklist item" threshold at 3. Documentation/process, not code; out of scope for this remediation's unit list.
+- `goal.md:62` still hardcodes "U9 and U10 are structural/documentation only" — already deferred in round 1; round 2 independently re-confirmed it unfixed and unchanged.
 
 Promote any of these into a work unit only if a later review raises it as P0/P1/P2.
