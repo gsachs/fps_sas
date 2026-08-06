@@ -2,6 +2,7 @@
 // KTD7: first-to-N kills, timer left as a later addition.
 import { getLeaderboard } from '../sim/score.js';
 import { selectSpawnPoint } from '../arena/spawnPlacement.js';
+import { DEFAULT_WEAPON_ID } from '../sim/weapon.js';
 
 export const KILLS_TO_WIN = 10; // tuned during playtest (Outstanding Questions)
 
@@ -51,7 +52,7 @@ export function resetMatch(
     entity.dead = false;
     entity.animHint = 'idle';
     entity.score = 0;
-    entity.heldWeapon = 'pistol';
+    entity.heldWeapon = DEFAULT_WEAPON_ID;
     entity.ammo = null;
     entity.grenadeCount = 0;
 

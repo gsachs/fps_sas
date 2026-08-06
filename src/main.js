@@ -33,6 +33,10 @@ import { createGameShell } from './shell/states.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
 import { renderStartupError } from './shell/startupError.js';
 
+// The composition root: boots the renderer, physics, and sim, wires every
+// render/HUD/audio system to the sim's per-frame events, and starts the
+// game loop. Everything else in src/ is a system this file assembles --
+// none of them know about each other directly.
 try {
   await RAPIER.init();
 } catch (error) {

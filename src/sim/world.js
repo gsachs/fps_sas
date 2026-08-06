@@ -3,6 +3,8 @@
 // multiplayer. Movement, combat, and AI resolution are added by later units
 // as steps inside step(), not as separate loops -- this stays the one
 // mutation path (KTD2).
+import { DEFAULT_WEAPON_ID } from './weapon.js';
+
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
@@ -30,7 +32,7 @@ function createEntity(id, overrides = {}) {
     dead: false,
     score: 0,
     animHint: 'idle',
-    heldWeapon: 'pistol', // per-weapon foundation (KTD1): every entity starts on the infinite pistol
+    heldWeapon: DEFAULT_WEAPON_ID, // per-weapon foundation (KTD1): every entity starts on the infinite pistol
     ammo: null, // null means infinite (the pistol); a finite weapon (the machine gun) sets a count
     grenadeCount: 0,
     ...overrides,
@@ -164,7 +166,7 @@ export function createWorld({ physics, combat, pickups, grenades } = {}) {
       if (event.type !== 'hit' || !event.killed) continue;
       const target = entityAccessor.getEntity(event.targetId);
       if (target) {
-        target.heldWeapon = 'pistol';
+        target.heldWeapon = DEFAULT_WEAPON_ID;
         target.ammo = null;
       }
     }

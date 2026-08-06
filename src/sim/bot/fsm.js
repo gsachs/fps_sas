@@ -13,7 +13,7 @@ import { createCommand, createFireLatch } from '../command.js';
 import { hasLineOfSight as checkLineOfSight } from '../lineOfSight.js';
 import { seek, avoidObstacles } from './steering.js';
 import { DEFAULT_DIFFICULTY } from './difficulty.js';
-import { isHeldFireWeapon } from '../weapon.js';
+import { isHeldFireWeapon, DEFAULT_WEAPON_ID } from '../weapon.js';
 import { createNavigator, createPatrolPicker, nearestNodeId, GRAPH, ROOM_IDS } from './navigation.js';
 import { ROOMS, DOORWAYS } from '../../arena/layout.js';
 
@@ -204,7 +204,7 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     retreatContinued = false;
   }
 
-  function sample(botPosition, playerPosition, botHealth, heldWeapon = 'pistol', targetAlive = true) {
+  function sample(botPosition, playerPosition, botHealth, heldWeapon = DEFAULT_WEAPON_ID, targetAlive = true) {
     if (botHealth > previousHealth) clearTargetMemory();
     previousHealth = botHealth;
     tick += 1;
