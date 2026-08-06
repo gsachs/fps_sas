@@ -44,7 +44,7 @@ Cause: an extra negation. `sw.z` is already `-26`, so `-(sw.z - DOOR_HALF)` is `
 
 Fix and test land together. The test is the point of the unit, not a follow-up.
 
-### U3 — Startup failure path (finding #2, P1)
+### U3 — Startup failure path (finding #2, P1) — DONE (2f5c044)
 
 `src/main.js:35`
 
