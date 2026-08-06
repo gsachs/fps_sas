@@ -19,16 +19,26 @@ function listJsFiles(dir) {
   return files;
 }
 
+// A static `from`/`require` specifier is not the only way to pull in
+// 'three' -- a dynamic import() is ordinary, idiomatic ESM syntax this
+// Vite project fully supports, and would otherwise slip past both checks
+// below with zero signal (U27).
+const THREE_IMPORT_PATTERN = /from\s+['"]three|require\(\s*['"]three|import\(\s*['"]three/;
+
 describe('sim module architecture guard (KTD2)', () => {
-  it('imports nothing from three, directly or via a bare specifier', () => {
+  it('imports nothing from three, directly, via require, or via a dynamic import()', () => {
     const offenders = [];
     for (const file of listJsFiles(SIM_DIR)) {
       const source = readFileSync(file, 'utf8');
-      if (/from\s+['"]three/.test(source) || /require\(\s*['"]three/.test(source)) {
+      if (THREE_IMPORT_PATTERN.test(source)) {
         offenders.push(file);
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('the pattern itself catches a dynamic import(), not just static from/require (U27 regression)', () => {
+    expect(THREE_IMPORT_PATTERN.test("const THREE = await import('three');")).toBe(true);
   });
 
   // U26: sim/ is the domain layer -- render/ and ui/ depend on it, never the
@@ -56,10 +66,15 @@ function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
-// Matches either quoting style used as a literal value ('pistol', "pistol")
-// or the bare identifier used as an object-literal key (pistol:) -- the two
-// shapes every offending call site used before U12's fix.
-const WEAPON_ID_LITERAL_PATTERN = /(['"])(pistol|machinegun)\1|\b(pistol|machinegun)\s*:/;
+// Matches any quoting style used as a literal value ('pistol', "pistol",
+// `pistol`) or the bare identifier used as an object-literal key
+// (pistol:) -- every shape an offending call site used before U12's fix,
+// plus the template-literal form U27 found the original pattern missed.
+// Deliberately NOT chasing string concatenation ('pis' + 'tol') or numeric/
+// character-code obfuscation -- those require a real parser to catch
+// exhaustively, and a guard this cheap earns its keep against an
+// accidental reintroduction, not an adversarial one. Accepted blind spot.
+const WEAPON_ID_LITERAL_PATTERN = /(['"`])(pistol|machinegun)\1|\b(pistol|machinegun)\s*:/;
 
 describe('weapon id architecture guard (U12)', () => {
   it('never re-types the pistol/machinegun id literals outside weapon.js', () => {
@@ -73,15 +88,24 @@ describe('weapon id architecture guard (U12)', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('the pattern itself catches a template-literal reintroduction, not just quoted strings (U27 regression)', () => {
+    expect(WEAPON_ID_LITERAL_PATTERN.test('const w = `pistol`;')).toBe(true);
+    expect(WEAPON_ID_LITERAL_PATTERN.test('const w = `machinegun`;')).toBe(true);
+  });
 });
 
-// Matches only the specific shapes that re-declare full health as a bare
-// literal (an entity's initial `health: 100`, a respawn/reset's
-// `entity.health = 100`, or bot AI's tracked `previousHealth = 100`) --
-// not every bare 100 in the codebase, which also appears in unrelated
+// Matches the specific shapes that re-declare full health as a bare
+// literal: an entity's initial `health: 100`, a dotted-access assignment
+// (`entity.health = 100`), a bracket-notation assignment
+// (`entity['health'] = 100`, added by U27 -- ordinary syntax the dotted
+// pattern alone missed), or bot AI's tracked `previousHealth = 100`. Not
+// every bare 100 in the codebase, which also appears in unrelated
 // constants like BLAST_MAX_DAMAGE, HITSCAN_MAX_DISTANCE, and PARK_POSITION's
-// y coordinate.
-const MAX_HEALTH_LITERAL_PATTERN = /\bhealth\s*:\s*100\b|\.health\s*=\s*100\b|\bpreviousHealth\s*=\s*100\b/;
+// y coordinate. Deliberately not chasing a numeric-literal disguise (0x64,
+// 1e2) -- same accepted-blind-spot tradeoff as the weapon-id guard above.
+const MAX_HEALTH_LITERAL_PATTERN =
+  /\bhealth\s*:\s*100\b|\.health\s*=\s*100\b|\[\s*['"]health['"]\s*\]\s*=\s*100\b|\bpreviousHealth\s*=\s*100\b/;
 
 describe('max health architecture guard (U18)', () => {
   it('never re-types the full-health literal outside health.js', () => {
@@ -94,5 +118,10 @@ describe('max health architecture guard (U18)', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('the pattern itself catches bracket-notation reintroduction, not just dotted access (U27 regression)', () => {
+    expect(MAX_HEALTH_LITERAL_PATTERN.test("entity['health'] = 100;")).toBe(true);
+    expect(MAX_HEALTH_LITERAL_PATTERN.test('entity["health"] = 100;')).toBe(true);
   });
 });
