@@ -154,7 +154,7 @@ Nine reviewers (correctness, testing, maintainability, agent-native, learnings-r
 
 Fix in this order. Each unit is one commit, test-first, per the loop's non-negotiables.
 
-### U11 — Damage indicator points the wrong way (P1)
+### U11 — Damage indicator points the wrong way (P1) — DONE (66ec0ed)
 
 `src/render/feedback.js:9-18` (`computeAngleFromPlayer`)
 
