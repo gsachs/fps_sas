@@ -51,10 +51,16 @@ Death empties the gun slot back to the pistol — the carrier's machine gun and 
 ### Hunt-and-Ambush Pacing
 The target match rhythm for the arena overhaul: engagements are deliberately less frequent than constant contact, start at closer range with partial information, and reward knowing the map — stalking, ambushing at doorways, disengaging to reposition. Chosen over the original arena's constant contact, which kept the player permanently in a fight. Pacing is tuned through contact-density knobs (awareness ranges, spawn placement, bot ramp, kill target), not by making individual bots harder.
 
+### Match Reset
+The full state reset a "Play Again" or "Restart Match" action triggers: every entity's position, health, score, and held weapon return to a fresh-match baseline, and every match-scoped stateful system — armory pickups, in-flight grenades, the killfeed, Bot AI memory — clears back to empty. A match-scoped system is not reset automatically; it must expose a reset hook and be explicitly registered with the reset step for its state to be included, which is a distinct failure mode from the reset step itself being wrong.
+
+### Respawn
+The automatic recovery of a single dead Entity after a short delay — restored to full health at a new spawn position, continuing the match's existing state (score, other entities, the killfeed's history) unchanged. Distinct from a Match Reset, which restarts the whole match fresh rather than recovering one Entity mid-match.
+
 ## Presentation & Feedback
 
 ### Killfeed
-The under-score feed narrating every kill as killer ▸ victim with a weapon glyph — the player's kills gold, their death red, blast multi-kills stacking as one burst. It carries kill events only, never positions or health: the match becomes readable without the hunt-and-ambush partial-information pillar giving anything away. Entries dim, fade, and cap; the feed observes scoring and never affects it.
+The under-score feed narrating every kill as killer ▸ victim with a weapon glyph — the player's kills gold, their death red, blast multi-kills stacking as one burst. It carries kill events only, never positions or health: the match becomes readable without the hunt-and-ambush partial-information pillar giving anything away. Entries dim, fade, and cap; the feed observes scoring and never affects it. A Match Reset clears every entry, so a restarted match always opens with an empty feed.
 
 ### Cosmetic Recoil
 Weapon kick that animates the viewmodel and the camera but never moves the aim point — shots still land where the crosshair was when the trigger was pulled. The distinction matters because real recoil (aim that climbs and must be fought back down) would be a gameplay change: it reaches into hitscan resolution and invalidates the tuned Bot aim spread and reaction delay. Cosmetic Recoil stays entirely in the render layer, so weapon feel can be tuned freely without re-tuning difficulty.
