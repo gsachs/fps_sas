@@ -44,6 +44,8 @@ The room-control incentive created by weapons living on the map as respawning pi
 ### Gun Slot & Grenade Pocket
 The loadout model: one gun slot (infinite pistol by default; a picked-up machine gun auto-equips and auto-reverts to the pistol when its ammo runs dry — no switch input exists) plus a separate grenade pocket thrown with its own key. The two never share a slot, so a player can hold the machine gun and grenades simultaneously.
 
+Death empties the gun slot back to the pistol — the carrier's machine gun and its ammo are stripped the instant the carrier dies, regardless of what killed them, though the taken pickup's own respawn timer is unaffected by the death (it keeps counting down from when it was taken, independent of the carrier's fate). The grenade pocket is untouched by death and empties only on a full match reset.
+
 ## Match & Pacing
 
 ### Hunt-and-Ambush Pacing
