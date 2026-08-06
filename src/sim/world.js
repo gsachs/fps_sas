@@ -124,23 +124,7 @@ export function createWorld({ physics, combat, pickups, grenades } = {}) {
         }
         if (fireResult.hitEntityId) {
           const hitEvent = combat.applyHit(entityAccessor, fireResult.hitEntityId, id, fireResult.damage);
-          if (hitEvent) {
-            events.push({ type: 'hit', ...hitEvent });
-            // R13: death strips the carrier's machine gun and ammo -- bot or
-            // player. The grenade pocket (grenadeCount) is untouched here,
-            // it survives death, and so does the taken pickup's own respawn
-            // countdown (KD6): that countdown started the instant the
-            // pickup was taken and runs independent of what later happens
-            // to the taker, so death must never reach into pickups.js at
-            // all, only reset the dying entity's own weapon fields.
-            if (hitEvent.killed) {
-              const target = entityAccessor.getEntity(hitEvent.targetId);
-              if (target) {
-                target.heldWeapon = 'pistol';
-                target.ammo = null;
-              }
-            }
-          }
+          if (hitEvent) events.push({ type: 'hit', ...hitEvent });
         }
       }
     }
@@ -158,6 +142,27 @@ export function createWorld({ physics, combat, pickups, grenades } = {}) {
     // call's events, not deferred, so a blast's kills are visible to
     // callers (e.g. match-end) in the call that produced them.
     if (grenades) events.push(...grenades.tick(entityAccessor, dt));
+
+    // R13: death strips the carrier's machine gun and ammo -- bot or player,
+    // regardless of damage source. Applied once over every 'hit' event this
+    // step produced (hitscan, from the per-entity loop above, and blast,
+    // from grenades.tick() above) rather than inline per source, so a second
+    // damage path can never silently bypass it the way an inline-only
+    // version once did. The grenade pocket (grenadeCount) is untouched here,
+    // it survives death, and so does the taken pickup's own respawn
+    // countdown (KD6): that countdown started the instant the pickup was
+    // taken and runs independent of what later happens to the taker, so
+    // death must never reach into pickups.js at all, only reset the dying
+    // entity's own weapon fields.
+    for (const event of events) {
+      if (event.type !== 'hit' || !event.killed) continue;
+      const target = entityAccessor.getEntity(event.targetId);
+      if (target) {
+        target.heldWeapon = 'pistol';
+        target.ammo = null;
+      }
+    }
+
     return events;
   }
 

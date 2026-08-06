@@ -389,6 +389,52 @@ describe('grenades: wired into world.step() -- a single step() call resolves a l
   });
 });
 
+describe('grenades: blast kill strips a carried machine gun, same as a gunshot kill (R13)', () => {
+  it('a blast-killed victim holding the machine gun has it stripped to the pistol', () => {
+    const rig = buildStopperRig();
+    primeBroadPhase(rig);
+    const grenadeSystem = createGrenadeSystem({ rapierWorld: rig.rapierWorld, healthSystem: rig.healthSystem, movementSystem: rig.movementSystem });
+    const combat = {
+      resolveFire: rig.weaponSystem.resolveFire,
+      applyHit: rig.healthSystem.applyHit,
+      tickRespawns: rig.healthSystem.tickRespawns,
+    };
+    const world = createWorld({ physics: rig.movementSystem, combat, grenades: grenadeSystem });
+    world.addEntity('thrower', { position: { x: 0, y: 1, z: 0 }, grenadeCount: 1 });
+    rig.movementSystem.addCharacter('thrower', { x: 0, y: 1, z: 0 });
+    primeBroadPhase(rig);
+
+    world.step(new Map([['thrower', THROW_COMMAND]]), TICK_DT);
+
+    let blastCenter = null;
+    for (let i = 0; i < 60 && !blastCenter; i++) {
+      world.step(new Map([['thrower', IDLE_COMMAND]]), TICK_DT);
+      const [grenade] = grenadeSystem.getInFlightGrenades();
+      if (grenade?.landed) blastCenter = grenade.position;
+    }
+    expect(blastCenter).toBeTruthy();
+
+    world.addEntity('victim', {
+      position: { x: blastCenter.x + 1, y: blastCenter.y, z: blastCenter.z },
+      heldWeapon: 'machinegun',
+      ammo: 30,
+    });
+    world.getEntity('victim').health = 20;
+
+    for (let i = 0; i < GRENADE_FUSE_TICKS && !world.getEntity('victim').dead; i++) {
+      world.step(new Map([['thrower', IDLE_COMMAND]]), TICK_DT);
+    }
+
+    expect(world.getEntity('victim').dead).toBe(true);
+    // R13: death strips the carrier's machine gun and ammo regardless of
+    // damage source -- a gunshot kill already did this (see world.test.js /
+    // combat.test.js); a blast kill must not bypass it just because the
+    // killing hit event originates from grenades.js instead of weapon.js.
+    expect(world.getEntity('victim').heldWeapon).toBe('pistol');
+    expect(world.getEntity('victim').ammo).toBeNull();
+  });
+});
+
 describe('grenades: BLAST_RADIUS sanity (supplement)', () => {
   it('an entity just past BLAST_RADIUS takes no damage even with clear line of sight', () => {
     const rig = buildBotRig();
