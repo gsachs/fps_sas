@@ -123,10 +123,21 @@ describe('createPostFX (KTD1 chain order, stubbed -- no WebGL context)', () => {
   async function loadStubbedPostFX() {
     vi.resetModules();
 
+    // addPass replicates the real EffectComposer's own side effect (it
+    // unconditionally calls pass.setSize() at the composer's full
+    // resolution on every pass added) -- without this the stub can't catch
+    // a regression where that side effect clobbers a pass's own
+    // reduced-resolution construction right after it's added.
     const composerStub = {
       passes: [],
+      _width: 800,
+      _height: 600,
       addPass(pass) {
         this.passes.push(pass);
+        pass.setSize(this._width, this._height);
+      },
+      insertPass(pass, index) {
+        this.passes.splice(index, 0, pass);
       },
       setSize: vi.fn(),
     };
@@ -145,7 +156,7 @@ describe('createPostFX (KTD1 chain order, stubbed -- no WebGL context)', () => {
     vi.doMock('three/addons/postprocessing/OutputPass.js', () => ({ OutputPass: OutputPassCtor }));
 
     const { createPostFX } = await import('../src/render/postfx.js');
-    return { createPostFX, composerStub, SSAOPassCtor };
+    return { createPostFX, composerStub, SSAOPassCtor, RenderPassCtor };
   }
 
   afterEach(() => {
@@ -180,6 +191,23 @@ describe('createPostFX (KTD1 chain order, stubbed -- no WebGL context)', () => {
     expect(SSAOPassCtor).toHaveBeenCalledWith(expect.anything(), expect.anything(), 400, 300);
   });
 
+  // A code-review regression: EffectComposer.addPass() unconditionally
+  // calls pass.setSize() at the composer's own full resolution on every
+  // pass it's given -- so SSAOPass's own half-res construction was silently
+  // overwritten back to full-res (800x600, not 400x300) the instant
+  // composer.addPass(ssaoPass) ran, and stayed there for the rest of the
+  // session unless the window happened to resize.
+  it('keeps SSAO at its reduced resolution even after the composer clobbers it on addPass', async () => {
+    const { createPostFX, SSAOPassCtor } = await loadStubbedPostFX();
+
+    createPostFX({ renderer: {}, scene: {}, camera: {}, width: 800, height: 600 });
+
+    const ssaoPass = SSAOPassCtor.mock.results[0].value;
+    // The stub's addPass already ran setSize(800, 600) on ssaoPass by this
+    // point (the clobber); the pass must end up back at the reduced size.
+    expect(ssaoPass.setSize).toHaveBeenLastCalledWith(400, 300);
+  });
+
   it('forwards a resize to the composer, and to SSAO at that same reduced resolution', async () => {
     const { createPostFX, composerStub, SSAOPassCtor } = await loadStubbedPostFX();
 
@@ -190,5 +218,37 @@ describe('createPostFX (KTD1 chain order, stubbed -- no WebGL context)', () => {
 
     expect(composerStub.setSize).toHaveBeenCalledWith(1600, 900);
     expect(ssaoPass.setSize).toHaveBeenCalledWith(800, 450);
+  });
+
+  // KTD4/U2: addWeaponPass is the seam main.js uses to register the
+  // viewmodel's depth-clear pass once a weapon camera exists (see U2's
+  // report -- postfx.js reserves the slot at construction, before
+  // weaponView.js has built a camera to give it). Untested until now.
+  it('addWeaponPass inserts a depth-clear RenderPass at the reserved slot, between SSAO and bloom', async () => {
+    const { createPostFX, composerStub, RenderPassCtor } = await loadStubbedPostFX();
+    const { addWeaponPass } = createPostFX({ renderer: {}, scene: {}, camera: {}, width: 800, height: 600 });
+
+    const fakeWeaponCamera = { isWeaponCamera: true };
+    addWeaponPass(fakeWeaponCamera);
+
+    // RenderPassCtor's first call built the world-render pass inside
+    // createPostFX itself; this call is addWeaponPass's own.
+    expect(RenderPassCtor).toHaveBeenCalledTimes(2);
+    expect(RenderPassCtor).toHaveBeenLastCalledWith(expect.anything(), fakeWeaponCamera);
+
+    const weaponPass = RenderPassCtor.mock.results[1].value;
+    expect(composerStub.passes.map((pass) => pass.kind)).toEqual([
+      'RenderPass', // world
+      'SSAOPass',
+      'RenderPass', // weapon depth-clear, inserted here -- after AO, before bloom (KTD4)
+      'UnrealBloomPass',
+      'SMAAPass',
+      'OutputPass',
+    ]);
+    // clear: false keeps the AO-composited world color already in the
+    // buffer; clearDepth: true resets only depth, so the weapon geometry
+    // always wins the depth test against nearby world geometry.
+    expect(weaponPass.clear).toBe(false);
+    expect(weaponPass.clearDepth).toBe(true);
   });
 });

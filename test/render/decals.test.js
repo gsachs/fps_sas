@@ -116,6 +116,27 @@ describe('createDecalSystem: pool math', () => {
     expect(decalMeshes(scene)).not.toContain(evicted);
   });
 
+  // The dedup refresh (line ~92) bumps a re-hit decal to the newest end of
+  // the age-ordered pool so a spot under sustained fire outlives one hit
+  // once by chance -- this proves that refresh actually changes eviction
+  // order, not just that dedup suppresses a duplicate mesh.
+  it('a refreshed (re-hit) decal survives eviction that would otherwise have claimed it', () => {
+    const scene = new THREE.Scene();
+    const decals = createDecalSystem(scene, new THREE.Group());
+
+    decals.spawn({ x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }); // the oldest decal, "A"
+    for (let i = 1; i < 200; i++) decals.spawn({ x: i, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }); // fills to the 200 cap
+    decals.spawn({ x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }); // re-hit A -- dedups and refreshes it to newest
+
+    decals.spawn({ x: 200, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }); // over cap -- evicts the true oldest
+    decals.update(1); // flush the eviction fade
+
+    const positions = decalMeshes(scene).map((mesh) => mesh.position.x);
+    expect(positions).toContain(0); // A survived -- it was refreshed, not left oldest
+    expect(positions).not.toContain(1); // the next-oldest (never re-hit) was evicted instead
+    expect(positions).toContain(200); // the newest spawn is present
+  });
+
   it('does not touch the pool below cap -- no eviction, no fading', () => {
     const scene = new THREE.Scene();
     const decals = createDecalSystem(scene, new THREE.Group());

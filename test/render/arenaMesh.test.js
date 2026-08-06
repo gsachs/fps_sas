@@ -163,6 +163,22 @@ describe('buildArenaMeshes', () => {
       expect(child.material.map).toBeFalsy();
     }
   });
+
+  // A failed load must never disappear silently -- reliability review: a
+  // caller with no onError has no way to learn the arena shipped untextured.
+  it('reports a failed texture load via onError instead of swallowing it', () => {
+    vi.mocked(loadSurfaceTexture).mockImplementation((url, { onError } = {}) => {
+      onError?.(new Error('load failed'));
+      return Promise.resolve({ texture: null, loaded: false });
+    });
+
+    buildArenaMeshes(FAKE_ARENA);
+
+    expect(loadSurfaceTexture).toHaveBeenCalledWith(
+      ARENA_SURFACE_TEXTURE.colorPath,
+      expect.objectContaining({ onError: expect.any(Function) })
+    );
+  });
 });
 
 describe('buildArenaMeshes: per-room accents (KTD3, R5, U1 verdict palette)', () => {

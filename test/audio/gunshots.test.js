@@ -324,6 +324,67 @@ describe('createGunshotAudio: a stalled buffer load times out instead of hanging
   }, 5000);
 });
 
+describe('createGunshotAudio: sound sets settle and build voices independently, not gated on each other', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // A code-review regression: voice construction used to run inside one
+  // Promise.all over every set, gated on DEFAULT_SOUND_SET_ID's own pool
+  // specifically -- so a failed pistol load silenced a machine gun or
+  // explosion sample that loaded fine right alongside it.
+  it('still builds voices and plays a healthy set when the default (pistol) set comes up empty', async () => {
+    const camera = new THREE.PerspectiveCamera();
+    const scene = new THREE.Scene();
+    const gunshots = createGunshotAudio({
+      camera,
+      scene,
+      soundSetUrls: { pistol: [], machinegun: ['mg-a.ogg'] },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    gunshots.playAt({ x: 0, y: 0, z: 0 }, 'machinegun');
+
+    const [voice] = positionalAudioChildren(scene).filter((v) => v.isPlaying);
+    expect(voice).toBeDefined();
+    expect(voice.buffer.url).toBe('mg-a.ogg');
+  });
+
+  // The other half of the same regression: one Promise.all spanning every
+  // set meant a slow/stalled URL in a non-default set held up voice
+  // construction -- and therefore playback -- for the pistol pool too, even
+  // though the pistol's own files had already loaded.
+  it('does not wait on a stalled sibling set before playing an already-loaded set', async () => {
+    vi.useFakeTimers();
+    const originalLoad = THREE.AudioLoader.prototype.load;
+    THREE.AudioLoader.prototype.load = (url, onLoad) => {
+      if (url === 'mg-stuck.ogg') return; // never settles within this test
+      onLoad({ url });
+    };
+
+    try {
+      const camera = new THREE.PerspectiveCamera();
+      const scene = new THREE.Scene();
+      const gunshots = createGunshotAudio({
+        camera,
+        scene,
+        soundSetUrls: { pistol: ['a.ogg'], machinegun: ['mg-stuck.ogg'] },
+      });
+      // Flushes only the already-resolved pistol load's microtask chain --
+      // well short of BUFFER_LOAD_TIMEOUT_MS, so the machine gun's set is
+      // still pending when this assertion runs.
+      await vi.advanceTimersByTimeAsync(0);
+
+      gunshots.playAt({ x: 0, y: 0, z: 0 }, 'pistol');
+      const [voice] = positionalAudioChildren(scene).filter((v) => v.isPlaying);
+      expect(voice).toBeDefined();
+      expect(voice.buffer.url).toBe('a.ogg');
+    } finally {
+      THREE.AudioLoader.prototype.load = originalLoad;
+    }
+  });
+});
+
 describe('createGunshotAudio: playExplosion', () => {
   it('does nothing before buffers have loaded (no explosion voice exists yet)', () => {
     const camera = new THREE.PerspectiveCamera();

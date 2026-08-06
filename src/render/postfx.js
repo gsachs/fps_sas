@@ -41,6 +41,14 @@ export function createPostFX({ renderer, scene, camera, width, height }) {
 
   const ssaoPass = new SSAOPass(scene, camera, width * AO_RESOLUTION_SCALE, height * AO_RESOLUTION_SCALE);
   composer.addPass(ssaoPass);
+  // EffectComposer.addPass() unconditionally calls pass.setSize() on every
+  // pass it's given, sized to the composer's own full resolution -- which
+  // silently clobbers the half-res target just constructed above back to
+  // full-res the instant it's added. Reapply the reduced scale immediately
+  // (mirrors setSize()'s own resize-path re-application below), or AO runs
+  // at up to 4x its intended cost for the entire session unless the window
+  // happens to resize.
+  ssaoPass.setSize(width * AO_RESOLUTION_SCALE, height * AO_RESOLUTION_SCALE);
 
   // --- U2: viewmodel depth-clear pass insertion point ------------------
   // KTD4's weapon pass belongs here -- after AO, before bloom -- so its

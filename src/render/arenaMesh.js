@@ -127,23 +127,27 @@ export function buildArenaMeshes(arena) {
   const structureRepeat = averageWallSpan / ARENA_SURFACE_TEXTURE.metersPerTile;
 
   // Placeholder-on-failure convention: on a failed load, touch nothing and
-  // the affected materials stay on the flat colour they already have.
-  loadSurfaceTexture(ARENA_SURFACE_TEXTURE.colorPath, { repeat: [floorRepeat, floorRepeat] }).then(
-    ({ texture, loaded }) => {
-      if (!loaded) return;
-      ground.material.map = texture;
-      ground.material.needsUpdate = true;
+  // the affected materials stay on the flat colour they already have --
+  // onError still reports the failure instead of swallowing it silently.
+  const onTextureError = (error) => console.warn('Failed to load arena surface texture:', error);
+  loadSurfaceTexture(ARENA_SURFACE_TEXTURE.colorPath, {
+    repeat: [floorRepeat, floorRepeat],
+    onError: onTextureError,
+  }).then(({ texture, loaded }) => {
+    if (!loaded) return;
+    ground.material.map = texture;
+    ground.material.needsUpdate = true;
+  });
+  loadSurfaceTexture(ARENA_SURFACE_TEXTURE.colorPath, {
+    repeat: [structureRepeat, structureRepeat],
+    onError: onTextureError,
+  }).then(({ texture, loaded }) => {
+    if (!loaded) return;
+    for (const material of [wallMaterial, pillarMaterial, ...accentMaterials.values()]) {
+      material.map = texture;
+      material.needsUpdate = true;
     }
-  );
-  loadSurfaceTexture(ARENA_SURFACE_TEXTURE.colorPath, { repeat: [structureRepeat, structureRepeat] }).then(
-    ({ texture, loaded }) => {
-      if (!loaded) return;
-      for (const material of [wallMaterial, pillarMaterial, ...accentMaterials.values()]) {
-        material.map = texture;
-        material.needsUpdate = true;
-      }
-    }
-  );
+  });
 
   return group;
 }

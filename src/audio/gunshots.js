@@ -165,16 +165,12 @@ export function createGunshotAudio({ camera, scene, soundSetUrls = {}, onError }
     ).then((loaded) => loaded.filter(Boolean));
   }
 
-  Promise.all(
-    Object.entries(soundSetUrls).map(([setId, setUrls]) => loadBufferPool(setUrls).then((pool) => [setId, pool]))
-  ).then((entries) => {
-    for (const [setId, pool] of entries) buffersBySetId.set(setId, pool);
-
-    // A failed default-set load leaves the game silent but entirely playable
-    // -- the same contract the model loaders hold (R18). Every other set's
-    // own pool can be empty without blocking voice construction: pickBuffer
-    // below falls back to the default pool for those.
-    if ((buffersBySetId.get(DEFAULT_SOUND_SET_ID) ?? []).length === 0) return;
+  // Builds the voice graph once, the first time any set has something to
+  // play -- idempotent (checked via localVoice) so it's safe to call from
+  // every set's own settle. A failed load leaves the game silent but
+  // entirely playable -- the same contract the model loaders hold (R18).
+  function ensureVoicesExist() {
+    if (localVoice) return;
 
     localVoice = new THREE.Audio(listener);
     for (let i = 0; i < VOICE_POOL_SIZE; i++) {
@@ -191,7 +187,21 @@ export function createGunshotAudio({ camera, scene, soundSetUrls = {}, onError }
     explosionVoice.setRefDistance(EXPLOSION_REFERENCE_DISTANCE);
     explosionVoice.setMaxDistance(EXPLOSION_MAX_DISTANCE);
     scene.add(explosionVoice);
-  });
+  }
+
+  // Each set settles independently -- not behind one shared Promise.all --
+  // so a slow or stalled URL in one set (U28's timeout race) can never hold
+  // up a healthy sibling set's own buffers or the voice graph they need.
+  // Voices are built off whichever set is ready FIRST, not gated on
+  // DEFAULT_SOUND_SET_ID specifically: a failed pistol load must not
+  // silence a machine gun or explosion sample that loaded fine, and pickBuffer
+  // below already falls back to the default pool for a set that came up empty.
+  for (const [setId, setUrls] of Object.entries(soundSetUrls)) {
+    loadBufferPool(setUrls).then((pool) => {
+      buffersBySetId.set(setId, pool);
+      if (pool.length > 0) ensureVoicesExist();
+    });
+  }
 
   // `setId`'s own pool if it loaded anything, otherwise the default/pistol
   // pool -- a weapon whose own sample hasn't landed (no URLs passed yet, a
