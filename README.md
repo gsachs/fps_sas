@@ -5,7 +5,9 @@ in deathmatch, built with Three.js and Rapier physics. Bots patrol,
 chase, search a last-seen position when they lose sight of you, and
 retreat toward a doorway when hurt. Each corner room carries its own accent
 color, echoed on a player-only rotating minimap, so you always know where
-you are without giving away anything about the bots.
+you are without giving away anything about the bots. A killfeed under the
+score narrates every kill as it happens — yours in gold, your death in
+red — without ever revealing a position.
 
 ## Run locally
 
