@@ -86,7 +86,7 @@ Two leaks through one root cause: document-level key listeners are neither point
 
 **Test first:** no test covers input-sampler state across a pause or blur boundary at all. Add one that does.
 
-### U6 — Grenade sticks to bodies (finding #9, P2)
+### U6 — Grenade sticks to bodies (finding #9, P2) — DONE (fe2b7e0)
 
 `src/sim/grenades.js:151-167`
 
