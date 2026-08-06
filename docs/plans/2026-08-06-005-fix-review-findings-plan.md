@@ -105,7 +105,7 @@ W+D moves the player at ~5.66 units/sec versus 4.0 for W alone — the sampler e
 - Clamp in `sample()` before building the Command: `const length = Math.hypot(moveX, moveZ); if (length > 1) { moveX /= length; moveZ /= length; }`. Clamping in the sampler leaves already-unit-length bot commands untouched.
 - **Test first:** `test/input/sampler.test.js` asserts W+D yields `moveZ 1 / moveX 1` but never asserts the resulting speed. Assert the speed.
 
-### U8 — Error-handling invariants (findings #8, #11 — P2, P2)
+### U8 — Error-handling invariants (findings #8, #11 — P2, P2) — DONE (221ebe8)
 
 Two `CLAUDE.md` invariant violations on external-call failure paths.
 
