@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { applyFrameEvents } from '../../src/render/frameEvents.js';
 import { computeAngleFromPlayer } from '../../src/render/feedback.js';
-import { LOCAL_PLAYER_ID } from '../../src/ui/names.js';
+import { LOCAL_PLAYER_ID } from '../../src/sim/entityIds.js';
 
 // Builds the full set of collaborators applyFrameEvents dispatches to, all
 // as vi.fn() spies -- this exercises only the dispatch logic (which mock

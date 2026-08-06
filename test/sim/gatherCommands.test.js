@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { gatherCommands } from '../../src/sim/gatherCommands.js';
-import { LOCAL_PLAYER_ID } from '../../src/ui/names.js';
+import { LOCAL_PLAYER_ID } from '../../src/sim/entityIds.js';
 
 // Builds a fake sim whose world.getEntity looks up a plain id->entity map --
 // enough surface for gatherCommands (it only ever calls world.getEntity),

@@ -1,4 +1,4 @@
-import { LOCAL_PLAYER_ID } from '../ui/names.js';
+import { LOCAL_PLAYER_ID } from './entityIds.js';
 
 // Exists so the per-tick command-gathering logic -- U3/U4/U5's fixes: local-
 // player sampling, active/dead bot skipping, corpse-liveness threading --

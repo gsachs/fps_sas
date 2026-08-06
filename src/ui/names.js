@@ -1,7 +1,7 @@
 // R6: one display-name rule for every entity, shared by the results screen
 // and the killfeed -- so "You" / "Bot N" never drifts between the two
 // (KTD3).
-export const LOCAL_PLAYER_ID = 'player'; // matches main.js's own entity id for the local player
+import { LOCAL_PLAYER_ID } from '../sim/entityIds.js';
 
 const BOT_ID_PATTERN = /^bot(\d+)$/;
 

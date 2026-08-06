@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { installDebugHooks } from '../../src/debug/testHooks.js';
-import { LOCAL_PLAYER_ID } from '../../src/ui/names.js';
+import { LOCAL_PLAYER_ID } from '../../src/sim/entityIds.js';
 
 // Minimal fake sim: only world.getEntity is ever read by installDebugHooks'
 // hooks, backed by a plain mutable id->entity map so __debugSetScore's

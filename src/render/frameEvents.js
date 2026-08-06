@@ -1,4 +1,4 @@
-import { LOCAL_PLAYER_ID } from '../ui/names.js';
+import { LOCAL_PLAYER_ID } from '../sim/entityIds.js';
 import { computeAngleFromPlayer } from './feedback.js';
 import { shooterIdsThatHit } from './impacts.js';
 

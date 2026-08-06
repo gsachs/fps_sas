@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
 import { STATES, transition, formatResultsEntry, createGameShell } from '../../src/shell/states.js';
-import { LOCAL_PLAYER_ID } from '../../src/ui/names.js';
+import { LOCAL_PLAYER_ID } from '../../src/sim/entityIds.js';
 
 describe('transition (pure game-state machine)', () => {
   it('moves from START to PLAYING only on lockAcquired', () => {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LOCAL_PLAYER_ID } from '../ui/names.js';
+import { LOCAL_PLAYER_ID } from '../sim/entityIds.js';
 import { getActiveBotCount } from '../shell/botRamp.js';
 
 // Exists so automated/manual verification can read sim, bot, and shell state

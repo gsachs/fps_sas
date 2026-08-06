@@ -1,5 +1,6 @@
 import { createPointerLockController } from './pointerLock.js';
-import { displayName, LOCAL_PLAYER_ID } from '../ui/names.js';
+import { displayName } from '../ui/names.js';
+import { LOCAL_PLAYER_ID } from '../sim/entityIds.js';
 
 // Pure state machine -- no DOM, no pointer lock -- so transitions are
 // unit-testable in isolation. The orchestrator below (createGameShell)

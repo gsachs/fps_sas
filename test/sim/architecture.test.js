@@ -30,6 +30,21 @@ describe('sim module architecture guard (KTD2)', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  // U26: sim/ is the domain layer -- render/ and ui/ depend on it, never the
+  // other way around. gatherCommands.js's import of LOCAL_PLAYER_ID from
+  // ui/names.js was exactly this crossing, and it landed undetected because
+  // the guard above only ever checked for 'three'.
+  it('imports nothing from src/ui or src/render', () => {
+    const offenders = [];
+    for (const file of listJsFiles(SIM_DIR)) {
+      const source = readFileSync(file, 'utf8');
+      if (/from\s+['"].*\/(ui|render)\//.test(source)) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });
 
 // Strips comments before pattern-matching, so prose that merely mentions a

@@ -21,7 +21,7 @@ import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { createKillfeed } from './ui/killfeed.js';
-import { LOCAL_PLAYER_ID } from './ui/names.js';
+import { LOCAL_PLAYER_ID } from './sim/entityIds.js';
 import { createDamageIndicator } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';

@@ -4,8 +4,9 @@
 // (KTD1) -- highlight classes and cap/expiry boundaries are where
 // regressions would hide, so they're unit-tested without a DOM; only the
 // thin mount below touches the DOM.
-import { displayName, LOCAL_PLAYER_ID } from './names.js';
+import { displayName } from './names.js';
 import { DEFAULT_WEAPON_ID, MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
+import { LOCAL_PLAYER_ID } from '../sim/entityIds.js';
 
 const FEED_CAP = 6; // visible entries; oldest drops beyond this (R4) -- tuned in U3
 const ENTRY_LIFETIME_SECONDS = 5; // total time an entry survives before expiring (R4) -- tuned in U3
