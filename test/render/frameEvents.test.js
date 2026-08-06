@@ -79,6 +79,24 @@ describe('applyFrameEvents', () => {
     expect(collaborators.damageIndicator.show).toHaveBeenCalledWith(expectedAngle);
   });
 
+  it("a 'hit' event from the local player that killed calls hud.flashCrosshair('kill')", () => {
+    const collaborators = buildCollaborators();
+    const hitEvent = { type: 'hit', shooterId: LOCAL_PLAYER_ID, targetId: 'bot0', killed: true };
+
+    applyFrameEvents([hitEvent], collaborators);
+
+    expect(collaborators.hud.flashCrosshair).toHaveBeenCalledWith('kill');
+  });
+
+  it("a 'hit' event from the local player that did not kill calls hud.flashCrosshair('hit')", () => {
+    const collaborators = buildCollaborators();
+    const hitEvent = { type: 'hit', shooterId: LOCAL_PLAYER_ID, targetId: 'bot0', killed: false };
+
+    applyFrameEvents([hitEvent], collaborators);
+
+    expect(collaborators.hud.flashCrosshair).toHaveBeenCalledWith('hit');
+  });
+
   it("an 'explosion' event calls grenadeFX.spawnExplosion() and gunshots.playExplosion()", () => {
     const collaborators = buildCollaborators();
     const position = { x: 1, y: 0, z: 1 };
