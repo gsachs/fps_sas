@@ -54,7 +54,11 @@ Every other async load in this same file — bot model, weapon model, gunshot au
 
 - Wrap in `try`/`catch` and render a visible failure message into `#app`, matching the screen-rendering pattern in `shell/states.js`.
 
-### U4 — Corpse semantics (findings #4, #6 — P1, P2) — HUMAN DECISION REQUIRED
+### U4 — Corpse semantics (findings #4, #6 — P1, P2) — DONE (9208c94)
+
+**Decision:** corpse absent from physics (not present-but-non-targetable).
+
+**Landmine hit during implementation, not predicted by the plan:** `Collider.setEnabled(false)` does **not** exclude a kinematic character's collider from `castRay` in this Rapier build (`rapier3d-compat` 0.19.3) -- verified empirically: `isEnabled()` correctly reports `false`, but `castRay` still hits it, even after `world.step()`. The fallback the plan named ahead of time -- reuse `main.js`'s `PARK_POSITION` teleport idiom -- is what actually shipped. `health.js` now has its own `CORPSE_PARK_POSITION` and teleports the corpse's physics body there on death; `tickRespawns`'s existing `movementSystem.teleport(entityId, spawn)` call pulls it back on respawn, no separate re-enable needed.
 
 `src/sim/health.js:42` and `src/main.js:132`
 
@@ -138,6 +142,7 @@ Verified during review — do not rediscover these.
 - `sim/lineOfSight.js` has no dedicated test file. Its `LOS_SURFACE_BACKOFF` / `CAPSULE_RADIUS` boundary math is covered only indirectly, so U4 cannot lean on it as a verified base.
 - Colliders lag a teleport by one sim tick (`world.js:137`). Any U4 test that teleports then immediately raycasts will read the pre-teleport position.
 - `render/models.js` caches a rejected GLTF promise per URL forever, so a transient failure in a U8 test poisons later loads of that URL in the same run.
+- **`Collider.setEnabled(false)` does not exclude a kinematic character's collider from `castRay`** in `rapier3d-compat` 0.19.3, even though `isEnabled()` reports correctly. Confirmed by direct probe (fixed-body colliders honor it; kinematic-position-based ones don't). Don't reach for `setEnabled` to take a character out of hitscan/line-of-sight queries -- teleport its physics body far away instead (see U4, `CORPSE_PARK_POSITION`).
 
 ## Accepted (not fixed)
 
