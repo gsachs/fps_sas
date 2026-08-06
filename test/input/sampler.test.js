@@ -16,15 +16,37 @@ describe('createInputSampler', () => {
     expect(sampler.getYawPitch().pitch).toBeGreaterThanOrEqual(-Math.PI / 2);
   });
 
-  it('maps WASD to moveX/moveZ', () => {
+  it('maps each single WASD key to its own moveX/moveZ axis', () => {
     const sampler = createInputSampler();
     sampler.onKeyDown({ code: 'KeyW' });
-    sampler.onKeyDown({ code: 'KeyD' });
-    expect(sampler.sample()).toMatchObject({ moveZ: 1, moveX: 1 });
+    expect(sampler.sample()).toMatchObject({ moveZ: 1, moveX: 0 });
 
     sampler.onKeyUp({ code: 'KeyW' });
     sampler.onKeyDown({ code: 'KeyS' });
-    expect(sampler.sample()).toMatchObject({ moveZ: -1, moveX: 1 });
+    expect(sampler.sample()).toMatchObject({ moveZ: -1, moveX: 0 });
+
+    sampler.onKeyUp({ code: 'KeyS' });
+    sampler.onKeyDown({ code: 'KeyD' });
+    expect(sampler.sample()).toMatchObject({ moveZ: 0, moveX: 1 });
+
+    sampler.onKeyUp({ code: 'KeyD' });
+    sampler.onKeyDown({ code: 'KeyA' });
+    expect(sampler.sample()).toMatchObject({ moveZ: 0, moveX: -1 });
+  });
+
+  it('normalizes diagonal input so combined-axis speed never exceeds single-axis speed (finding #12)', () => {
+    const sampler = createInputSampler();
+    sampler.onKeyDown({ code: 'KeyW' });
+    sampler.onKeyDown({ code: 'KeyD' });
+    const forwardRight = sampler.sample();
+    expect(Math.hypot(forwardRight.moveX, forwardRight.moveZ)).toBeCloseTo(1, 10);
+    expect(forwardRight.moveX).toBeCloseTo(forwardRight.moveZ, 10); // equal split between the two held axes
+
+    sampler.onKeyUp({ code: 'KeyW' });
+    sampler.onKeyDown({ code: 'KeyS' });
+    const backRight = sampler.sample();
+    expect(Math.hypot(backRight.moveX, backRight.moveZ)).toBeCloseTo(1, 10);
+    expect(backRight.moveZ).toBeCloseTo(-backRight.moveX, 10);
   });
 
   it('maps the Space key to the jump button', () => {

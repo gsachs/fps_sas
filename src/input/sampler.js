@@ -81,6 +81,18 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
     if (keys.has('KeyD')) moveX += 1;
     if (keys.has('KeyA')) moveX -= 1;
 
+    // Each axis is set independently above, so a diagonal (both axes held)
+    // has length sqrt(2) before this -- movement.js multiplies this
+    // straight through by MOVE_SPEED with no renormalization of its own,
+    // so an un-clamped diagonal would move ~41% faster than a cardinal
+    // direction. Bot commands come from an already-normalized seek()
+    // direction (steering.js), so this clamp only ever touches player input.
+    const length = Math.hypot(moveX, moveZ);
+    if (length > 1) {
+      moveX /= length;
+      moveZ /= length;
+    }
+
     return createCommand({
       moveX,
       moveZ,
