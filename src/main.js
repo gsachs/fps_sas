@@ -284,6 +284,10 @@ window.addEventListener('resize', () => {
 const gameShell = createGameShell({
   container: app,
   lockElement: renderer.domElement,
+  // U24: Escape is the common way this game pauses (it exits pointer lock,
+  // which the shell turns into a PLAYING -> PAUSED transition) -- mirrors
+  // the window-blur listener below, which covers the alt-tab case instead.
+  onPause: () => inputSampler.clearHeldInput(),
   onRestart: () => {
     resetMatch(sim.world, {
       rapierWorld: arena.rapierWorld,

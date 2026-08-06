@@ -48,14 +48,14 @@ describe('createGameShell (orchestrator wiring)', () => {
   // pauseScreen gets [resume, restart, returnToStart] then resultsScreen
   // gets [playAgain, returnToStart]. No test hook exists for these beyond
   // the container the caller already owns.
-  function buildShell(onRestart = () => {}) {
+  function buildShell(onRestart = () => {}, onPause = () => {}) {
     const container = document.createElement('div');
     const lockElement = document.createElement('div');
     // jsdom has no Pointer Lock implementation; the shell only needs the
     // call not to throw; the pointer-lock controller itself is unit-tested
     // separately.
     lockElement.requestPointerLock = () => {};
-    const shell = createGameShell({ container, lockElement, onRestart });
+    const shell = createGameShell({ container, lockElement, onRestart, onPause });
     const [resumeButton, restartButton, returnButtonFromPause, playAgainButton, returnButtonFromResults] =
       container.querySelectorAll('button');
     return {
@@ -122,5 +122,43 @@ describe('createGameShell (orchestrator wiring)', () => {
 
     const entries = [...resultsScreen.querySelectorAll('li')].map((li) => li.textContent);
     expect(entries).toContain(formatResultsEntry({ id: LOCAL_PLAYER_ID, score: 0 }));
+  });
+
+  // U24: a press queued right before Escape (lockLost while PLAYING) must not
+  // survive the pause and self-discharge on the first tick after resume --
+  // same race U16 closed for window blur, but this is the path players
+  // actually hit (Escape exits pointer lock, which fires 'pointerlockchange'
+  // and lands in the shell's onUnlock handler -- not debugForceLockLost,
+  // which bypasses onUnlock entirely, so the real event must be dispatched).
+  function fireRealPointerUnlock() {
+    // jsdom has no Pointer Lock implementation, so document.pointerLockElement
+    // is never set to lockElement -- dispatching the change event alone makes
+    // the controller's isLocked() check read false, exactly like a genuine
+    // Escape-driven unlock.
+    document.dispatchEvent(new Event('pointerlockchange'));
+  }
+
+  it('calls onPause exactly once when a lock loss pauses an in-progress match', () => {
+    const onPause = vi.fn();
+    const { shell } = buildShell(() => {}, onPause);
+
+    shell.debugForceLockAcquired(); // START -> PLAYING
+    fireRealPointerUnlock(); // real onUnlock path: PLAYING -> PAUSED, the pause
+
+    expect(shell.getState()).toBe(STATES.PAUSED);
+    expect(onPause).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onPause for a lock loss while not PLAYING (e.g. still at START)', () => {
+    const onPause = vi.fn();
+    const { shell } = buildShell(() => {}, onPause);
+
+    // Still at START -- never acquired the lock, so this lockLost is not a
+    // pause (mirrors the code comment: a lock loss right after
+    // exitPointerLock() while already at START/RESULTS is not a pause).
+    fireRealPointerUnlock();
+
+    expect(shell.getState()).toBe(STATES.START);
+    expect(onPause).not.toHaveBeenCalled();
   });
 });

@@ -55,7 +55,7 @@ function styledButton(label) {
   return button;
 }
 
-export function createGameShell({ container, lockElement, onRestart }) {
+export function createGameShell({ container, lockElement, onRestart, onPause }) {
   let state = STATES.START;
 
   const startScreen = createScreen(container, { visible: true });
@@ -100,7 +100,15 @@ export function createGameShell({ container, lockElement, onRestart }) {
     onUnlock: () => {
       // A lock loss while already at START/RESULTS (e.g. right after
       // exitPointerLock() below) is not a pause -- only PLAYING pauses.
-      if (state === STATES.PLAYING) dispatch('lockLost');
+      if (state === STATES.PLAYING) {
+        dispatch('lockLost');
+        // U24: Escape is the common way this game pauses, and it reaches
+        // here -- not the window-blur listener U16 fixed. A press queued
+        // right before the pause (fireLatch/throwLatch pending count) must
+        // be drained now, same as blur does, or it self-discharges with no
+        // live input on the first tick after resume.
+        onPause?.();
+      }
     },
     onError: () => {
       // Rejected (e.g. the post-Esc cooldown); stay put. The button that
