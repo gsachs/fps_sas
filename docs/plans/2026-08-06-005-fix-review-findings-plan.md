@@ -294,7 +294,7 @@ U20's extraction moved `LOCAL_PLAYER_ID` usage from `main.js` (a composition roo
 - Widen the KTD2 guard (or add a sibling one) to assert `src/sim` never imports from `src/ui` or `src/render`, so this class of crossing can't land unnoticed again.
 - **Test first:** the widened architecture-guard test, run against the current (pre-fix) tree, must fail on `gatherCommands.js`'s import before the fix and pass after.
 
-### U27 — Three architecture guards' regexes can be bypassed by an unusual-but-valid syntactic reintroduction (P2)
+### U27 — Three architecture guards' regexes can be bypassed by an unusual-but-valid syntactic reintroduction (P2) — DONE (711ac77)
 
 `test/sim/architecture.test.js`
 
