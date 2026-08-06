@@ -4,16 +4,23 @@ import { disposeObject3D, loadCharacterModel, loadPropModel } from '../../src/re
 
 // No URL scheme this loader can resolve -- fails fast and deterministically
 // (GLTFLoader's fetch rejects synchronously with "Failed to parse URL"),
-// without needing a real server or a mocked loader. Both loaders funnel
-// through this same failure path (loadGltf's .catch), so one bad URL per
-// export exercises the fix (#8: never return null on failure).
-const UNRESOLVABLE_URL = 'this-path-does-not-resolve.glb';
+// without needing a real server or a mocked loader. Each test below gets its
+// own distinct unresolvable URL, not a shared constant: since #14 (loadGltf
+// no longer caches a failure forever), a second real load for the very same
+// URL is a genuine retry -- and retrying a URL whose failure was a
+// synchronous "Failed to parse URL" throw trips an unrelated bookkeeping bug
+// in three's FileLoader (its internal in-flight-request map never gets
+// cleaned up for a request that failed before fetch() started), which hangs
+// forever instead of failing again. Distinct URLs per test sidestep that
+// three-internal quirk without masking it.
+const UNRESOLVABLE_CHARACTER_URL = 'this-character-path-does-not-resolve.glb';
+const UNRESOLVABLE_PROP_URL = 'this-prop-path-does-not-resolve.glb';
 
 describe('loadCharacterModel (never returns null on failure)', () => {
   it('resolves a self-describing failure object and calls onError', async () => {
     const onError = vi.fn();
 
-    const result = await loadCharacterModel(UNRESOLVABLE_URL, { onError });
+    const result = await loadCharacterModel(UNRESOLVABLE_CHARACTER_URL, { onError });
 
     expect(result).not.toBeNull();
     expect(result).toEqual({ scene: null, animations: [], loaded: false });
@@ -25,11 +32,59 @@ describe('loadPropModel (never returns null on failure)', () => {
   it('resolves a self-describing failure object and calls onError', async () => {
     const onError = vi.fn();
 
-    const result = await loadPropModel(UNRESOLVABLE_URL, { onError });
+    const result = await loadPropModel(UNRESOLVABLE_PROP_URL, { onError });
 
     expect(result).not.toBeNull();
     expect(result).toEqual({ scene: null, loaded: false });
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('loadGltf cache (U14: a failed load must not be cached forever)', () => {
+  it('re-attempts the load on a later call for the same URL, and still caches a successful load', async () => {
+    // Isolate this test's module graph so mocking GLTFLoader here can't leak
+    // into the other tests in this file, which rely on the real loader.
+    vi.resetModules();
+
+    const load = vi.fn();
+    vi.doMock('three/addons/loaders/GLTFLoader.js', () => ({
+      GLTFLoader: vi.fn().mockImplementation(() => ({ load })),
+    }));
+
+    const { loadPropModel } = await import('../../src/render/models.js');
+    const url = 'flaky-model.glb';
+    const onError = vi.fn();
+
+    // First call: the underlying loader fails (transient network error).
+    load.mockImplementationOnce((_url, _onLoad, _onProgress, onLoadError) => {
+      onLoadError(new Error('network blip'));
+    });
+    const firstResult = await loadPropModel(url, { onError });
+    expect(firstResult).toEqual({ scene: null, loaded: false });
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    // Second call, same URL: the underlying loader now succeeds. A cache
+    // that keeps the rejected promise forever would never call `load`
+    // again and would just replay the first failure.
+    const clonedScene = { cloned: true };
+    const scene = { clone: () => clonedScene };
+    load.mockImplementationOnce((_url, onLoad) => {
+      onLoad({ scene, animations: [] });
+    });
+    const secondResult = await loadPropModel(url, { onError });
+
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(secondResult).toEqual({ scene: clonedScene, loaded: true });
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    // Third call, same URL: a successful load must still be cached -- this
+    // must NOT call the underlying loader a third time.
+    const thirdResult = await loadPropModel(url, { onError });
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(thirdResult).toEqual({ scene: clonedScene, loaded: true });
+
+    vi.doUnmock('three/addons/loaders/GLTFLoader.js');
+    vi.resetModules();
   });
 });
 

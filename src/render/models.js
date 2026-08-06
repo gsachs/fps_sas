@@ -4,7 +4,10 @@ import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js'
 // Loads a GLTF model, caching the parsed result so multiple instances
 // (e.g. several bots) clone cheaply via SkeletonUtils rather than
 // re-fetching. A failed load calls onError and never throws or hangs --
-// callers keep their placeholder mesh in that case (R9 error path).
+// callers keep their placeholder mesh in that case (R9 error path). Only a
+// successful load is cached: a failure is evicted immediately (U14) so a
+// transient error (network blip, asset briefly unavailable) gets retried on
+// the next call instead of failing the same URL for the rest of the session.
 const loader = new GLTFLoader();
 const gltfCache = new Map(); // url -> Promise<GLTF>
 
@@ -14,6 +17,12 @@ function loadGltf(url) {
       url,
       new Promise((resolve, reject) => {
         loader.load(url, resolve, undefined, reject);
+      }).catch((error) => {
+        // Never cache a failure: a transient error (network blip, asset
+        // briefly unavailable) shouldn't doom every later request for this
+        // URL for the rest of the session. Evict so the next call retries.
+        gltfCache.delete(url);
+        throw error;
       })
     );
   }
