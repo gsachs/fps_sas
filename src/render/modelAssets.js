@@ -104,6 +104,69 @@ export const MACHINEGUN_MODEL = {
   offset: { x: 0, y: -0.035, z: 0.134 },
 };
 
+// Ground pickup props (replacing pickupMeshes.js's placeholder boxes): a
+// *real-world*-scale target, not a camera-relative viewmodel one, since
+// these sit in the world at arm's length instead of fixed in front of the
+// camera. pickupMeshes.js positions each by its own measured bounding-box
+// *bottom*, not its origin -- these packs centre their meshes near the
+// geometric middle, not the base, so a floor placement needs a ground
+// offset the same way MACHINEGUN_MODEL's viewmodel offset needed a
+// recentring one above.
+//
+// Measured the same way as BOT_MODEL/WEAPON_MODEL/MACHINEGUN_MODEL above:
+// load the model, `new THREE.Box3().setFromObject(scene)`, read size/
+// centre/min. Grenade native bbox: size (0.1785, 0.3033, 0.1447), centre
+// (-0.0036, -0.0039, ~0), min.y -0.1556 -- authored standing upright on its
+// long (Y) axis, origin near centre, not base.
+const GRENADE_NATIVE_HEIGHT = 0.3033;
+// A real fragmentation grenade (e.g. M67) stands roughly 9-14cm tall
+// including the safety lever -- about a ninth of a person's height.
+// Calibrated off this file's own HUMANOID_RENDER_HEIGHT rather than a raw
+// guess; this scifi-styled grenade reads a little chunkier, landing near the
+// top of that real-world range.
+const GRENADE_RENDER_HEIGHT = HUMANOID_RENDER_HEIGHT / 9; // ~0.178m
+
+export const GRENADE_MODEL = {
+  path: 'assets/props/grenade.glb',
+  scale: GRENADE_RENDER_HEIGHT / GRENADE_NATIVE_HEIGHT,
+  // offset.x/z = -centre*scale recentres the model over the pickup point;
+  // offset.y = -min.y*scale lifts its lowest vertex (not its near-centre
+  // origin) to the floor. Computed from the measured bbox above, not
+  // eyeballed -- same approach as MACHINEGUN_MODEL's own offset comment.
+  offset: { x: 0.002, y: 0.091, z: 0 },
+};
+
+// Rifle native bbox (measured same way, reused from MACHINEGUN_NATIVE_LENGTH
+// above for the length axis): size (0.6303, 2.4689, 8.8541), centre (0,
+// 0.5656, -2.1570), min (-0.3152, -0.6688, -6.5840) -- authored in its held
+// orientation (Y up: scope-to-grip: 2.4689; X: 0.6303 width, its narrowest
+// axis; Z: 8.8541 barrel-to-stock length, matching MACHINEGUN_NATIVE_LENGTH).
+// A modern assault rifle is roughly 1m long -- about 60% of a 1.7m-tall
+// person's height. Calibrated off HUMANOID_RENDER_HEIGHT (1.605) the same
+// way as the grenade above, rather than guessed: 60% of that is 0.963.
+const MACHINEGUN_PICKUP_LENGTH = HUMANOID_RENDER_HEIGHT * 0.6; // ~0.963m
+
+export const MACHINEGUN_PICKUP_MODEL = {
+  path: 'assets/weapons/quaternius-rifle-static.glb', // same shipped file as MACHINEGUN_MODEL (see CREDITS.md) -- not re-downloaded, just a different ground-prop transform
+  // A separate scale from MACHINEGUN_MODEL's camera-relative
+  // MACHINEGUN_VIEW_LENGTH: this is a real-world-scale floor prop, so it
+  // targets MACHINEGUN_PICKUP_LENGTH instead, off the same measured native
+  // length.
+  scale: MACHINEGUN_PICKUP_LENGTH / MACHINEGUN_NATIVE_LENGTH,
+  // Rolled 90 degrees around its own barrel (Z) axis: authored standing in
+  // its held orientation (scope-and-grip axis up), which would read as
+  // balanced on end rather than dropped on a floor. Rolling onto its
+  // narrowest native axis (X, its width) is what makes that axis the
+  // on-ground "height" instead -- the way a rifle actually rests once it
+  // falls on its side.
+  rotation: { x: 0, y: 0, z: Math.PI / 2 },
+  // Native bbox rolled by the rotation above swaps the x/y extents (rolled
+  // min.y equals the pre-roll native min.x); offset.x/z = -centre*scale
+  // recentres over the pickup point the same way GRENADE_MODEL's does, and
+  // offset.y = -min.y(rolled)*scale grounds its lowest vertex.
+  offset: { x: 0.062, y: 0.034, z: 0.235 },
+};
+
 // U5: calm-horizon equirectangular sky (KTD5), used by scene.js as
 // scene.background via loadSkyBackground. 2048x1024 -- plenty of resolution
 // for a background the player never approaches, at a fraction of the

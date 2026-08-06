@@ -7,6 +7,8 @@ import {
   BOT_MODEL,
   WEAPON_MODEL,
   MACHINEGUN_MODEL,
+  GRENADE_MODEL,
+  MACHINEGUN_PICKUP_MODEL,
   ARENA_SURFACE_TEXTURE,
   SKY_TEXTURE_PATH,
 } from '../../src/render/modelAssets.js';
@@ -113,6 +115,68 @@ describe('MACHINEGUN_MODEL', () => {
     // scale-sanity margin above.
     expect(longestAxis).toBeGreaterThan(0.41);
     expect(longestAxis).toBeLessThan(0.69);
+  });
+});
+
+// Ground pickup props: replacing pickupMeshes.js's placeholder boxes with
+// real, grounded models. Same shape of guard as WEAPON_MODEL/MACHINEGUN_MODEL
+// above -- a swap that breaks either check fails silently in the browser
+// (wrong scale, or a skinned model the prop loader's plain clone can't
+// survive) -- but the scale-sanity band targets a real-world size (a hand-
+// sized object, a person-relative-length rifle), not a viewmodel footprint.
+describe('GRENADE_MODEL', () => {
+  it('points at a static model, since the prop loader cannot clone a skinned one', async () => {
+    const gltf = await loadShipped(GRENADE_MODEL.path);
+    const skinned = [];
+    gltf.scene.traverse((node) => {
+      if (node.isSkinnedMesh) skinned.push(node.name);
+    });
+
+    expect(skinned).toEqual([]);
+  });
+
+  it('scales the grenade to a plausible hand-sized real-world height', async () => {
+    const gltf = await loadShipped(GRENADE_MODEL.path);
+    gltf.scene.updateMatrixWorld(true);
+    const nativeHeight = new THREE.Box3().setFromObject(gltf.scene).getSize(new THREE.Vector3()).y;
+    const scaledHeight = nativeHeight * GRENADE_MODEL.scale;
+
+    // A real fragmentation grenade stands roughly 9-14cm tall; this
+    // scifi-styled one is allowed to read a bit chunkier without ballooning
+    // into a comically oversized prop.
+    expect(scaledHeight).toBeGreaterThan(0.08);
+    expect(scaledHeight).toBeLessThan(0.3);
+  });
+});
+
+describe('MACHINEGUN_PICKUP_MODEL', () => {
+  it('points at a static model, since the prop loader cannot clone a skinned one', async () => {
+    const gltf = await loadShipped(MACHINEGUN_PICKUP_MODEL.path);
+    const skinned = [];
+    gltf.scene.traverse((node) => {
+      if (node.isSkinnedMesh) skinned.push(node.name);
+    });
+
+    expect(skinned).toEqual([]);
+  });
+
+  it('scales the ground rifle to a plausible real-rifle-relative-to-a-person length, distinct from the viewmodel scale', async () => {
+    const gltf = await loadShipped(MACHINEGUN_PICKUP_MODEL.path);
+    gltf.scene.updateMatrixWorld(true);
+    const nativeSize = new THREE.Box3().setFromObject(gltf.scene).getSize(new THREE.Vector3());
+    const longestAxis = Math.max(nativeSize.x, nativeSize.y, nativeSize.z) * MACHINEGUN_PICKUP_MODEL.scale;
+
+    // A real rifle is roughly 0.7-1.3m long -- unlike MACHINEGUN_MODEL's
+    // camera-relative viewmodel scale (which targets well under 0.5), this
+    // is a world-space floor prop calibrated off a person-height constant.
+    expect(longestAxis).toBeGreaterThan(0.7);
+    expect(longestAxis).toBeLessThan(1.3);
+    expect(MACHINEGUN_PICKUP_MODEL.scale).not.toBeCloseTo(MACHINEGUN_MODEL.scale, 3);
+  });
+
+  it('rolls the rifle onto its side rather than leaving it in its held, upright orientation', () => {
+    expect(MACHINEGUN_PICKUP_MODEL.rotation).toBeDefined();
+    expect(MACHINEGUN_PICKUP_MODEL.rotation.z).not.toBe(0);
   });
 });
 

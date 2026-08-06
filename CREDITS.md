@@ -15,7 +15,13 @@ By [Quaternius](https://poly.pizza/u/Quaternius), via [Poly Pizza](https://poly.
   view, replacing the placeholder box (U5). Static, not skinned, same as the
   Pistol above. Chosen over Quaternius's other sci-fi-styled guns on Poly
   Pizza for its grey/black/red palette, which matches the Pistol's rather
-  than clashing with it.
+  than clashing with it. Also used, unchanged, as the ground model for the
+  machine-gun floor pickup, with its own separate scale/offset/rotation for
+  that world-space use — see `src/render/modelAssets.js`.
+- **Scifi Grenade** — [source](https://poly.pizza/m/uooNRUiCa9). Grenade
+  pickup on the floor, replacing the placeholder box. Chosen over
+  Quaternius's plainer "Grenade" (also CC0) for its sci-fi styling, matching
+  why the Rifle above was chosen over its other sci-fi guns.
 
 ## Audio
 
