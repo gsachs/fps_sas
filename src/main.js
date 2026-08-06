@@ -20,6 +20,7 @@ import { BOT_MODEL, WEAPON_MODEL, GUNSHOT_PATHS } from './render/modelAssets.js'
 import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
+import { createKillfeed } from './ui/killfeed.js';
 import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
@@ -62,6 +63,10 @@ scene.add(buildArenaMeshes(arena));
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 
 const hud = createHud(app);
+// R8: joins the app container ahead of the shell screens created below (see
+// createGameShell) so it paints underneath them and inherits their overlay
+// coverage for free, the same way the rest of the HUD does.
+const killfeed = createKillfeed(app);
 const minimap = createMinimap(app, arena);
 const damageIndicator = createDamageIndicator(app);
 const weaponView = createWeaponView(camera);
@@ -528,6 +533,12 @@ const loop = createRenderLoop({
         hud.flashCrosshair(event.killed ? 'kill' : 'hit');
         if (debugMode) debugCounters.crosshairFlashes += 1;
       }
+      // R1, R3, R5: every kill narrates the feed, bot-vs-bot included; a
+      // non-lethal hit is a no-op (addEntry checks event.killed itself).
+      // Two blast kills in the same events array each call this in turn, so
+      // they land as adjacent newest-first lines without any batching logic
+      // here (AE2).
+      if (event.type === 'hit') killfeed.addKill(event);
       if (event.type === 'hit' && event.targetId === LOCAL_PLAYER_ID && event.damageOrigin) {
         const angle = computeAngleFromPlayer(
           playerEntity.latest.position,
@@ -569,6 +580,10 @@ const loop = createRenderLoop({
       ammo: playerEntity.ammo,
       grenadeCount: playerEntity.grenadeCount,
     });
+    // R4, R8, KTD2: ages/expires entries by sim delta time, only reached
+    // from this simRunning block -- a paused match calls this zero times,
+    // freezing the feed for free, no separate pause check needed.
+    killfeed.update(delta);
     // Latest non-interpolated transform, same as the camera above (KTD2) --
     // the map should react exactly as fast as aiming does, not lag a frame
     // behind it.

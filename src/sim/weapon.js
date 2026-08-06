@@ -86,7 +86,7 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks,
     // needs the weapon that actually fired the shot, not whatever the
     // entity holds by the time this returns.
     const weaponId = weaponConfigs[entity.heldWeapon] ? entity.heldWeapon : DEFAULT_WEAPON_ID;
-    const config = weaponConfigs[entity.heldWeapon ?? DEFAULT_WEAPON_ID] ?? weaponConfigs[DEFAULT_WEAPON_ID];
+    const config = weaponConfigs[weaponId];
 
     const cooldown = remainingCooldown.get(entity.id) ?? 0;
     if (cooldown > 0) remainingCooldown.set(entity.id, cooldown - 1);
