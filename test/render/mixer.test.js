@@ -39,6 +39,59 @@ describe('createAnimatedCharacter: base-hint clip selection', () => {
   });
 });
 
+describe('createAnimatedCharacter: death-clip detection uses the mapped name, not a substring', () => {
+  it('clamps a mapped dead clip whose name does not contain "Death"', () => {
+    const clips = [
+      makeClip('Rig|Idle_Loop'),
+      makeClip('Rig|Jog_Fwd_Loop'),
+      makeClip('Rig|Perish', 0.6),
+      makeClip('Rig|Pistol_Shoot', 0.2),
+    ];
+    const clipNames = {
+      idle: 'Rig|Idle_Loop',
+      moving: 'Rig|Jog_Fwd_Loop',
+      dead: 'Rig|Perish',
+      fire: 'Rig|Pistol_Shoot',
+    };
+    const character = createAnimatedCharacter(new THREE.Group(), clips, clipNames);
+
+    character.setBaseHint('dead');
+
+    expect(character.getActiveClipName()).toBe('Rig|Perish');
+    expect(character.getActiveActionLoopMode()).toEqual({
+      loop: THREE.LoopOnce,
+      clampWhenFinished: true,
+    });
+  });
+
+  it('does not clamp an unrelated clip that merely happens to contain "Death"', () => {
+    // 'Rig|DeathMatch_Taunt' contains the substring "Death" but is mapped to
+    // the 'moving' hint here, not 'dead' -- it must not get the one-shot/
+    // clamp treatment just because of its name.
+    const clips = [
+      makeClip('Rig|Idle_Loop'),
+      makeClip('Rig|DeathMatch_Taunt', 0.4),
+      makeClip('Rig|Perish', 0.6),
+      makeClip('Rig|Pistol_Shoot', 0.2),
+    ];
+    const clipNames = {
+      idle: 'Rig|Idle_Loop',
+      moving: 'Rig|DeathMatch_Taunt',
+      dead: 'Rig|Perish',
+      fire: 'Rig|Pistol_Shoot',
+    };
+    const character = createAnimatedCharacter(new THREE.Group(), clips, clipNames);
+
+    character.setBaseHint('moving');
+
+    expect(character.getActiveClipName()).toBe('Rig|DeathMatch_Taunt');
+    expect(character.getActiveActionLoopMode()).toEqual({
+      loop: THREE.LoopRepeat,
+      clampWhenFinished: false,
+    });
+  });
+});
+
 describe('createAnimatedCharacter: fire reaction', () => {
   it('plays the fire clip immediately and reverts to the base hint after it elapses', () => {
     const character = createAnimatedCharacter(new THREE.Group(), buildClips(), CLIPS);

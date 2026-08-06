@@ -22,7 +22,7 @@ export function createAnimatedCharacter(scene3D, animations, clipNames) {
   const actions = new Map();
   for (const clip of animations) {
     const action = mixer.clipAction(clip);
-    if (clip.name === clipNames.fire || clip.name.includes('Death')) {
+    if (clip.name === clipNames.fire || clip.name === clipNames.dead) {
       action.setLoop(THREE.LoopOnce, 1);
       action.clampWhenFinished = true;
     }
@@ -71,5 +71,8 @@ export function createAnimatedCharacter(scene3D, animations, clipNames) {
     update,
     // For tests/debugging: which clip is currently active, if any.
     getActiveClipName: () => activeAction?.getClip().name ?? null,
+    // For tests/debugging: the active action's loop settings, if any.
+    getActiveActionLoopMode: () =>
+      activeAction ? { loop: activeAction.loop, clampWhenFinished: activeAction.clampWhenFinished } : null,
   };
 }
