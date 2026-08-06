@@ -173,7 +173,7 @@ Only `DEFAULT_WEAPON_ID` is exported from `weapon.js`; every other reference to 
 - Export a canonical weapon-id source (e.g. `WEAPON_IDS` derived from `WEAPON_CONFIGS`) and import it at every listed call site.
 - **Test first:** an architecture-style test asserting every non-`sim/weapon.js` weapon-id reference resolves through the exported source, not a bare literal.
 
-### U13 — Bot search-phase `lastSeenPosition` aliases the live player object (P2)
+### U13 — Bot search-phase `lastSeenPosition` aliases the live player object (P2) — DONE (4b959f8)
 
 `src/sim/bot/fsm.js:132,135,288`
 
