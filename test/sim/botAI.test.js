@@ -63,6 +63,39 @@ describe('transitionBotState (pure)', () => {
     expect(next.lastSeenPosition).toEqual(PLAYER_POSITION);
   });
 
+  it('never acquires a dead target, even in range and in sight (targetAlive: false)', () => {
+    const state = createInitialBotState();
+    const next = transitionBotState(
+      state,
+      {
+        distanceToPlayer: ATTACK_RANGE - 1,
+        hasLineOfSight: true,
+        health: 100,
+        playerPosition: PLAYER_POSITION,
+        targetAlive: false,
+      },
+      1
+    );
+    expect(next.phase).not.toBe('attack');
+    expect(next.phase).not.toBe('chase');
+  });
+
+  it('drops Attack -> Chase the instant the target dies, even with unbroken line of sight', () => {
+    const attacking = { phase: 'attack', retreatArmed: true, retreatEndTick: 0, lastSeenPosition: PLAYER_POSITION };
+    const next = transitionBotState(
+      attacking,
+      {
+        distanceToPlayer: ATTACK_RANGE - 1,
+        hasLineOfSight: true,
+        health: 100,
+        playerPosition: PLAYER_POSITION,
+        targetAlive: false,
+      },
+      10
+    );
+    expect(next.phase).not.toBe('attack');
+  });
+
   it('drops Attack -> Chase when sight or range is lost (existing transition, unchanged)', () => {
     const attacking = { phase: 'attack', retreatArmed: true, retreatEndTick: 0, lastSeenPosition: PLAYER_POSITION };
     const next = transitionBotState(

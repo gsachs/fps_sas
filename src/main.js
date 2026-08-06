@@ -136,12 +136,18 @@ const sim = createSimulation({
   grenades: grenadeSystem,
   gatherCommands: () => {
     const commands = new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]);
-    const playerPosition = sim.world.getEntity(LOCAL_PLAYER_ID).position;
+    const playerEntity = sim.world.getEntity(LOCAL_PLAYER_ID);
     for (const { id, bot, active } of bots) {
       if (!active) continue; // not yet unlocked by the ramp -- frozen in place, no command at all
       const botEntity = sim.world.getEntity(id);
       if (botEntity && !botEntity.dead) {
-        commands.set(id, bot.sample(botEntity.position, playerPosition, botEntity.health, botEntity.heldWeapon));
+        // !playerEntity.dead: a corpse is never a live target (U4) -- the
+        // sim's own liveness gate, threaded in rather than the FSM guessing
+        // it from position alone (Core Invariant: never pass null).
+        commands.set(
+          id,
+          bot.sample(botEntity.position, playerEntity.position, botEntity.health, botEntity.heldWeapon, !playerEntity.dead)
+        );
       }
     }
     return commands;

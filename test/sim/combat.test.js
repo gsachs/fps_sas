@@ -50,6 +50,32 @@ describe('combat: kill, score, and respawn (AE1)', () => {
   });
 });
 
+describe('combat: a corpse does not block bullets or line of sight', () => {
+  it('lets a shot pass through a corpse to hit whoever is standing behind it', () => {
+    const spawnPoints = [{ x: 0, y: 1, z: 0 }, { x: 20, y: 1, z: 20 }, { x: 40, y: 1, z: 40 }];
+    const rig = buildBotRig({ spawnPoints, cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'victim', { x: 0, y: 1, z: 5 });
+    addEntity(rig, 'bystander', { x: 0, y: 1, z: 10 });
+    primeBroadPhase(rig);
+
+    // Kill the victim, who stands directly between the shooter and the
+    // bystander -- while alive, this shot would land on the victim.
+    for (let i = 0; i < 60 && !rig.world.getEntity('victim').dead; i++) {
+      rig.world.step(new Map([['shooter', FIRE], ['victim', HOLD], ['bystander', HOLD]]), 1 / 60);
+    }
+    expect(rig.world.getEntity('victim').dead).toBe(true);
+
+    // Keep firing the same direction. A live corpse-collider would keep
+    // absorbing every shot; the bystander behind it must still take damage.
+    for (let i = 0; i < 20 && rig.world.getEntity('bystander').health === 100; i++) {
+      rig.world.step(new Map([['shooter', FIRE], ['victim', HOLD], ['bystander', HOLD]]), 1 / 60);
+    }
+
+    expect(rig.world.getEntity('bystander').health).toBeLessThan(100);
+  });
+});
+
 describe('combat: respawn continues arena state (AE2)', () => {
   it('restores the respawned entity without resetting unrelated entities', () => {
     const spawnPoints = [{ x: 0, y: 1, z: 0 }, { x: 20, y: 1, z: 20 }];

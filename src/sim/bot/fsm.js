@@ -97,7 +97,7 @@ export function createInitialBotState() {
 // retreat expired, since health never recovers to clear the guard. Retreat
 // only re-arms once health rises again (i.e., after a respawn).
 export function transitionBotState(state, sensors, tick) {
-  const { distanceToPlayer, hasLineOfSight, health, playerPosition, searchExhausted } = sensors;
+  const { distanceToPlayer, hasLineOfSight, health, playerPosition, searchExhausted, targetAlive = true } = sensors;
   const armed = health >= RETREAT_HEALTH_THRESHOLD ? true : state.retreatArmed;
 
   if (armed && health < RETREAT_HEALTH_THRESHOLD && state.phase !== 'retreat') {
@@ -123,8 +123,10 @@ export function transitionBotState(state, sensors, tick) {
   }
 
   // R13: acquisition is line-of-sight gated -- occluded proximity alone
-  // (AE5) never starts or continues a chase.
-  const acquired = hasLineOfSight && distanceToPlayer <= AWARENESS_RANGE;
+  // (AE5) never starts or continues a chase. targetAlive similarly gates a
+  // corpse out of acquisition entirely (the death-strip fix's sibling): a
+  // dead target is never chased, attacked, or searched for.
+  const acquired = targetAlive && hasLineOfSight && distanceToPlayer <= AWARENESS_RANGE;
 
   if (acquired && distanceToPlayer <= ATTACK_RANGE) {
     return { ...state, phase: 'attack', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: playerPosition };
@@ -202,7 +204,7 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     retreatContinued = false;
   }
 
-  function sample(botPosition, playerPosition, botHealth, heldWeapon = 'pistol') {
+  function sample(botPosition, playerPosition, botHealth, heldWeapon = 'pistol', targetAlive = true) {
     if (botHealth > previousHealth) clearTargetMemory();
     previousHealth = botHealth;
     tick += 1;
@@ -226,7 +228,7 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     const previousPhase = state.phase;
     state = transitionBotState(
       state,
-      { distanceToPlayer, hasLineOfSight, health: botHealth, playerPosition, searchExhausted },
+      { distanceToPlayer, hasLineOfSight, health: botHealth, playerPosition, searchExhausted, targetAlive },
       tick
     );
     if (state.phase === 'attack') {

@@ -8,6 +8,16 @@ import { DEFAULT_WEAPON_ID } from './weapon.js';
 
 const DEFAULT_DAMAGE_PER_HIT = 20; // pistol's damage, kept only as applyHit's fallback for callers that omit it
 const RESPAWN_DELAY_TICKS = 180; // 3s at a 60Hz tick rate
+// Where a corpse's physics collider goes for the respawn window (mirrors
+// main.js's PARK_POSITION for un-ramped bots). Collider.setEnabled() does
+// not reliably exclude a kinematic character's collider from castRay in
+// this Rapier build (verified: isEnabled() reports false, castRay still
+// hits it) -- teleporting it away is what main.js's parked-bot idiom
+// already relies on instead, and it's proven to work. Far enough below the
+// arena that no hitscan ray reaches it (HITSCAN_MAX_DISTANCE is 100) and
+// entity.position (render/mesh, kept at the death spot) is untouched --
+// only the physics body moves.
+const CORPSE_PARK_POSITION = { x: 0, y: -100, z: 0 };
 
 export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem }) {
   const respawnTicksRemaining = new Map(); // entityId -> ticks left until respawn
@@ -44,6 +54,12 @@ export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem })
       killed = true;
       respawnTicksRemaining.set(targetId, RESPAWN_DELAY_TICKS);
       creditKill(shooter, target);
+      // Take the corpse's collider out of the physics world for the
+      // respawn window -- otherwise it (mesh hidden, hitbox still solid)
+      // keeps blocking bullets and line-of-sight sensing at the death
+      // spot, and can poison spawn-safety checks that rate a point
+      // "hidden" only because a corpse happens to occlude the ray.
+      movementSystem.teleport(targetId, CORPSE_PARK_POSITION);
     }
 
     return { shooterId, targetId, damage, killed, weapon, targetPosition, shooterPosition, damageOrigin };
@@ -73,7 +89,7 @@ export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem })
       entity.health = 100;
       entity.dead = false;
       entity.animHint = 'idle';
-      movementSystem.teleport(entityId, spawn);
+      movementSystem.teleport(entityId, spawn); // also pulls the collider back out of CORPSE_PARK_POSITION
     }
   }
 
