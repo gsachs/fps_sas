@@ -31,8 +31,15 @@ import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio } from './audio/gunshots.js';
 import { createGameShell } from './shell/states.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
+import { renderStartupError } from './shell/startupError.js';
 
-await RAPIER.init();
+try {
+  await RAPIER.init();
+} catch (error) {
+  console.error('RAPIER.init failed:', error);
+  renderStartupError(document.getElementById('app'), 'Physics engine failed to load. Reload to try again.');
+  throw error;
+}
 
 const app = document.getElementById('app');
 
