@@ -14,6 +14,14 @@ const ROBOT_NATIVE_HEIGHT = 4.634;
 const PISTOL_NATIVE_LENGTH = 2.75;
 const PISTOL_VIEW_LENGTH = 0.34; // roughly the placeholder box it replaces, which read at the right size
 
+// Measured by eye against the arena's real floor footprint (layout.js's
+// FLOOR_HALF_SIZE*2 -- arenaMesh.js reads the same value off the live arena
+// it's building, not this constant, so the two can never drift apart): 2
+// metres reads as a human-scale wall/floor panel -- half of WALL_HEIGHT (4),
+// so a wall shows two tile-rows floor to ceiling -- without looking
+// stretched across the floor or noisy-dense on a pillar face.
+const ARENA_TEXTURE_METERS_PER_TILE = 2;
+
 // Bot avatar. Scaled to the on-screen height the humanoid rig used, so the
 // swap changes what a bot looks like without changing how big it reads.
 export const BOT_MODEL = {
@@ -51,4 +59,15 @@ export const WEAPON_MODEL = {
   // weapon group so recoil pivots around the weapon rather than swinging it.
   // weaponView treats this z as the rest position and animates recoil on top.
   offset: { x: 0, y: -0.027, z: 0.112 },
+};
+
+// Panel/composite detail map shared by every arena surface -- walls, floor,
+// and pillars all multiply their existing `color` over this one map (KTD6),
+// so accent hues survive the pass untouched by construction. `metersPerTile`
+// is a scale, not a fixed pixel repeat: arenaMesh.js divides each surface's
+// real size by it, so the tiling stays correct even if the arena's
+// dimensions ever change.
+export const ARENA_SURFACE_TEXTURE = {
+  colorPath: 'assets/textures/panel-metal-color.jpg',
+  metersPerTile: ARENA_TEXTURE_METERS_PER_TILE,
 };

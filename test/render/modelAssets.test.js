@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { BOT_MODEL, WEAPON_MODEL } from '../../src/render/modelAssets.js';
+import { BOT_MODEL, WEAPON_MODEL, ARENA_SURFACE_TEXTURE } from '../../src/render/modelAssets.js';
 
 // These assertions run against the actual shipped .glb files, not fixtures.
 // A model swap that breaks any of them fails silently in the browser -- a
@@ -67,5 +67,15 @@ describe('WEAPON_MODEL', () => {
     // approaching that length intersects the near plane and clips.
     expect(longestAxis).toBeLessThan(0.5);
     expect(longestAxis).toBeGreaterThan(0.1);
+  });
+});
+
+describe('ARENA_SURFACE_TEXTURE', () => {
+  it('points at a shipped JPEG texture file', () => {
+    const url = new URL(`../../public/${ARENA_SURFACE_TEXTURE.colorPath}`, import.meta.url);
+    const buffer = fs.readFileSync(fileURLToPath(url));
+
+    expect(buffer.length).toBeGreaterThan(0);
+    expect(buffer.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff])); // JPEG magic bytes
   });
 });

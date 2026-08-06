@@ -1,5 +1,32 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import * as THREE from 'three';
 import { buildArenaMeshes } from '../../src/render/arenaMesh.js';
+import { loadSurfaceTexture } from '../../src/render/textures.js';
+import { ARENA_SURFACE_TEXTURE } from '../../src/render/modelAssets.js';
+
+// arenaMesh.js applies the shared surface map asynchronously (buildArenaMeshes
+// itself must stay synchronous -- main.js does `scene.add(buildArenaMeshes(arena))`
+// with no await), so the real loadSurfaceTexture (network + image decode) is
+// mocked here the same way models.test.js mocks GLTFLoader: tests only need to
+// prove arenaMesh.js *consumes* the loader's contract correctly (attaches what
+// it's given, measures repeat from the real arena, leaves materials alone on
+// failure). Whether the loader itself configures wrap/colorSpace/anisotropy and
+// follows the cache/never-reject convention is textures.test.js's job.
+vi.mock('../../src/render/textures.js', () => ({ loadSurfaceTexture: vi.fn() }));
+
+// Mirrors what the real loadSurfaceTexture hands back on success, so tests here
+// can assert arenaMesh.js passed the map through untouched.
+function configuredTexture() {
+  const texture = new THREE.Texture();
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+beforeEach(() => {
+  vi.mocked(loadSurfaceTexture).mockReset();
+  vi.mocked(loadSurfaceTexture).mockResolvedValue({ texture: configuredTexture(), loaded: true });
+});
 
 // Reflects the real shape callers pass since U2: rooms plus wall.spaceId
 // ownership. One accented corner room (nw), one room with no pillar of its
@@ -71,11 +98,66 @@ describe('buildArenaMeshes', () => {
     }
   });
 
-  // R16: the pass adds light, not surfaces. A texture appearing here means
-  // the arena quietly drifted into the deferred PBR treatment. Still true
-  // with accents (R5) -- tint is a material color, never a texture map.
-  it('keeps the arena untextured', () => {
+  // U3/R1: the deferred PBR treatment R16 punted on has arrived -- every
+  // surface now carries the shared panel/composite detail map so walls,
+  // floor, and pillars read as material, not flat colour. The map multiplies
+  // under each material's existing `color` (KTD6), so this coexists with
+  // every accent-hue assertion below rather than replacing them.
+  it('textures every wall, pillar, ground, and trim material with the shared surface map', async () => {
     const group = buildArenaMeshes(FAKE_ARENA);
+
+    await vi.waitFor(() => {
+      for (const child of group.children) {
+        expect(child.material.map).toBeTruthy();
+      }
+    });
+
+    for (const child of group.children) {
+      expect(child.material.map.wrapS).toBe(THREE.RepeatWrapping);
+      expect(child.material.map.wrapT).toBe(THREE.RepeatWrapping);
+      expect(child.material.map.colorSpace).toBe(THREE.SRGBColorSpace);
+    }
+  });
+
+  // KTD6: the descriptor's tile size is measured, not guessed. The floor and
+  // the walls/pillars sit at very different real-world scales (a 68-unit
+  // floor vs. 2-5-unit pillars in the real arena), so tiling both at the
+  // floor's own span would compress dozens of tiles onto one small pillar
+  // face -- this proves arenaMesh.js requests two distinct repeats, each
+  // derived from the real arena data it was given (not a hardcoded constant
+  // that would silently stop matching the real layout).
+  it('measures a floor repeat from the real floor size, and a structure repeat from the real walls\' average span', () => {
+    buildArenaMeshes(FAKE_ARENA);
+
+    const expectedFloorRepeat = (FAKE_ARENA.floorHalfSize * 2) / ARENA_SURFACE_TEXTURE.metersPerTile;
+    const wallSpans = FAKE_ARENA.walls.map((wall) => Math.max(wall.halfX, wall.halfZ) * 2);
+    const averageWallSpan = wallSpans.reduce((sum, span) => sum + span, 0) / wallSpans.length;
+    const expectedStructureRepeat = averageWallSpan / ARENA_SURFACE_TEXTURE.metersPerTile;
+
+    expect(loadSurfaceTexture).toHaveBeenCalledWith(
+      ARENA_SURFACE_TEXTURE.colorPath,
+      expect.objectContaining({ repeat: [expectedFloorRepeat, expectedFloorRepeat] })
+    );
+    expect(loadSurfaceTexture).toHaveBeenCalledWith(
+      ARENA_SURFACE_TEXTURE.colorPath,
+      expect.objectContaining({ repeat: [expectedStructureRepeat, expectedStructureRepeat] })
+    );
+    expect(expectedFloorRepeat).not.toBeCloseTo(expectedStructureRepeat, 1); // genuinely different tiers
+  });
+
+  // Placeholder-on-failure convention (models.js/textures.js): a failed
+  // texture load must never leave a material pointing at a textureless map:
+  // it leaves every material exactly as flat-coloured as it was before U3.
+  it('leaves every material on its flat colour when the texture fails to load', async () => {
+    let capturedPromise;
+    vi.mocked(loadSurfaceTexture).mockImplementation(() => {
+      capturedPromise = Promise.resolve({ texture: null, loaded: false });
+      return capturedPromise;
+    });
+
+    const group = buildArenaMeshes(FAKE_ARENA);
+    await capturedPromise;
+    await Promise.resolve(); // let buildArenaMeshes's own .then() run
 
     for (const child of group.children) {
       expect(child.material.map).toBeFalsy();

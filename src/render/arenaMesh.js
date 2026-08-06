@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { ROOM_ACCENTS, NEUTRAL_ACCENT_COLOR, findRoomAt } from '../arena/layout.js';
+import { loadSurfaceTexture } from './textures.js';
+import { ARENA_SURFACE_TEXTURE } from './modelAssets.js';
 
 // Low-poly meshes matching the arena's Rapier colliders (ground, walls,
 // landmark pillars); callers add the returned group to their scene. Walls
@@ -97,6 +99,51 @@ export function buildArenaMeshes(arena) {
     mesh.receiveShadow = true;
     group.add(mesh);
   }
+
+  // U3/R1/R2: a shared panel/composite detail map multiplies under every
+  // material's existing `color` (KTD6) -- ground, the neutral wall/pillar
+  // materials, and every per-room accent material all get the same texture
+  // image, so a corner room's hue keeps naming the room exactly as it did
+  // before this map existed. Applied after the group above is fully built
+  // rather than awaited before returning it: buildArenaMeshes must stay
+  // synchronous (main.js does `scene.add(buildArenaMeshes(arena))` with no
+  // await), and every material reference below is already live in the scene
+  // graph, so mutating `.map` in place once each load resolves is enough --
+  // three.js re-renders the next frame with no further wiring.
+  //
+  // Two separate loadSurfaceTexture calls, not one shared texture, because
+  // the floor and the walls/pillars sit at wildly different real-world
+  // scales (a ~68-unit floor vs. 2-5-unit pillars) -- tiling everything at
+  // the floor's own span would compress dozens of tiles onto a single
+  // pillar face. Walls, pillars, and the per-room accent materials (which
+  // cover both) share one "structure" repeat measured from the real wall
+  // list's own average span -- an approximation given walls/pillars/trim of
+  // one room already share one material regardless of size (the same
+  // tradeoff this file already accepts for accent colour), but far closer
+  // to the intended per-tile scale than borrowing the floor's span.
+  const wallSpans = arena.walls.map((wall) => Math.max(wall.halfX, wall.halfZ) * 2);
+  const averageWallSpan = wallSpans.reduce((sum, span) => sum + span, 0) / wallSpans.length;
+  const floorRepeat = (arena.floorHalfSize * 2) / ARENA_SURFACE_TEXTURE.metersPerTile;
+  const structureRepeat = averageWallSpan / ARENA_SURFACE_TEXTURE.metersPerTile;
+
+  // Placeholder-on-failure convention: on a failed load, touch nothing and
+  // the affected materials stay on the flat colour they already have.
+  loadSurfaceTexture(ARENA_SURFACE_TEXTURE.colorPath, { repeat: [floorRepeat, floorRepeat] }).then(
+    ({ texture, loaded }) => {
+      if (!loaded) return;
+      ground.material.map = texture;
+      ground.material.needsUpdate = true;
+    }
+  );
+  loadSurfaceTexture(ARENA_SURFACE_TEXTURE.colorPath, { repeat: [structureRepeat, structureRepeat] }).then(
+    ({ texture, loaded }) => {
+      if (!loaded) return;
+      for (const material of [wallMaterial, pillarMaterial, ...accentMaterials.values()]) {
+        material.map = texture;
+        material.needsUpdate = true;
+      }
+    }
+  );
 
   return group;
 }
