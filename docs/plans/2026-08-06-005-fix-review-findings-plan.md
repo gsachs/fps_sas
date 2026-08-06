@@ -31,7 +31,7 @@ Cause: an extra negation. `sw.z` is already `-26`, so `-(sw.z - DOOR_HALF)` is `
 - Make `splitAroundGaps` throw on `from >= to`. A reversed run must never silently emit nothing again.
 - **Test first:** assert every space id named in `DOORWAYS.connects` owns at least one wall. `test/arena/layout.test.js` currently asserts wall *ownership* (every wall names a real space) but never the converse — that asymmetry is why this shipped with the suite green.
 
-### U2 — Match restart wiring (findings #3, #5 — P1, P1)
+### U2 — Match restart wiring (findings #3, #5 — P1, P1) — DONE (84806a1)
 
 `src/shell/states.js:125` and `:132`
 
