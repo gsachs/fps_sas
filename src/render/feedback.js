@@ -12,7 +12,15 @@ export function computeAngleFromPlayer(playerPosition, playerYaw, attackerPositi
   const bearingYaw = Math.atan2(dx, dz);
 
   const twoPi = Math.PI * 2;
-  let diff = (bearingYaw - playerYaw) % twoPi;
+  // Subtracted this way round on purpose: movement.js's live-verified
+  // camera-visual-right vector (movement.js:85, `right = { x:
+  // -Math.cos(yaw), z: Math.sin(yaw) }`) shows increasing yaw rotates the
+  // player's forward toward -right, i.e. toward their own left. So a
+  // target whose bearingYaw is *greater* than playerYaw sits to the
+  // player's *left*, not their right -- `bearingYaw - playerYaw` gets the
+  // sign backwards for the "positive = right" convention documented
+  // above. `playerYaw - bearingYaw` is the one that actually matches it.
+  let diff = (playerYaw - bearingYaw) % twoPi;
   diff = ((diff + Math.PI) % twoPi) - Math.PI; // shortest-path, wrapped to [-pi, pi]
   return diff;
 }
