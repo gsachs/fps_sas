@@ -75,7 +75,7 @@ Proposed default once the decision is made:
 
 **Test first:** kill B between A and C, assert A's shot reaches C. Construct a dead target and assert the bot FSM does not hold `attack`.
 
-### U5 — Input state across pause and blur (findings #7, #14 — P2, P2)
+### U5 — Input state across pause and blur (findings #7, #14 — P2, P2) — DONE (95ce35a)
 
 `src/main.js:427-428`
 
