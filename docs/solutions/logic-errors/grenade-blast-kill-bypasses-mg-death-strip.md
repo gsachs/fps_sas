@@ -43,7 +43,7 @@ Nothing was tried and failed here in the usual "wrong fix attempt" sense — the
 
 The fix is committed as `75f629f` on `main` ("fix: strip a carried machine gun on a blast kill, not just a gunshot kill"), already pushed to `origin/main`. It was written test-first: the regression test below was added and confirmed to fail (`expected 'machinegun' to be 'pistol'`) against the pre-fix code before the production change was made.
 
-**1. Regression test first**, `test/sim/grenades.test.js:395-439` (line numbers as of later additions to this file; unchanged in substance), describe block `'grenades: blast kill strips a carried machine gun, same as a gunshot kill (R13)'`: it drives a real `createWorld()` through `world.step()` — a thrower throws a grenade, the test steps the world until the grenade lands (`grenade.landed`), then adds a `victim` at the blast center holding `heldWeapon: 'machinegun', ammo: 30` with `health: 20`, steps until the fuse detonates and the victim is `dead`, and asserts:
+**1. Regression test first**, `test/sim/grenades.test.js:431-475` (line numbers drift as more tests are appended above it in the file; unchanged in substance), describe block `'grenades: blast kill strips a carried machine gun, same as a gunshot kill (R13)'`: it drives a real `createWorld()` through `world.step()` — a thrower throws a grenade, the test steps the world until the grenade lands (`grenade.landed`), then adds a `victim` at the blast center holding `heldWeapon: 'machinegun', ammo: 30` with `health: 20`, steps until the fuse detonates and the victim is `dead`, and asserts:
 
 ```js
 expect(world.getEntity('victim').dead).toBe(true);
@@ -66,13 +66,13 @@ if (hitEvent) {
 }
 ```
 
-After — now just `src/sim/world.js:133` (line number as of the killfeed feature's weapon-field addition; unchanged in substance):
+After — now just `src/sim/world.js:135` (line number as of the killfeed feature's weapon-field addition; unchanged in substance):
 
 ```js
 if (hitEvent) events.push({ type: 'hit', ...hitEvent });
 ```
 
-**3. Added a single pass over every `'hit'` event this tick produced, after both the per-entity combat loop and `grenades.tick()` have run** — `src/sim/world.js:152-170`:
+**3. Added a single pass over every `'hit'` event this tick produced, after both the per-entity combat loop and `grenades.tick()` have run** — `src/sim/world.js:152-172`:
 
 ```js
 if (grenades) events.push(...grenades.tick(entityAccessor, dt));
@@ -87,11 +87,13 @@ for (const event of events) {
   if (event.type !== 'hit' || !event.killed) continue;
   const target = entityAccessor.getEntity(event.targetId);
   if (target) {
-    target.heldWeapon = 'pistol';
+    target.heldWeapon = DEFAULT_WEAPON_ID;
     target.ammo = null;
   }
 }
 ```
+
+(shown here as it reads today — a later knowledge-duplication fix replaced the `'pistol'` literal with the `DEFAULT_WEAPON_ID` constant already used elsewhere; no behavioral change, same value.)
 
 `grenades.js`'s side was untouched — `detonate()` (`src/sim/grenades.js:92-116`) already pushes standard `{ type: 'hit', ...hitEvent }` events (`src/sim/grenades.js:111`) via the same `healthSystem.applyHit` (`src/sim/grenades.js:104`) that the hitscan path calls; the bug was never in how the blast produced its event, only in where the strip check lived relative to it.
 
@@ -105,7 +107,7 @@ The fix's shape is the generalizable lesson: when an invariant must hold "regard
 
 ## Prevention
 
-- The regression test, `test/sim/grenades.test.js:392-436` (`describe('grenades: blast kill strips a carried machine gun, same as a gunshot kill (R13)')`), is the concrete guardrail: it drives a real blast kill end-to-end through `world.step()` and asserts the post-kill weapon state, so any future change that reintroduces a source-specific gap in the strip logic fails this test directly.
+- The regression test, `test/sim/grenades.test.js:431-475` (`describe('grenades: blast kill strips a carried machine gun, same as a gunshot kill (R13)')`), is the concrete guardrail: it drives a real blast kill end-to-end through `world.step()` and asserts the post-kill weapon state, so any future change that reintroduces a source-specific gap in the strip logic fails this test directly.
 - **Guardrail rule for this codebase:** when a cross-cutting invariant — kill-time side effects, respawn-time resets, match-reset clears, or anything else that must hold across every code path capable of producing a given event type — needs to hold universally, implement it as a single pass over that event type in the shared aggregator (here, `world.js`'s `events` array, checked with `event.type === 'hit' && event.killed`), not inline inside just one producer of that event. Before adding a new inline side effect gated on a specific call's own result, check whether the same effect needs to hold for *every* producer of that result shape — if so, it belongs in a post-aggregation pass, not the call site.
 - **Process lesson:** this plan split the feature into sequential units (U3: pickups/death-strip, U4: grenades/blast) built by separately-scoped sessions, each with tests scoped tightly to its own unit — exactly the setup where an *interaction* between two units' effects (U3's death-strip logic composing correctly, or not, with U4's independently-produced kill events) is invisible to either unit's own suite by construction. Neither U3 nor U4 was ever going to catch this on its own; it needed either an automated cross-unit review pass or, as happened here when that review's quota failed mid-run, a deliberate manual trace of the specific cross-system risk the review was meant to cover. When a plan splits a feature this way, budget for that final integration-level pass explicitly — it is not a redundant formality on top of unit tests, it is the only place this class of bug is visible at all.
 

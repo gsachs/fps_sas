@@ -124,7 +124,7 @@ Structural only. **This unit contains no behavioral change — commit it separat
 - **#13 `src/main.js:1`** — the largest and most consequential module (606 lines, the composition root) is the only file in `src/` with no one-line why-it-exists comment. Every sibling has one, including `sim/index.js` and `shell/states.js`, which place theirs right after the import block. Add it there.
 - **#16 `src/main.js:376`** — `__debugTracerCount` filters `child.type === 'Line'`, but `tracer.js` deliberately builds each beam as a `THREE.Mesh` (a `Line` cannot render at usable width). The counter can only ever return 0, so a harness relying on it either concludes tracers are broken when they work or passes a check that can never fail. Set `beam.name = 'tracer'` in `tracer.js` (matching `grenadeFX.js` / `impacts.js`) and filter on the name.
 
-### U10 — Learnings citation refresh
+### U10 — Learnings citation refresh — DONE
 
 Documentation only, separate commit. All six learnings in `docs/solutions/logic-errors/` still hold — every recorded fix is in place and no pattern recurs at a new site. Three have drifted:
 
@@ -133,6 +133,8 @@ Documentation only, separate commit. All six learnings in `docs/solutions/logic-
 - `grenade-blast-kill-bypasses-mg-death-strip.md` — cites the regression block as both `grenades.test.js:395-439` and `:392-436`. It runs 395-439.
 
 If U1-U9 shift any cited line, refresh those citations here too. `CLAUDE.md`: update relevant specs in the same session as code changes.
+
+**Landed.** All three files fixed, plus a full re-verification of every other line citation in all three docs against current source (several had drifted further than this list anticipated, e.g. the strafe doc's `fsm.js:329-330` target had itself drifted to `:337-338` by the time U9 landed, and `movement.js:75` for the `forward` vector had drifted to `:78`; the grenade-blast test citation had drifted to `:431-475`, past both numbers this list gave). Every `file:line` reference in all three docs now matches current source, verified by direct `sed`/`grep` cross-check, not by re-deriving an offset.
 
 ## Known landmines
 

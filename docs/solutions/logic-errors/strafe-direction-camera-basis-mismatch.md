@@ -21,7 +21,7 @@ related_components: [bot-fsm, camera-yaw]
 
 ## Problem
 
-The strafe-right key (D) moved the player toward the camera's visual *left* instead of visual right — the world-space `right` basis vector used to decode local movement commands in `src/sim/movement.js:82` (`resolveMovement`) was a mathematically valid perpendicular to `forward`, but the wrong-handed one relative to what the rendered camera actually shows on screen. Found live during playtesting of the new rooms-and-corridors arena.
+The strafe-right key (D) moved the player toward the camera's visual *left* instead of visual right — the world-space `right` basis vector used to decode local movement commands in `src/sim/movement.js:85` (`resolveMovement`) was a mathematically valid perpendicular to `forward`, but the wrong-handed one relative to what the rendered camera actually shows on screen. Found live during playtesting of the new rooms-and-corridors arena.
 
 ## Symptoms
 
@@ -79,7 +79,7 @@ describe('movement: strafe direction matches the rendered camera (regression)', 
 
 The fix itself (commit `a1ff49b`, "fix: strafe-right moved the camera-visual left, not right") flips the sign of `right`'s components in both files where this basis is used.
 
-`src/sim/movement.js:74-82` (`resolveMovement`):
+`src/sim/movement.js:73-85` (`resolveMovement`):
 
 ```js
 // before
@@ -89,7 +89,7 @@ const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
 const right = { x: -Math.cos(yaw), z: Math.sin(yaw) };
 ```
 
-`src/sim/bot/fsm.js:329-330` (inside `createBotAI`'s `sample()`), the identical change, since this function encodes a bot's world-space movement intent back into the same local `moveX`/`moveZ` command shape `movement.js` decodes:
+`src/sim/bot/fsm.js:337-338` (inside `createBotAI`'s `sample()`), the identical change, since this function encodes a bot's world-space movement intent back into the same local `moveX`/`moveZ` command shape `movement.js` decodes:
 
 ```js
 // before
@@ -117,11 +117,11 @@ export function computeCameraYaw(simYaw) {
 
 The comment immediately above it (`entityMesh.js:45-55`) explains why: THREE cameras look down their local `-Z` axis by default, but every other convention in this codebase treats `+Z` as "front" for a given yaw, so `camera.rotation.y = simYaw` alone would face the camera 180 degrees from where the weapon actually fires. The `+PI` offset exists specifically to keep the rendered camera direction aligned with what `movement.js`'s `forward` vector and the hitscan direction already assume.
 
-Working through the algebra of that `+PI` offset composed with THREE's standard Y-axis rotation of the camera's local forward `(0, 0, -1)` gives exactly `(sin(simYaw), cos(simYaw))` as the true world-space camera-forward direction — which is precisely `movement.js`'s pre-existing `forward` vector (`movement.js:75`). That's why `forward` was already correct and never needed to change: it happened to agree with the true camera-forward once the `+PI` offset is accounted for, and it had already been implicitly validated by aim/hitscan code relying on the same vector.
+Working through the algebra of that `+PI` offset composed with THREE's standard Y-axis rotation of the camera's local forward `(0, 0, -1)` gives exactly `(sin(simYaw), cos(simYaw))` as the true world-space camera-forward direction — which is precisely `movement.js`'s pre-existing `forward` vector (`movement.js:78`). That's why `forward` was already correct and never needed to change: it happened to agree with the true camera-forward once the `+PI` offset is accounted for, and it had already been implicitly validated by aim/hitscan code relying on the same vector.
 
 `right`, however, was derived as "whichever vector is perpendicular to `forward`" via a plain trigonometric rotation — `(cos(yaw), -sin(yaw))` is a perfectly valid unit vector orthogonal to `forward`, but it's *a* perpendicular, not *the* camera's-visual-right perpendicular. In a Y-up, right-handed scene, the camera's true visual-right is `forward × up`, which works out to `(-cos(yaw), sin(yaw))` — the sign-flipped version of the original. The original formula picked the mathematically-valid-but-oppositely-handed perpendicular because it was never independently cross-checked against the camera's own rotated basis; it was only checked for orthogonality to `forward`, which both candidates satisfy equally well.
 
-`src/sim/bot/fsm.js`'s `sample()` had to change identically because it performs the inverse operation: it projects a bot's already-decided world-space `moveDirection` onto `forward`/`right` via dot products (`fsm.js:331-332`) to produce the same local `moveX`/`moveZ` shape that `movement.js:83-84` later decodes back into world space. The two files' basis vectors form an encode/decode pair — they only round-trip correctly (or incorrectly) as a matched set. Because both sides used the identical wrong formula before the fix, the bug was self-canceling for bots and produced no visible symptom on its own; it only became a live risk the moment one side changed independently of the other.
+`src/sim/bot/fsm.js`'s `sample()` had to change identically because it performs the inverse operation: it projects a bot's already-decided world-space `moveDirection` onto `forward`/`right` via dot products (`fsm.js:339-340`) to produce the same local `moveX`/`moveZ` shape that `movement.js:86-87` later decodes back into world space. The two files' basis vectors form an encode/decode pair — they only round-trip correctly (or incorrectly) as a matched set. Because both sides used the identical wrong formula before the fix, the bug was self-canceling for bots and produced no visible symptom on its own; it only became a live risk the moment one side changed independently of the other.
 
 ## Prevention
 
