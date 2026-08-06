@@ -9,6 +9,48 @@ import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Pass } from 'three/addons/postprocessing/Pass.js';
+
+// KTD4's weapon pass, hand-written rather than reusing RenderPass: reusing
+// RenderPass here (a second instance mid-chain, after SSAO) produced a
+// verified-empirically bug -- the world scene disappeared from the final
+// frame the instant this pass was enabled, confirmed by toggling every pass
+// individually against a headless real-render harness, and root-caused by
+// bisecting the pass's own behavior:
+//
+// 1. `renderer.autoClear` defaults true, so a plain `renderer.render(...)`
+//    call implicitly clears color -- fixed by setting it false first
+//    (RenderPass does the same before its own render() call), but that
+//    alone did not fix the bug.
+// 2. The real cause: `renderer.clearDepth()` empties the *entire* depth
+//    buffer, including the near-camera depth the world+SSAO passes already
+//    wrote. `scene.background` (the skybox) then draws depth-tested against
+//    that now-empty buffer -- with nothing left to test against, it wins
+//    everywhere and overwrites the whole frame with sky, autoClear or not.
+//    scene.background is scene-level, not filtered by the weapon camera's
+//    layer mask, so this happens even though only weapon-layer objects are
+//    otherwise eligible to draw. Fixed by hiding the background for the
+//    duration of this pass's render call only, then restoring it.
+class WeaponDepthClearPass extends Pass {
+  constructor(scene, weaponCamera) {
+    super();
+    this.scene = scene;
+    this.camera = weaponCamera;
+    this.needsSwap = false;
+  }
+
+  render(renderer, writeBuffer, readBuffer) {
+    const previousAutoClear = renderer.autoClear;
+    const previousBackground = this.scene.background;
+    renderer.autoClear = false;
+    this.scene.background = null;
+    renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
+    renderer.clearDepth();
+    renderer.render(this.scene, this.camera);
+    this.scene.background = previousBackground;
+    renderer.autoClear = previousAutoClear;
+  }
+}
 
 // SSAOPass's own render target is decoupled from the composer's main
 // resolution -- composer.setSize hands every pass the full frame size on
@@ -89,22 +131,16 @@ export function createPostFX({ renderer, scene, camera, width, height }) {
   }
 
   // KTD4: registers the viewmodel's depth-clear pass at the index reserved
-  // above, once a weapon camera exists to give it (see that comment for
-  // why this can't just happen inline during construction). `clear: false`
-  // keeps the AO-composited world color already in the buffer instead of
-  // erasing it; `clearDepth: true` resets only the depth buffer first, so
-  // the weapon geometry always wins the depth test against whatever world
-  // geometry is behind it -- including a wall a few centimetres away -- no
-  // matter how close it is. Verified against RenderPass's own source
-  // (three/examples/jsm/postprocessing/RenderPass.js): `clearDepth` calls
-  // `renderer.clearDepth()` independently of `clear`, and `needsSwap`
-  // defaults to false, so this composites into the same buffer the next
-  // pass (bloom) already expects to read from, the same way RenderPass and
-  // SSAOPass above it do.
+  // above, once a weapon camera exists to give it (see that comment for why
+  // this can't just happen inline during construction). Never clears color
+  // (keeps the AO-composited world already in the buffer); clears only depth
+  // first, so the weapon geometry always wins the depth test against
+  // whatever world geometry is behind it -- including a wall a few
+  // centimetres away -- no matter how close it is. See WeaponDepthClearPass
+  // above for why this is a small hand-written pass and not a second
+  // RenderPass instance.
   function addWeaponPass(weaponCamera) {
-    const weaponPass = new RenderPass(scene, weaponCamera);
-    weaponPass.clear = false;
-    weaponPass.clearDepth = true;
+    const weaponPass = new WeaponDepthClearPass(scene, weaponCamera);
     composer.insertPass(weaponPass, weaponPassIndex);
     return weaponPass;
   }

@@ -223,32 +223,73 @@ describe('createPostFX (KTD1 chain order, stubbed -- no WebGL context)', () => {
   // KTD4/U2: addWeaponPass is the seam main.js uses to register the
   // viewmodel's depth-clear pass once a weapon camera exists (see U2's
   // report -- postfx.js reserves the slot at construction, before
-  // weaponView.js has built a camera to give it). Untested until now.
-  it('addWeaponPass inserts a depth-clear RenderPass at the reserved slot, between SSAO and bloom', async () => {
-    const { createPostFX, composerStub, RenderPassCtor } = await loadStubbedPostFX();
+  // weaponView.js has built a camera to give it).
+  it('addWeaponPass inserts a WeaponDepthClearPass at the reserved slot, between SSAO and bloom', async () => {
+    const { createPostFX, composerStub } = await loadStubbedPostFX();
     const { addWeaponPass } = createPostFX({ renderer: {}, scene: {}, camera: {}, width: 800, height: 600 });
 
     const fakeWeaponCamera = { isWeaponCamera: true };
-    addWeaponPass(fakeWeaponCamera);
+    const weaponPass = addWeaponPass(fakeWeaponCamera);
 
-    // RenderPassCtor's first call built the world-render pass inside
-    // createPostFX itself; this call is addWeaponPass's own.
-    expect(RenderPassCtor).toHaveBeenCalledTimes(2);
-    expect(RenderPassCtor).toHaveBeenLastCalledWith(expect.anything(), fakeWeaponCamera);
-
-    const weaponPass = RenderPassCtor.mock.results[1].value;
-    expect(composerStub.passes.map((pass) => pass.kind)).toEqual([
+    expect(composerStub.passes.map((pass) => pass.kind ?? pass.constructor.name)).toEqual([
       'RenderPass', // world
       'SSAOPass',
-      'RenderPass', // weapon depth-clear, inserted here -- after AO, before bloom (KTD4)
+      'WeaponDepthClearPass', // inserted here -- after AO, before bloom (KTD4)
       'UnrealBloomPass',
       'SMAAPass',
       'OutputPass',
     ]);
-    // clear: false keeps the AO-composited world color already in the
-    // buffer; clearDepth: true resets only depth, so the weapon geometry
-    // always wins the depth test against nearby world geometry.
-    expect(weaponPass.clear).toBe(false);
-    expect(weaponPass.clearDepth).toBe(true);
+    expect(weaponPass.camera).toBe(fakeWeaponCamera);
+    // Composites into readBuffer in place (RenderPass's own convention) --
+    // no swap needed, the next pass already expects to read this buffer.
+    expect(weaponPass.needsSwap).toBe(false);
+  });
+
+  // A verified-in-a-real-browser regression: a plain renderer.render(scene,
+  // weaponCamera) call, even with color-clearing disabled, still redraws
+  // scene.background (it's scene-level, not filtered by the weapon
+  // camera's layer mask) -- and with clearDepth() having just emptied the
+  // whole depth buffer, that background wins the depth test everywhere,
+  // overwriting the world+SSAO composite the prior passes already drew.
+  // Confirmed empirically: the arena, textures, and bots all vanished from
+  // the rendered frame the instant this pass was enabled, and reappeared
+  // the instant it was disabled, with every other pass unchanged. This
+  // locks in the three mitigations that fix it -- hide the background for
+  // the render call, disable autoClear, clear depth after binding the
+  // render target -- so a future refactor can't silently drop any of them.
+  it("addWeaponPass's render() hides scene.background and disables autoClear for its own draw, restoring both after", async () => {
+    const { createPostFX } = await loadStubbedPostFX();
+    const scene = { background: 'sky-texture' };
+    const { addWeaponPass } = createPostFX({ renderer: {}, scene, camera: {}, width: 800, height: 600 });
+
+    const fakeWeaponCamera = {};
+    const weaponPass = addWeaponPass(fakeWeaponCamera);
+
+    const callOrder = [];
+    let backgroundDuringRender;
+    let autoClearDuringRender;
+    const renderer = {
+      autoClear: true,
+      setRenderTarget: vi.fn(() => callOrder.push('setRenderTarget')),
+      clearDepth: vi.fn(() => callOrder.push('clearDepth')),
+      render: vi.fn((renderedScene, renderedCamera) => {
+        callOrder.push('render');
+        backgroundDuringRender = renderedScene.background;
+        autoClearDuringRender = renderer.autoClear;
+        expect(renderedCamera).toBe(fakeWeaponCamera);
+      }),
+    };
+    const readBuffer = { isReadBuffer: true };
+
+    weaponPass.render(renderer, {}, readBuffer);
+
+    expect(callOrder).toEqual(['setRenderTarget', 'clearDepth', 'render']);
+    expect(renderer.setRenderTarget).toHaveBeenCalledWith(readBuffer);
+    expect(backgroundDuringRender).toBeNull();
+    expect(autoClearDuringRender).toBe(false);
+    // Both restored after the pass, so a later pass's own clearing/background
+    // behavior (and the next frame's world render) is unaffected.
+    expect(scene.background).toBe('sky-texture');
+    expect(renderer.autoClear).toBe(true);
   });
 });
