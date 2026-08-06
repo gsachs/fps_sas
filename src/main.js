@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { createScene } from './render/scene.js';
 import { createRenderLoop } from './render/loop.js';
+import { createPostFX } from './render/postfx.js';
 import { buildArenaMeshes } from './render/arenaMesh.js';
 import { createArena } from './arena/arena.js';
 import { selectSpawnPoint } from './arena/spawnPlacement.js';
@@ -73,6 +74,12 @@ renderer.toneMappingExposure = 1.05;
 app.appendChild(renderer.domElement);
 
 const { scene, camera } = createScene({ aspect: window.innerWidth / window.innerHeight });
+
+// U1: composer chain (AO, bloom, anti-alias, tone map) that replaces the
+// direct renderer.render() call below -- OutputPass at its end reads
+// `renderer.toneMapping`/`toneMappingExposure` as set above, so the ACES
+// look carries through unchanged; no separate exposure wiring needed here.
+const postfx = createPostFX({ renderer, scene, camera, width: window.innerWidth, height: window.innerHeight });
 
 const arena = createArena();
 scene.add(buildArenaMeshes(arena));
@@ -279,6 +286,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  postfx.setSize(window.innerWidth, window.innerHeight);
 });
 
 const gameShell = createGameShell({
@@ -373,9 +381,7 @@ let frames = 0;
 let fpsAccum = 0;
 
 const loop = createRenderLoop({
-  renderer,
-  scene,
-  camera,
+  render: (delta) => postfx.composer.render(delta),
   onFrame(delta) {
     // Audio tracks run state, not the early return below: a shot still
     // sounding when the player hits Esc has to be cut off, and that decision

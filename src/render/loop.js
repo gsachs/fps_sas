@@ -4,7 +4,10 @@ import * as THREE from 'three';
 // delta (spiral of death) once U3's fixed-step accumulator consumes it.
 const MAX_FRAME_SECONDS = 0.25;
 
-export function createRenderLoop({ renderer, scene, camera, onFrame }) {
+// `render` draws the frame -- a plain `renderer.render(scene, camera)`
+// wrapper or (since U1) `composer.render(delta)` -- so this module's only
+// job stays driving frames, not owning what rendering a frame means.
+export function createRenderLoop({ render, onFrame }) {
   const timer = new THREE.Timer();
   timer.connect(document);
   let rafId = null;
@@ -13,7 +16,7 @@ export function createRenderLoop({ renderer, scene, camera, onFrame }) {
     timer.update();
     const delta = Math.min(timer.getDelta(), MAX_FRAME_SECONDS);
     if (onFrame) onFrame(delta);
-    renderer.render(scene, camera);
+    render(delta);
     rafId = requestAnimationFrame(tick);
   }
 
