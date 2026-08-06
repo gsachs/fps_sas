@@ -87,7 +87,15 @@ export function createScene({ aspect = 16 / 9 } = {}) {
   sun.shadow.normalBias = SHADOW_NORMAL_BIAS;
   scene.add(sun);
 
-  return { scene, camera };
+  // Returned (not just added to the scene) so main.js can enable them on
+  // weaponView.js's WEAPON_LAYER too, the same technique KTD4 already uses
+  // for the muzzle light -- without it the viewmodel sits on a layer these
+  // two lights never reach (their own .layers default to layer 0 only) and
+  // renders as a flat, unlit silhouette between shots. Purely additive: it
+  // adds layer-1 visibility to lights whose intensity, colour, position, and
+  // shadow behaviour on the world (layer 0) are untouched, so R10's "the
+  // lighting rig is untouched" holds -- nothing about the rig itself changes.
+  return { scene, camera, sun, skyAmbient };
 }
 
 // U5/KTD5: loads the calm-horizon sky texture and swaps it in as

@@ -47,6 +47,21 @@ describe('createScene', () => {
     expect(scene.fog.near).toBeGreaterThanOrEqual(15);
   });
 
+  // Live-verified regression: the sun/skyAmbient's own .layers defaulted to
+  // layer 0 only, so once the viewmodel moved to its own render layer
+  // (KTD4) neither light ever reached it -- the gun rendered as a flat,
+  // unlit silhouette between shots. Returning the light instances (not just
+  // adding them to the scene) is what lets main.js enable them on
+  // weaponView.js's WEAPON_LAYER too.
+  it('returns the sun and skyAmbient instances so a caller can extend their layer coverage', () => {
+    const { scene, sun, skyAmbient } = createScene();
+
+    expect(sun.isDirectionalLight).toBe(true);
+    expect(skyAmbient.isHemisphereLight).toBe(true);
+    expect(scene.children).toContain(sun);
+    expect(scene.children).toContain(skyAmbient);
+  });
+
   // U5/KTD5/AE4: scene.background ignores scene.fog by design (that's why a
   // flat placeholder colour was ever seamless) -- so the only way the real
   // sky texture's horizon blends into fog without a visible band is if

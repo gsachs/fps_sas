@@ -32,7 +32,7 @@ import { createMinimap } from './ui/minimap.js';
 import { createKillfeed } from './ui/killfeed.js';
 import { LOCAL_PLAYER_ID } from './sim/entityIds.js';
 import { createDamageIndicator } from './render/feedback.js';
-import { createWeaponView } from './render/weaponView.js';
+import { createWeaponView, WEAPON_LAYER } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
 import { createImpactSystem } from './render/impacts.js';
 import { createDecalSystem } from './render/decals.js';
@@ -82,7 +82,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 app.appendChild(renderer.domElement);
 
-const { scene, camera } = createScene({ aspect: window.innerWidth / window.innerHeight });
+const { scene, camera, sun, skyAmbient } = createScene({ aspect: window.innerWidth / window.innerHeight });
 
 // U1: composer chain (AO, bloom, anti-alias, tone map) that replaces the
 // direct renderer.render() call below -- OutputPass at its end reads
@@ -122,6 +122,14 @@ const weaponView = createWeaponView(camera);
 // camera exists -- postfx.js reserved the composer slot for it at
 // construction, before weaponView existed to hand it a camera.
 postfx.addWeaponPass(weaponView.weaponCamera);
+// Live-verified gap: the viewmodel moved to its own render layer (KTD4) but
+// the sun and sky ambient never followed -- their .layers default to layer
+// 0 only, so the weapon read as a flat, unlit silhouette between shots
+// (only the muzzle flash's own light was ever enabled on both layers).
+// Purely additive -- adds layer-1 visibility to lights whose behaviour on
+// the world (layer 0) is untouched, so R10 holds.
+sun.layers.enable(WEAPON_LAYER);
+skyAmbient.layers.enable(WEAPON_LAYER);
 const tracers = createTracerSystem(scene);
 const impacts = createImpactSystem(scene);
 const decals = createDecalSystem(scene, arenaMeshes);
