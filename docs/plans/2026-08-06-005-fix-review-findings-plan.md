@@ -248,7 +248,9 @@ The actual U3/U4/U5 fixes (startup-error handling, `targetAlive` threading, inpu
 
 Correct the claim: existing assets are CC0, no attribution required.
 
-### U22 — `goal.md`'s "run to completion" mode has no defined trigger syntax (P2) — **needs a human decision**
+### U22 — `goal.md`'s "run to completion" mode has no defined trigger syntax (P2) — DONE (0a6b1fe)
+
+**Decision:** a literal argument. Passing `all` runs the loop to completion; a specific unit selector or no argument runs exactly one unit, unchanged.
 
 `.claude/commands/goal.md:27` says "unless the loop below is explicitly running to completion" but `argument-hint` (line 4) documents only unit selectors — no such trigger exists anywhere in the file. This is the exact ambiguity this session hit when deciding how to proceed after this review.
 
