@@ -191,7 +191,7 @@ A failed model load poisons `gltfCache` for the rest of the session — no later
 - On rejection, delete the cache entry so a later call re-attempts the load.
 - **Test first:** a rejected `loadGltf(url)` followed by a second call for the same URL should attempt the load again, not replay the cached rejection.
 
-### U15 — `RAPIER.init()` has no timeout, only a reject handler (P2)
+### U15 — `RAPIER.init()` has no timeout, only a reject handler (P2) — DONE (d634676)
 
 `src/main.js:40-46`
 
