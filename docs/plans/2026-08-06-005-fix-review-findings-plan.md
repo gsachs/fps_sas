@@ -227,7 +227,7 @@ Same failure shape as U9/U12 — one of the five call sites (`fsm.js`'s respawn-
 - Export `MAX_HEALTH` from `sim/health.js`; import at all five sites.
 - **Test first:** assert a newly-spawned entity's health equals the same constant `fsm.js`'s respawn-detection heuristic compares against.
 
-### U19 — `main.js` bundles composition wiring, debug instrumentation, and per-frame event policy (P2) — structural only
+### U19 — `main.js` bundles composition wiring, debug instrumentation, and per-frame event policy (P2) — structural only — DONE (cddc4b5)
 
 `src/main.js:316-424` (debug hooks), `:473-637` (`onFrame`)
 
