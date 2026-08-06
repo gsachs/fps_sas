@@ -36,6 +36,14 @@ describe('layout: wall ownership (KTD4)', () => {
       if (!owner) expect(ROOM_IDS.has(wall.spaceId)).toBe(false);
     }
   });
+
+  it('every space id named in a doorway\'s connects list owns at least one wall', () => {
+    const wallSpaceIds = new Set(LAYOUT.walls.map((w) => w.spaceId));
+    const connectedSpaceIds = new Set(DOORWAYS.flatMap((d) => d.connects));
+    for (const spaceId of connectedSpaceIds) {
+      expect(wallSpaceIds.has(spaceId)).toBe(true);
+    }
+  });
 });
 
 describe('layout: doorways (KTD9)', () => {

@@ -21,6 +21,7 @@ const PILLAR_HALF_HEIGHT = WALL_HEIGHT / 2; // full-height landmarks, not peek-o
 // sub-intervals. A doorway is a gap in exactly one wall run; a plain wall is
 // the zero-gap case, returned unsplit.
 function splitAroundGaps(from, to, gaps) {
+  if (from >= to) throw new Error(`splitAroundGaps: reversed run, from ${from} >= to ${to}`);
   const sorted = [...gaps].sort((a, b) => a[0] - b[0]);
   const segments = [];
   let cursor = from;
@@ -206,14 +207,14 @@ const WALLS = [
   ...wallAlongZ(DOOR_HALF, central.halfZ, nw.z - DOOR_HALF, 'spoke-north'), // north spoke, east side
   ...wallAlongZ(-DOOR_HALF, central.halfZ, nw.z - DOOR_HALF, 'spoke-north'), // north spoke, west side
 
-  ...wallAlongZ(DOOR_HALF, -(sw.z - DOOR_HALF), -central.halfZ, 'spoke-south'), // south spoke, east side
-  ...wallAlongZ(-DOOR_HALF, -(sw.z - DOOR_HALF), -central.halfZ, 'spoke-south'), // south spoke, west side
+  ...wallAlongZ(DOOR_HALF, sw.z + DOOR_HALF, -central.halfZ, 'spoke-south'), // south spoke, east side
+  ...wallAlongZ(-DOOR_HALF, sw.z + DOOR_HALF, -central.halfZ, 'spoke-south'), // south spoke, west side
 
   ...wallAlongX(DOOR_HALF, central.halfX, ne.x - DOOR_HALF, 'spoke-east'), // east spoke, north side
   ...wallAlongX(-DOOR_HALF, central.halfX, ne.x - DOOR_HALF, 'spoke-east'), // east spoke, south side
 
-  ...wallAlongX(DOOR_HALF, -(sw.x - DOOR_HALF), -central.halfX, 'spoke-west'), // west spoke, north side
-  ...wallAlongX(-DOOR_HALF, -(sw.x - DOOR_HALF), -central.halfX, 'spoke-west'), // west spoke, south side
+  ...wallAlongX(DOOR_HALF, sw.x + DOOR_HALF, -central.halfX, 'spoke-west'), // west spoke, north side
+  ...wallAlongX(-DOOR_HALF, sw.x + DOOR_HALF, -central.halfX, 'spoke-west'), // west spoke, south side
 ].map((w) => ({ ...w, halfY: WALL_HEIGHT / 2 }));
 
 export const PILLARS = [
