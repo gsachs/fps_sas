@@ -218,7 +218,7 @@ The module's header comment (`mixer.js:9-15`) explains clip names are caller-sup
 - Use `clipNames.dead` (the caller-supplied mapping) instead of `clip.name.includes('Death')`.
 - **Test first:** a model whose death clip name doesn't contain `'Death'` should still get the one-shot/clamp treatment.
 
-### U18 — Full-health `100` literal duplicated in 5 places (P2)
+### U18 — Full-health `100` literal duplicated in 5 places (P2) — DONE (23acfc2)
 
 `src/sim/world.js:31`, `src/sim/health.js:89`, `src/shell/matchEnd.js:51`, `src/sim/bot/fsm.js:177,201`
 
