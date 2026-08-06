@@ -284,7 +284,7 @@ U20's extraction wrapped `sim` in a `getSim: () => sim` getter, matching `testHo
 - Pass `sim` directly: `gatherCommands({ sim, bots, inputSampler })`. Drop `getSim`/`const sim = getSim()`. Correct the comment to state the real invariant (deferred invocation past the point of assignment, not a getter requirement).
 - No new test needed (pure simplification, no behavior change) — existing `test/sim/gatherCommands.test.js` coverage must stay green.
 
-### U26 — `gatherCommands.js` is the only `src/sim` file importing from `src/ui`, unnoticed by the sim-purity guard (P2)
+### U26 — `gatherCommands.js` is the only `src/sim` file importing from `src/ui`, unnoticed by the sim-purity guard (P2) — DONE (d1e2211)
 
 `src/sim/gatherCommands.js:1`, `src/ui/names.js`
 
@@ -303,7 +303,7 @@ Adversarial review found each of the three existing guards (KTD2 three-import, U
 - Add the missing alternatives to each pattern; add one offender fixture per guard proving the previously-missed form is now caught.
 - **Test first:** each new fixture must fail against the current (unpatched) regex before the fix, and be caught after.
 
-### U28 — Gunshot audio buffer loading has no timeout, only per-URL failure handling (P2)
+### U28 — Gunshot audio buffer loading has no timeout, only per-URL failure handling (P2) — DONE (9e72d77)
 
 `src/audio/gunshots.js` (`createGunshotAudio`'s `Promise.all(...)`)
 
@@ -312,7 +312,7 @@ Flagged as a residual risk in round 1, now promoted: an individual URL's *explic
 - Race each load (or the whole `Promise.all`) against a timeout, reusing `src/shell/initTimeout.js`'s `raceInitWithTimeout` pattern; on timeout, resolve that URL's slot as `null` and report through `onError`.
 - **Test first:** a load that never calls back (not even an error callback) must still resolve within the suite's fake-timer budget and call `onError`.
 
-### U29 — GLTF loader can still hang forever, not just reject, despite U14's fix (P2)
+### U29 — GLTF loader can still hang forever, not just reject, despite U14's fix (P2) — DONE (aab9fb9)
 
 `src/render/models.js` (`loadGltf`)
 
@@ -321,7 +321,7 @@ U14 fixed the cache-poisoned-by-rejection case (evicts the cache entry on `.catc
 - Wrap the inner load promise in the same `raceInitWithTimeout`-style race so a stalled load rejects after a bounded time, letting U14's existing eviction `.catch` and `onError` run.
 - **Test first:** a mocked loader that never calls back must still resolve to the failure sentinel within the suite's fake-timer budget, with the cache evicted afterward (proving a later call retries).
 
-### U30 — `frameEvents.test.js` never exercises the local-player-hit crosshair-flash dispatch (P2)
+### U30 — `frameEvents.test.js` never exercises the local-player-hit crosshair-flash dispatch (P2) — DONE (530fc06)
 
 `src/render/frameEvents.js:39`, `test/render/frameEvents.test.js`
 
