@@ -1,7 +1,7 @@
 ---
 name: goal
 description: Fix the whole-repo review findings one unit at a time, re-reviewing until no P0/P1/P2 remains
-argument-hint: "[U1 … U10] — defaults to the next unfinished unit in plan order"
+argument-hint: "[U1 … U10 | all] — defaults to the next unfinished unit in plan order; `all` runs the loop to completion"
 ---
 
 # Goal: clear the review findings
@@ -24,7 +24,7 @@ repeat until every unit is done
   -> none? done
 ```
 
-`$ARGUMENTS` selects a unit. With no argument, take the next one whose work is not yet in the code. **One unit per run** unless the loop below is explicitly running to completion.
+`$ARGUMENTS` selects a unit. With no argument, take the next one whose work is not yet in the code. **One unit per run**, with one exception: the literal argument `all` runs the loop above to completion — every remaining unit, one commit each, through re-review and triage — in this single invocation. Any other argument (a specific unit like `U11`, or no argument at all) runs exactly one unit and stops.
 
 ## Definition of done
 
