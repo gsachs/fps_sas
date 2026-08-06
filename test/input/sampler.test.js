@@ -113,6 +113,21 @@ describe('createInputSampler', () => {
     expect(command.buttons.fireHeld).toBe(false);
   });
 
+  it('clearHeldInput also drains queued edge-latched fire and throw presses (U16 blur race)', () => {
+    const sampler = createInputSampler();
+    sampler.onFirePressed(); // queues one edge-triggered shot via fireLatch.press()
+    sampler.onKeyDown({ code: 'KeyG' }); // queues one throw via throwLatch.press()
+
+    sampler.clearHeldInput();
+
+    const command = sampler.sample();
+    // Neither queued press may survive a blur into the next sample() -- if it
+    // did, the very first tick after resume would fire/throw with no live
+    // input, since consume() only ever runs inside a running sim's tick.
+    expect(command.buttons.fire).toBe(false);
+    expect(command.buttons.throwGrenade).toBe(false);
+  });
+
   it('setYaw sets the yaw directly without touching pitch', () => {
     const sampler = createInputSampler();
     sampler.onMouseMove({ movementX: 0, movementY: -50 }); // establish a non-zero pitch

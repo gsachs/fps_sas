@@ -48,4 +48,14 @@ describe('createFireLatch', () => {
     const latch = createFireLatch();
     expect(latch.consume()).toBe(false);
   });
+
+  it('clear() drops any pending presses so a later consume() finds nothing (U16)', () => {
+    const latch = createFireLatch();
+    latch.press();
+    latch.press();
+
+    latch.clear();
+
+    expect(latch.consume()).toBe(false);
+  });
 });

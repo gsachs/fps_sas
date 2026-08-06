@@ -35,5 +35,13 @@ export function createFireLatch() {
       }
       return false;
     },
+    // Drops any queued presses without consuming them -- for a pause/blur
+    // boundary where a press queued right before the pause must not survive
+    // to fire on the first tick after resume with no live input behind it
+    // (U16). Bots never call this: their fsm.js owns its own latch instance
+    // and only ever presses/consumes it.
+    clear() {
+      pending = 0;
+    },
   };
 }

@@ -63,14 +63,20 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
     fireHeld = false;
   }
 
-  // Drops every held key and the fire-held level, but never the edge
-  // latches -- for window blur, where the browser delivers no keyup/mouseup
-  // to an unfocused window, so a physically-held key or button would
-  // otherwise stay latched forever and resume acting the instant focus
-  // (and the pointer lock it requires) returns.
+  // Drops every held key, the fire-held level, and any queued-but-unconsumed
+  // edge latches -- for window blur, where the browser delivers no
+  // keyup/mouseup to an unfocused window, so a physically-held key or button
+  // would otherwise stay latched forever and resume acting the instant focus
+  // (and the pointer lock it requires) returns. The edge latches need
+  // clearing too (U16): consume() only ever runs inside a running sim tick,
+  // so a press queued just before blur would otherwise sit pending through
+  // the whole pause and fire on the first tick after resume, with no live
+  // input at that moment.
   function clearHeldInput() {
     keys.clear();
     fireHeld = false;
+    fireLatch.clear();
+    throwLatch.clear();
   }
 
   function sample() {
