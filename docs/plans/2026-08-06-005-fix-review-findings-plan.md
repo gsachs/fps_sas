@@ -266,7 +266,7 @@ Cheap, same pattern as U8's already-fixed `setRunning()` path. Route through the
 
 Same eight-reviewer roster as round 1. All 13 round-1 fixes independently re-verified as holding (correctness and performance reviewers returned zero findings; every fix traced end-to-end by at least one reviewer). 9 new findings survived, all P2/P3, no P0/P1, no recurrence of an already-fixed defect (every finding is either a genuinely new gap or a previously-deferred item now promoted with a concrete repro). Not yet P0/P1/P2-clean — the loop continues into round 3, the last allowed round.
 
-### U24 — Escape-triggered pause never drains the fire/throw latches, reopening U16's race on the primary pause path (P2)
+### U24 — Escape-triggered pause never drains the fire/throw latches, reopening U16's race on the primary pause path (P2) — DONE (12dd1b4)
 
 `src/shell/states.js` (`onUnlock`), `src/main.js`
 
@@ -275,7 +275,7 @@ U16 fixed the window-`blur` pause boundary (`clearHeldInput()` now drains `fireL
 - Add an `onPause` callback to `createGameShell` (mirrors the existing `onRestart` injection pattern — the state machine shouldn't know what "clear held input" means, just that a real PLAYING->PAUSED transition happened), invoked only when `onUnlock` fires while `state === STATES.PLAYING`. Wire `onPause: () => inputSampler.clearHeldInput()` in `main.js`, alongside the existing `blur` wiring.
 - **Test first:** drive `createGameShell` through a real `lockLost` transition from `PLAYING` and assert `onPause` fires exactly once; assert it does NOT fire for a lock-loss while already at `START`/`RESULTS`.
 
-### U25 — `gatherCommands`'s `getSim` getter is unnecessary indirection built on an incorrect comment (P2)
+### U25 — `gatherCommands`'s `getSim` getter is unnecessary indirection built on an incorrect comment (P2) — DONE (8231eae)
 
 `src/sim/gatherCommands.js`, `src/main.js`
 
@@ -329,13 +329,13 @@ U20's new test suite covers `applyFrameEvents`' fire/hit/explosion dispatch broa
 
 - **Test first:** add a `'hit'` case with `shooterId: LOCAL_PLAYER_ID` asserting `hud.flashCrosshair` is called with `'kill'` when `killed: true` and `'hit'` when `killed: false`.
 
-### U31 — The combat-feel plan still states the wrong asset license (P2) — docs only
+### U31 — The combat-feel plan still states the wrong asset license (P2) — docs only — DONE (85a0245)
 
 `docs/plans/2026-08-03-002-feat-combat-feel-and-lighting-plan.md:135`
 
 U21 fixed `build-combat-feel.md`'s CC BY 3.0 claim; `build-combat-feel.md` tells the reader to treat this plan as authoritative, and the plan itself still says "The existing assets are CC BY 3.0 and already require attribution" — the identical wrong claim, one file over. Correct to match `CREDITS.md`/the now-fixed command.
 
-### U32 — `goal.md`'s Finish section keeps singular "unit"/"commit" framing despite the new `all` mode (P2) — docs only
+### U32 — `goal.md`'s Finish section keeps singular "unit"/"commit" framing despite the new `all` mode (P2) — docs only — DONE (9eabce0)
 
 `.claude/commands/goal.md:4,79-80`
 
