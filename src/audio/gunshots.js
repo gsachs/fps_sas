@@ -105,6 +105,13 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
   // then setRunning() stays out of the way rather than firing resume() calls
   // the browser will reject every frame.
   let unlocked = false;
+  // Set once a resume() attempt rejects, so setRunning (called every frame
+  // while unlocked) stops re-issuing it -- without this, a context stuck
+  // suspended (e.g. Chrome's auto-suspend-on-inactivity policy resuming
+  // from a rAF callback rather than a user gesture) fires a fresh promise
+  // every frame forever, each rejection silently discarded. Cleared only by
+  // a fresh unlock() gesture, which gets its own attempt.
+  let resumeFailed = false;
 
   const loader = new THREE.AudioLoader();
   Promise.all(
@@ -188,6 +195,7 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
   // Call from a real user gesture -- the click-to-play/resume click.
   function unlock() {
     unlocked = true;
+    resumeFailed = false; // a fresh gesture earns resume() a fresh attempt
     if (listener.context.state !== 'running') listener.context.resume().catch(() => {});
   }
 
@@ -196,7 +204,13 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
   function setRunning(shouldPlay) {
     if (!unlocked) return;
     const action = audioContextAction(listener.context.state, shouldPlay);
-    if (action === 'resume') listener.context.resume().catch(() => {});
+    if (action === 'resume') {
+      if (resumeFailed) return;
+      listener.context.resume().catch((error) => {
+        resumeFailed = true;
+        onError?.(error);
+      });
+    }
     if (action === 'suspend') listener.context.suspend().catch(() => {});
   }
 

@@ -1,6 +1,37 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { disposeObject3D } from '../../src/render/models.js';
+import { disposeObject3D, loadCharacterModel, loadPropModel } from '../../src/render/models.js';
+
+// No URL scheme this loader can resolve -- fails fast and deterministically
+// (GLTFLoader's fetch rejects synchronously with "Failed to parse URL"),
+// without needing a real server or a mocked loader. Both loaders funnel
+// through this same failure path (loadGltf's .catch), so one bad URL per
+// export exercises the fix (#8: never return null on failure).
+const UNRESOLVABLE_URL = 'this-path-does-not-resolve.glb';
+
+describe('loadCharacterModel (never returns null on failure)', () => {
+  it('resolves a self-describing failure object and calls onError', async () => {
+    const onError = vi.fn();
+
+    const result = await loadCharacterModel(UNRESOLVABLE_URL, { onError });
+
+    expect(result).not.toBeNull();
+    expect(result).toEqual({ scene: null, animations: [], loaded: false });
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('loadPropModel (never returns null on failure)', () => {
+  it('resolves a self-describing failure object and calls onError', async () => {
+    const onError = vi.fn();
+
+    const result = await loadPropModel(UNRESOLVABLE_URL, { onError });
+
+    expect(result).not.toBeNull();
+    expect(result).toEqual({ scene: null, loaded: false });
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('disposeObject3D', () => {
   it('disposes geometry and material on every mesh in the hierarchy', () => {

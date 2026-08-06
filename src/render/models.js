@@ -20,29 +20,33 @@ function loadGltf(url) {
   return gltfCache.get(url);
 }
 
-// Resolves to { scene, animations } with a fresh, independently-posable
-// clone of the model -- safe to add multiple instances of the same GLTF
-// to a scene (each bot gets its own clone; the underlying geometry/texture
-// data is shared, not duplicated). Never rejects; on load failure resolves
-// null, and onError(error) is called for the caller's own logging/handling.
+// Resolves to { scene, animations, loaded } with a fresh, independently-
+// posable clone of the model -- safe to add multiple instances of the same
+// GLTF to a scene (each bot gets its own clone; the underlying geometry/
+// texture data is shared, not duplicated). Never rejects and never resolves
+// null (Core Invariant): on load failure resolves a self-describing
+// { scene: null, animations: [], loaded: false } instead, and onError(error)
+// is called for the caller's own logging/handling. Check `loaded`, not
+// truthiness -- the failure value is itself a truthy object.
 export function loadCharacterModel(url, { onError } = {}) {
   return loadGltf(url)
-    .then((gltf) => ({ scene: cloneSkinnedScene(gltf.scene), animations: gltf.animations }))
+    .then((gltf) => ({ scene: cloneSkinnedScene(gltf.scene), animations: gltf.animations, loaded: true }))
     .catch((error) => {
       onError?.(error);
-      return null;
+      return { scene: null, animations: [], loaded: false };
     });
 }
 
 // Static (non-skinned) prop model, e.g. the first-person weapon view.
 // Independent instances still need geometry disposed independently if
-// ever replaced, but do not need SkeletonUtils cloning.
+// ever replaced, but do not need SkeletonUtils cloning. Same never-null
+// contract as loadCharacterModel: check `loaded`, not truthiness.
 export function loadPropModel(url, { onError } = {}) {
   return loadGltf(url)
-    .then((gltf) => gltf.scene.clone())
+    .then((gltf) => ({ scene: gltf.scene.clone(), loaded: true }))
     .catch((error) => {
       onError?.(error);
-      return null;
+      return { scene: null, loaded: false };
     });
 }
 

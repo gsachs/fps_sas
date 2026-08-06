@@ -195,7 +195,7 @@ for (let i = 0; i < BOT_COUNT; i++) {
   loadCharacterModel(assetUrl(BOT_MODEL.path), {
     onError: (error) => console.warn(`Failed to load character model for ${botId}:`, error),
   }).then((result) => {
-    if (!result) return;
+    if (!result.loaded) return;
     const { scene: modelScene, animations } = result;
     modelScene.scale.setScalar(BOT_MODEL.scale);
     botEntry.yawOffset = BOT_MODEL.yawOffset;
@@ -228,9 +228,9 @@ for (let i = 0; i < BOT_COUNT; i++) {
 // place and the game stays playable (R18).
 loadPropModel(assetUrl(WEAPON_MODEL.path), {
   onError: (error) => console.warn('Failed to load weapon model:', error),
-}).then((model) => {
-  if (!model) return;
-  weaponView.setModel(model, {
+}).then((result) => {
+  if (!result.loaded) return;
+  weaponView.setModel(result.scene, {
     position: new THREE.Vector3(WEAPON_MODEL.offset.x, WEAPON_MODEL.offset.y, WEAPON_MODEL.offset.z),
     scale: new THREE.Vector3(WEAPON_MODEL.scale, WEAPON_MODEL.scale, WEAPON_MODEL.scale),
   });

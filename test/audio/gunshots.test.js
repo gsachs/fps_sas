@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import {
   audioContextAction,
@@ -185,6 +185,49 @@ describe('EXPLOSION_SOUND (KTD8: pitched-placeholder explosion set)', () => {
   it('pitches distinctly lower than every weapon set, so it reads as a boom, not a shot', () => {
     expect(EXPLOSION_SOUND.playbackRate).toBeLessThan(WEAPON_SOUND_SETS.pistol.playbackRate);
     expect(EXPLOSION_SOUND.playbackRate).toBeLessThan(WEAPON_SOUND_SETS.machinegun.playbackRate);
+  });
+});
+
+describe('createGunshotAudio: setRunning stops retrying a failing resume() (#11)', () => {
+  it('does not re-issue resume() on every frame once it has already failed, and reports the failure', async () => {
+    const resume = vi.fn(() => Promise.reject(new Error('resume rejected')));
+    const onError = vi.fn();
+    const previousContext = THREE.AudioContext.getContext();
+    THREE.AudioContext.setContext({
+      currentTime: 0,
+      destination: {},
+      state: 'suspended',
+      resume,
+      suspend: () => Promise.resolve(),
+      createGain: fakeGainNode,
+      createPanner: fakePannerNode,
+      createBufferSource: fakeBufferSourceNode,
+    });
+
+    try {
+      const camera = new THREE.PerspectiveCamera();
+      const scene = new THREE.Scene();
+      const gunshots = createGunshotAudio({ camera, scene, urls: ['a.ogg'], onError });
+
+      gunshots.unlock();
+      await Promise.resolve(); // let unlock's own resume() rejection settle
+
+      // Five simulated animation frames, each calling setRunning(true) the
+      // way main.js's onFrame does every frame while unlocked.
+      for (let i = 0; i < 5; i++) {
+        gunshots.setRunning(true);
+        await Promise.resolve(); // let this frame's rejection (if any) settle before the next
+      }
+
+      // At most two real attempts: unlock's own call, plus setRunning's
+      // first attempt before it learns resume is failing. The old code
+      // issued one resume() call per setRunning(true) call (5 more, forever)
+      // with every rejection silently discarded.
+      expect(resume.mock.calls.length).toBeLessThanOrEqual(2);
+      expect(onError).toHaveBeenCalled();
+    } finally {
+      THREE.AudioContext.setContext(previousContext);
+    }
   });
 });
 
