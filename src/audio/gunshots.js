@@ -18,26 +18,25 @@ const VOICE_POOL_SIZE = 12;
 const REFERENCE_DISTANCE = 5;
 const MAX_DISTANCE = 70;
 
-// KTD8: the gunshot pool gains a per-weapon set. No new samples exist for
-// the machine gun yet (that's an asset-sourcing concern, U5) -- its set
-// reuses the same pistol buffers at a distinct pitch, which is enough to
-// read as a different weapon until a real sample lands through the same
-// `urls` seam.
+// KTD8: the gunshot pool has a per-weapon set. U5: both the pistol and the
+// machine gun now play through their own real, distinct recordings (see
+// modelAssets.js's GUNSHOT_PATHS / MACHINEGUN_GUNSHOT_PATHS and CREDITS.md)
+// instead of one set of buffers replayed at a different pitch to fake a
+// second weapon -- so every set plays at its own sample's natural rate.
 export const WEAPON_SOUND_SETS = {
   [DEFAULT_WEAPON_ID]: { playbackRate: 1 },
-  [MACHINEGUN_WEAPON_ID]: { playbackRate: 1.6 },
+  [MACHINEGUN_WEAPON_ID]: { playbackRate: 1 },
 };
 const DEFAULT_SOUND_SET_ID = DEFAULT_WEAPON_ID; // unheld/unknown weapon ids fall back here
 
 // KTD8: the explosion is not a weapon set (nothing ever "holds" it), so it
 // gets its own sibling constant rather than a WEAPON_SOUND_SETS entry --
 // pickVariantForSet's per-set cursor works the same either way, keyed by
-// this id. Pitched well below the pistol's 1.0 (and the MG's 1.6) so the
-// same shared gunshot buffers read as a boom, not a shot -- the identical
-// pitched-placeholder trick U2 validated for the MG, applied here until a
-// real explosion sample lands (see CREDITS.md).
+// this id. U5: now a real explosion recording (modelAssets.js's
+// EXPLOSION_PATHS, see CREDITS.md) rather than a gunshot buffer pitched down
+// to fake a boom, so it plays at its own sample's natural rate too.
 const EXPLOSION_SOUND_SET_ID = 'explosion';
-export const EXPLOSION_SOUND = { playbackRate: 0.45 };
+export const EXPLOSION_SOUND = { playbackRate: 1 };
 // R11: audible information for everyone who hears it, and farther-reaching
 // than a gunshot -- louder than REMOTE_SHOT_VOLUME (0.8) and a wider linear
 // falloff than gunshots' REFERENCE_DISTANCE/MAX_DISTANCE (5/70).
@@ -49,13 +48,15 @@ const EXPLOSION_MAX_DISTANCE = 140;
 // silently-dropped proxy response -- isn't the explicit-failure case the
 // loader's error callback already handles below; it just leaves that one
 // promise pending forever. Promise.all only settles once every element does,
-// so one hung load leaves `buffers` empty for the rest of the session and
-// every future playLocal/playAt/playExplosion call hits its own guard and
-// does nothing, with nothing logged. Racing each URL's own load against this
-// timeout (reusing initTimeout.js's pattern, already proven for RAPIER.init)
-// bounds the worst case to one dropped sample instead of session-long
-// silence. Shorter than initTimeout's own default: these are small audio
-// assets, not a WASM payload. Not product-specified -- a defensible default.
+// so one hung load leaves that URL's whole set's pool empty for the rest of
+// the session, and every future playLocal/playAt/playExplosion call for that
+// set falls back to the default pool (or, if the default set itself is the
+// one that hung, does nothing) with nothing logged. Racing each URL's own
+// load against this timeout (reusing initTimeout.js's pattern, already
+// proven for RAPIER.init) bounds the worst case to one dropped sample
+// instead of session-long silence. Shorter than initTimeout's own default:
+// these are small audio assets, not a WASM payload. Not product-specified --
+// a defensible default.
 export const BUFFER_LOAD_TIMEOUT_MS = 8_000;
 
 // Which named set a weapon id's shot plays through -- unknown ids (or none,
@@ -102,11 +103,20 @@ export function audioContextAction(contextState, shouldPlay) {
   return null;
 }
 
-export function createGunshotAudio({ camera, scene, urls, onError }) {
+// U5: each named sound set (the pistol's `urls`, the machine gun's own
+// `weaponSoundUrls.machinegun`, the explosion's own `explosionUrls`) now
+// loads its own buffer pool instead of every set replaying the pistol's --
+// this is the seam a real sample drops into. `weaponSoundUrls` is keyed by
+// weapon id and optional: a weapon with no entry here (or whose own load
+// comes back empty -- absent files, a network failure, U28's stall timeout)
+// falls back to playing through DEFAULT_SOUND_SET_ID's pool rather than
+// staying silent, the same "degrade gracefully, never throw" contract
+// resolveSoundSet already holds for an unknown weapon id.
+export function createGunshotAudio({ camera, scene, urls, weaponSoundUrls = {}, explosionUrls = [], onError }) {
   const listener = new THREE.AudioListener();
   camera.add(listener);
 
-  let buffers = [];
+  const buffersBySetId = new Map(); // setId -> AudioBuffer[], each set's own pool
   let localVoice = null;
   const positionalVoices = [];
   // KTD8: unpooled -- one dedicated voice, constructed once and never cycled
@@ -129,24 +139,40 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
   let resumeFailed = false;
 
   const loader = new THREE.AudioLoader();
+
+  // Loads one set's own buffer pool. A failed or stalled URL (U28) never
+  // rejects the whole pool -- it drops out via the same null-sentinel filter
+  // every other loader in this codebase uses, so one bad file in a set costs
+  // that one variant, not the set.
+  function loadBufferPool(setUrls) {
+    return Promise.all(
+      setUrls.map((url) =>
+        raceInitWithTimeout(
+          () => new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject)),
+          BUFFER_LOAD_TIMEOUT_MS
+        ).catch((error) => {
+          // An explicit loader failure and a load that stalled past the
+          // timeout both land here as a rejection -- one reporting path for
+          // both, resolving to the same null sentinel the filter below
+          // expects.
+          onError?.(error);
+          return null;
+        })
+      )
+    ).then((loaded) => loaded.filter(Boolean));
+  }
+
+  const soundSetUrls = { [DEFAULT_SOUND_SET_ID]: urls, ...weaponSoundUrls, [EXPLOSION_SOUND_SET_ID]: explosionUrls };
   Promise.all(
-    urls.map((url) =>
-      raceInitWithTimeout(
-        () => new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject)),
-        BUFFER_LOAD_TIMEOUT_MS
-      ).catch((error) => {
-        // An explicit loader failure and a load that stalled past the
-        // timeout both land here as a rejection -- one reporting path for
-        // both, resolving to the same null sentinel the filter below expects.
-        onError?.(error);
-        return null;
-      })
-    )
-  ).then((loaded) => {
-    // A failed load leaves the game silent but entirely playable -- the same
-    // contract the model loaders hold (R18).
-    buffers = loaded.filter(Boolean);
-    if (buffers.length === 0) return;
+    Object.entries(soundSetUrls).map(([setId, setUrls]) => loadBufferPool(setUrls).then((pool) => [setId, pool]))
+  ).then((entries) => {
+    for (const [setId, pool] of entries) buffersBySetId.set(setId, pool);
+
+    // A failed default-set load leaves the game silent but entirely playable
+    // -- the same contract the model loaders hold (R18). Every other set's
+    // own pool can be empty without blocking voice construction: pickBuffer
+    // below falls back to the default pool for those.
+    if ((buffersBySetId.get(DEFAULT_SOUND_SET_ID) ?? []).length === 0) return;
 
     localVoice = new THREE.Audio(listener);
     for (let i = 0; i < VOICE_POOL_SIZE; i++) {
@@ -165,9 +191,16 @@ export function createGunshotAudio({ camera, scene, urls, onError }) {
     scene.add(explosionVoice);
   });
 
+  // `setId`'s own pool if it loaded anything, otherwise the default/pistol
+  // pool -- a weapon whose own sample hasn't landed (no URLs passed yet, a
+  // failed fetch) plays the default set's sample rather than nothing, the
+  // same "unknown falls back to pistol" shape resolveSoundSet already uses
+  // one layer up.
   function pickBuffer(setId) {
-    const index = pickVariantForSet(cursorsBySetId, setId, buffers.length, Math.random());
-    return buffers[index];
+    const ownPool = buffersBySetId.get(setId);
+    const pool = ownPool && ownPool.length > 0 ? ownPool : (buffersBySetId.get(DEFAULT_SOUND_SET_ID) ?? []);
+    const index = pickVariantForSet(cursorsBySetId, setId, pool.length, Math.random());
+    return pool[index];
   }
 
   // `weaponId` resolves which named set (and its playback rate) this shot

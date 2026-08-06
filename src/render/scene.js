@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { raceInitWithTimeout } from '../shell/initTimeout.js';
 
 // The scene and its lighting rig. What makes an arena of untextured boxes
 // read as a place is not the geometry -- it is whether objects are grounded
@@ -6,8 +7,15 @@ import * as THREE from 'three';
 // tone mapping and shadow-map settings live on the renderer in main.js.
 
 // Sky and horizon haze share a colour so distant geometry dissolves into the
-// sky rather than ending at a visible line.
-const SKY_COLOR = 0xa8bed6;
+// sky rather than ending at a visible line. U5/KTD5: resampled from the
+// shipped sky texture's horizon band (modelAssets.js's SKY_TEXTURE_PATH) --
+// the average colour of the middle 20-pixel band (rows 502-522 of the
+// shipped 2048x1024 equirect JPEG; an equirectangular photo's vertical
+// centre is always the horizon) computed once, offline, when the asset was
+// sourced. Re-sample this by hand if the sky asset ever changes -- a stale
+// constant here is exactly what reintroduces the seam KTD5 exists to avoid,
+// since loadSkyBackground below never touches this value itself.
+export const SKY_COLOR = 0x979baa;
 // Retuned for the rooms-and-corridors map (KTD8): walls cap real sightlines
 // far short of the old open arena's ~85-unit diagonal -- the longest is a
 // ~36-unit loop corridor or a ~30-unit corridor-through-spoke line into the
@@ -80,4 +88,40 @@ export function createScene({ aspect = 16 / 9 } = {}) {
   scene.add(sun);
 
   return { scene, camera };
+}
+
+// U5/KTD5: loads the calm-horizon sky texture and swaps it in as
+// scene.background once ready. Until then -- and forever, if the load fails
+// or times out -- scene.background stays the flat SKY_COLOR createScene
+// already set, which is deliberately the same colour as the texture's own
+// horizon band: a stalled or failed load is invisible rather than reverting
+// to a visibly different placeholder colour. THREE's equirectangular
+// background mapping ignores scene.fog by design (the reason a flat colour
+// was ever seamless in the first place, per the module comment above);
+// EquirectangularReflectionMapping plus sRGB colour space are what make a
+// plain photo-sourced JPEG behave as a background instead of a stretched,
+// wrong-gamma flat image. Never rejects and never resolves null (Core
+// Invariant) -- mirrors textures.js's loadSurfaceTexture contract.
+//
+// Deliberately not called from createScene itself: URL resolution for every
+// other loaded asset (BOT_MODEL, WEAPON_MODEL, GUNSHOT_PATHS) already lives
+// in main.js's own `assetUrl` helper, and createScene has no renderer/DOM
+// dependency today -- adding one here would duplicate that helper instead of
+// reusing it. main.js calls this once scene/camera exist, the same shape as
+// the pistol model's own load-and-wire call.
+export function loadSkyBackground(scene, url, { onError } = {}) {
+  const loader = new THREE.TextureLoader();
+  return raceInitWithTimeout(
+    () => new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject))
+  )
+    .then((texture) => {
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+      texture.colorSpace = THREE.SRGBColorSpace;
+      scene.background = texture;
+      return { loaded: true };
+    })
+    .catch((error) => {
+      onError?.(error);
+      return { loaded: false };
+    });
 }

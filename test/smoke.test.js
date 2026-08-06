@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { createScene } from '../src/render/scene.js';
+import { createScene, loadSkyBackground, SKY_COLOR } from '../src/render/scene.js';
 
 describe('createScene', () => {
   it('builds a scene with a camera and lighting', () => {
@@ -45,6 +45,65 @@ describe('createScene', () => {
     // at exactly the range they matter most (R15); the precise distance is
     // a U6 live-play retuning surface, not fixed here.
     expect(scene.fog.near).toBeGreaterThanOrEqual(15);
+  });
+
+  // U5/KTD5/AE4: scene.background ignores scene.fog by design (that's why a
+  // flat placeholder colour was ever seamless) -- so the only way the real
+  // sky texture's horizon blends into fog without a visible band is if
+  // fog's colour and the synchronous/failure-fallback background colour are
+  // the exact same resampled constant. A hand-edited fog colour that drifts
+  // from SKY_COLOR is exactly the regression this guards.
+  it('gives scene.fog the same colour as the sky background (no horizon seam, R7/KTD5)', () => {
+    const { scene } = createScene();
+
+    expect(scene.fog.color.getHex()).toBe(SKY_COLOR);
+    expect(scene.background).toBeInstanceOf(THREE.Color);
+    expect(scene.background.getHex()).toBe(SKY_COLOR);
+  });
+});
+
+describe('loadSkyBackground (U5/KTD5: real sky texture, placeholder-on-failure)', () => {
+  it('swaps scene.background to the loaded texture, configured as an equirectangular background', async () => {
+    vi.resetModules();
+
+    const fakeTexture = new THREE.Texture();
+    const load = vi.fn((_url, onLoad) => onLoad(fakeTexture));
+    vi.doMock('three', async (importOriginal) => {
+      const actual = await importOriginal();
+      return { ...actual, TextureLoader: vi.fn().mockImplementation(() => ({ load })) };
+    });
+
+    const { createScene: createScopedScene, loadSkyBackground: loadScopedSky } = await import(
+      '../src/render/scene.js'
+    );
+    const { scene } = createScopedScene();
+
+    const result = await loadScopedSky(scene, 'sky.jpg');
+
+    expect(result).toEqual({ loaded: true });
+    expect(scene.background).toBe(fakeTexture);
+    expect(fakeTexture.mapping).toBe(THREE.EquirectangularReflectionMapping);
+    expect(fakeTexture.colorSpace).toBe(THREE.SRGBColorSpace);
+
+    vi.doUnmock('three');
+    vi.resetModules();
+  });
+
+  // No document global in this suite's Node environment, so three's real
+  // TextureLoader (whose ImageLoader unconditionally calls
+  // document.createElementNS) fails synchronously the moment .load() runs --
+  // a real, deterministic failure with no mocking needed, the same technique
+  // test/render/textures.test.js uses for loadSurfaceTexture's failure path.
+  it('leaves scene.background on the flat SKY_COLOR fallback and reports the failure, never throwing', async () => {
+    const { scene } = createScene();
+    const onError = vi.fn();
+
+    const result = await loadSkyBackground(scene, 'this-sky-path-does-not-resolve.jpg', { onError });
+
+    expect(result).toEqual({ loaded: false });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(scene.background).toBeInstanceOf(THREE.Color);
+    expect(scene.background.getHex()).toBe(SKY_COLOR);
   });
 });
 

@@ -3,7 +3,13 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { BOT_MODEL, WEAPON_MODEL, ARENA_SURFACE_TEXTURE } from '../../src/render/modelAssets.js';
+import {
+  BOT_MODEL,
+  WEAPON_MODEL,
+  MACHINEGUN_MODEL,
+  ARENA_SURFACE_TEXTURE,
+  SKY_TEXTURE_PATH,
+} from '../../src/render/modelAssets.js';
 
 // These assertions run against the actual shipped .glb files, not fixtures.
 // A model swap that breaks any of them fails silently in the browser -- a
@@ -73,6 +79,46 @@ describe('WEAPON_MODEL', () => {
 describe('ARENA_SURFACE_TEXTURE', () => {
   it('points at a shipped JPEG texture file', () => {
     const url = new URL(`../../public/${ARENA_SURFACE_TEXTURE.colorPath}`, import.meta.url);
+    const buffer = fs.readFileSync(fileURLToPath(url));
+
+    expect(buffer.length).toBeGreaterThan(0);
+    expect(buffer.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff])); // JPEG magic bytes
+  });
+});
+
+// U5: replaces weaponView.js's placeholder box for MACHINEGUN_WEAPON_ID
+// through setModel's existing seam. Same shape of guard as WEAPON_MODEL
+// above, for the same reason -- a swap that breaks either check fails
+// silently in the browser (bind-pose-frozen or wrong-scale weapon).
+describe('MACHINEGUN_MODEL', () => {
+  it('points at a static model, since the prop loader cannot clone a skinned one', async () => {
+    const gltf = await loadShipped(MACHINEGUN_MODEL.path);
+    const skinned = [];
+    gltf.scene.traverse((node) => {
+      if (node.isSkinnedMesh) skinned.push(node.name);
+    });
+
+    expect(skinned).toEqual([]);
+  });
+
+  it('scales the machine gun to roughly the placeholder box it replaces', async () => {
+    const gltf = await loadShipped(MACHINEGUN_MODEL.path);
+    gltf.scene.updateMatrixWorld(true);
+    const nativeSize = new THREE.Box3().setFromObject(gltf.scene).getSize(new THREE.Vector3());
+    const longestAxis = Math.max(nativeSize.x, nativeSize.y, nativeSize.z) * MACHINEGUN_MODEL.scale;
+
+    // weaponView.js's MACHINEGUN_WEAPON_ID placeholder box is z: 0.55 --
+    // deliberately longer than the pistol's, so the swap shouldn't shrink or
+    // grow that on-screen size. +/-25% band, matching BOT_MODEL's own
+    // scale-sanity margin above.
+    expect(longestAxis).toBeGreaterThan(0.41);
+    expect(longestAxis).toBeLessThan(0.69);
+  });
+});
+
+describe('SKY_TEXTURE_PATH', () => {
+  it('points at a shipped JPEG sky texture file', () => {
+    const url = new URL(`../../public/${SKY_TEXTURE_PATH}`, import.meta.url);
     const buffer = fs.readFileSync(fileURLToPath(url));
 
     expect(buffer.length).toBeGreaterThan(0);

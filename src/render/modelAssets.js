@@ -13,6 +13,15 @@ const HUMANOID_RENDER_HEIGHT = 1.605; // what the previous humanoid rig rendered
 const ROBOT_NATIVE_HEIGHT = 4.634;
 const PISTOL_NATIVE_LENGTH = 2.75;
 const PISTOL_VIEW_LENGTH = 0.34; // roughly the placeholder box it replaces, which read at the right size
+// U5: same measurement method as the pistol above (Box3().setFromObject on
+// the loaded scene, longest axis -- barrel-to-stock, the same axis the
+// pistol's own length was measured along).
+const MACHINEGUN_NATIVE_LENGTH = 8.854;
+// The MG's placeholder box (weaponView.js's registerVisual(MACHINEGUN_WEAPON_ID, ...))
+// is z: 0.55 -- deliberately longer than the pistol's placeholder so the two
+// weapons already read as different sizes; matching it here means the model
+// swap doesn't also change how big the gun reads.
+const MACHINEGUN_VIEW_LENGTH = 0.55;
 
 // Measured by eye against the arena's real floor footprint (layout.js's
 // FLOOR_HALF_SIZE*2 -- arenaMesh.js reads the same value off the live arena
@@ -49,6 +58,23 @@ export const GUNSHOT_PATHS = [
   'assets/audio/gunshot-002.ogg',
 ];
 
+// U5: the machine gun's own fire samples -- a distinct recording, not the
+// pistol's buffers played back pitched (the placeholder trick this replaces;
+// see CREDITS.md). Same three-variant shape as GUNSHOT_PATHS and for the
+// same reason: the MG's fire rate is fast enough that one sample repeating
+// reads as a buzzer.
+export const MACHINEGUN_GUNSHOT_PATHS = [
+  'assets/audio/machinegun-000.ogg',
+  'assets/audio/machinegun-001.ogg',
+  'assets/audio/machinegun-002.ogg',
+];
+
+// U5: the grenade explosion's own sample -- previously the gunshot buffers
+// played back pitched down (see CREDITS.md). One variant: explosions are
+// infrequent enough (one grenade at a time, not automatic fire) that a
+// repeating sample doesn't read as a buzzer the way gunfire would.
+export const EXPLOSION_PATHS = ['assets/audio/explosion-000.ogg'];
+
 // First-person weapon. Static (non-skinned) by requirement: the skinned
 // pistol in this pack cannot survive loadPropModel's plain clone, which is
 // why the viewmodel stayed a grey box for so long.
@@ -60,6 +86,29 @@ export const WEAPON_MODEL = {
   // weaponView treats this z as the rest position and animates recoil on top.
   offset: { x: 0, y: -0.027, z: 0.112 },
 };
+
+// U5: first-person machine gun, replacing weaponView.js's placeholder box
+// for MACHINEGUN_WEAPON_ID through the same setModel(model, transform,
+// 'machinegun') seam the pistol above loads through. Same pack/convention as
+// the pistol (no skin, single mesh, +Z-forward-at-origin authoring), so the
+// same recentre-by-bounding-box-center approach applies -- offset here is
+// -center * scale for the box measured below, not eyeballed. Unlike the
+// pistol, this exact model has not been rendered in this sandbox (no WebGL
+// context available), so the offset's *orientation* correctness (does the
+// muzzle actually point down -Z the way the pistol's does) is a defensible
+// assumption from the shared pack convention, not a confirmed visual
+// measurement -- flag for the live play-check.
+export const MACHINEGUN_MODEL = {
+  path: 'assets/weapons/quaternius-rifle-static.glb',
+  scale: MACHINEGUN_VIEW_LENGTH / MACHINEGUN_NATIVE_LENGTH,
+  offset: { x: 0, y: -0.035, z: 0.134 },
+};
+
+// U5: calm-horizon equirectangular sky (KTD5), used by scene.js as
+// scene.background via loadSkyBackground. 2048x1024 -- plenty of resolution
+// for a background the player never approaches, at a fraction of the
+// source's 8192x4096 file size.
+export const SKY_TEXTURE_PATH = 'assets/environment/sky.jpg';
 
 // Panel/composite detail map shared by every arena surface -- walls, floor,
 // and pillars all multiply their existing `color` over this one map (KTD6),

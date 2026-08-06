@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { createScene } from './render/scene.js';
+import { createScene, loadSkyBackground } from './render/scene.js';
 import { createRenderLoop } from './render/loop.js';
 import { createPostFX } from './render/postfx.js';
 import { buildArenaMeshes } from './render/arenaMesh.js';
@@ -8,7 +8,7 @@ import { createArena } from './arena/arena.js';
 import { selectSpawnPoint } from './arena/spawnPlacement.js';
 import { createSimulation } from './sim/index.js';
 import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/movement.js';
-import { createWeaponSystem } from './sim/weapon.js';
+import { createWeaponSystem, MACHINEGUN_WEAPON_ID } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createPickupSystem } from './sim/pickups.js';
 import { createGrenadeSystem } from './sim/grenades.js';
@@ -17,7 +17,15 @@ import { getActiveBotCount, buildOccupiedPositions } from './shell/botRamp.js';
 import { createInputSampler } from './input/sampler.js';
 import { createCharacterMesh, computeBotMeshYaw, computeBotMeshY, computeCameraYaw } from './render/entityMesh.js';
 import { loadCharacterModel, loadPropModel, disposeObject3D } from './render/models.js';
-import { BOT_MODEL, WEAPON_MODEL, GUNSHOT_PATHS } from './render/modelAssets.js';
+import {
+  BOT_MODEL,
+  WEAPON_MODEL,
+  MACHINEGUN_MODEL,
+  GUNSHOT_PATHS,
+  MACHINEGUN_GUNSHOT_PATHS,
+  EXPLOSION_PATHS,
+  SKY_TEXTURE_PATH,
+} from './render/modelAssets.js';
 import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
@@ -95,6 +103,13 @@ scene.add(arenaMeshes);
 // page), not just when served from a host's root.
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 
+// U5/KTD5/R7: swaps in the real sky once loaded; scene.background and
+// scene.fog already share SKY_COLOR (createScene), so a slow or failed load
+// stays seamless rather than reverting to a visibly different placeholder.
+loadSkyBackground(scene, assetUrl(SKY_TEXTURE_PATH), {
+  onError: (error) => console.warn('Failed to load sky background:', error),
+});
+
 const hud = createHud(app);
 // R8: joins the app container ahead of the shell screens created below (see
 // createGameShell) so it paints underneath them and inherits their overlay
@@ -116,6 +131,12 @@ const gunshots = createGunshotAudio({
   camera,
   scene,
   urls: GUNSHOT_PATHS.map(assetUrl),
+  // U5/R4: the machine gun and the explosion each play through their own
+  // real sample pool now, not the pistol's buffers replayed at a different
+  // pitch -- a set with no load yet (or a failed one) falls back to the
+  // pistol pool inside gunshots.js itself, so this is purely additive.
+  weaponSoundUrls: { [MACHINEGUN_WEAPON_ID]: MACHINEGUN_GUNSHOT_PATHS.map(assetUrl) },
+  explosionUrls: EXPLOSION_PATHS.map(assetUrl),
   onError: (error) => console.warn('Failed to load gunshot audio:', error),
 });
 // Any click reaches this before the pointer-lock request it belongs to, so
@@ -249,6 +270,24 @@ loadPropModel(assetUrl(WEAPON_MODEL.path), {
     position: new THREE.Vector3(WEAPON_MODEL.offset.x, WEAPON_MODEL.offset.y, WEAPON_MODEL.offset.z),
     scale: new THREE.Vector3(WEAPON_MODEL.scale, WEAPON_MODEL.scale, WEAPON_MODEL.scale),
   });
+});
+
+// U5/R3: same non-blocking shape as the pistol above, replacing
+// MACHINEGUN_WEAPON_ID's placeholder box through weaponView.js's existing
+// setModel(model, transform, weaponId) seam -- a failed load leaves the box
+// in place and the game stays playable (R18).
+loadPropModel(assetUrl(MACHINEGUN_MODEL.path), {
+  onError: (error) => console.warn('Failed to load machine-gun model:', error),
+}).then((result) => {
+  if (!result.loaded) return;
+  weaponView.setModel(
+    result.scene,
+    {
+      position: new THREE.Vector3(MACHINEGUN_MODEL.offset.x, MACHINEGUN_MODEL.offset.y, MACHINEGUN_MODEL.offset.z),
+      scale: new THREE.Vector3(MACHINEGUN_MODEL.scale, MACHINEGUN_MODEL.scale, MACHINEGUN_MODEL.scale),
+    },
+    MACHINEGUN_WEAPON_ID
+  );
 });
 
 // Ramp reinforcements in (shell/botRamp.js): later-indexed bots start
