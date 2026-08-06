@@ -254,7 +254,7 @@ Correct the claim: existing assets are CC0, no attribution required.
 
 **Stop and ask**, same as U4: what should the actual trigger be (a literal argument like `all`/`complete`, a different mechanism, or should the single-unit-per-run default simply be documented as permanent)? Implement only after the answer.
 
-### U23 — `gunshots.js`'s `unlock()` has a bare `catch(() => {})` U8 didn't reach (P3)
+### U23 — `gunshots.js`'s `unlock()` has a bare `catch(() => {})` U8 didn't reach (P3) — DONE (a36da16)
 
 `src/audio/gunshots.js:196-200`
 
