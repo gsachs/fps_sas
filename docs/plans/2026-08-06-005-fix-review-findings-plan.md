@@ -233,7 +233,7 @@ Same failure shape as U9/U12 — one of the five call sites (`fsm.js`'s respawn-
 
 639 lines with no automated size/responsibility guard (unlike `src/sim/`, which has an architecture test). Extract `window.__debug*` into `src/debug/testHooks.js`; extract `onFrame`'s per-event switch into `src/render/frameEvents.js`. No behavior change — commit separately from U20, which depends on this extraction to be testable.
 
-### U20 — `main.js`'s composition-root wiring has zero test coverage (P2)
+### U20 — `main.js`'s composition-root wiring has zero test coverage (P2) — DONE (6c3465c)
 
 `src/main.js:141-158` (`gatherCommands`) and the pieces U19 extracts
 
