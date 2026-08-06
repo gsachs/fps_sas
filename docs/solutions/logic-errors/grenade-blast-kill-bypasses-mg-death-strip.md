@@ -43,7 +43,7 @@ Nothing was tried and failed here in the usual "wrong fix attempt" sense — the
 
 The fix is committed as `75f629f` on `main` ("fix: strip a carried machine gun on a blast kill, not just a gunshot kill"), already pushed to `origin/main`. It was written test-first: the regression test below was added and confirmed to fail (`expected 'machinegun' to be 'pistol'`) against the pre-fix code before the production change was made.
 
-**1. Regression test first**, `test/sim/grenades.test.js:392-436`, describe block `'grenades: blast kill strips a carried machine gun, same as a gunshot kill (R13)'`: it drives a real `createWorld()` through `world.step()` — a thrower throws a grenade, the test steps the world until the grenade lands (`grenade.landed`), then adds a `victim` at the blast center holding `heldWeapon: 'machinegun', ammo: 30` with `health: 20`, steps until the fuse detonates and the victim is `dead`, and asserts:
+**1. Regression test first**, `test/sim/grenades.test.js:395-439` (line numbers as of later additions to this file; unchanged in substance), describe block `'grenades: blast kill strips a carried machine gun, same as a gunshot kill (R13)'`: it drives a real `createWorld()` through `world.step()` — a thrower throws a grenade, the test steps the world until the grenade lands (`grenade.landed`), then adds a `victim` at the blast center holding `heldWeapon: 'machinegun', ammo: 30` with `health: 20`, steps until the fuse detonates and the victim is `dead`, and asserts:
 
 ```js
 expect(world.getEntity('victim').dead).toBe(true);
@@ -66,13 +66,13 @@ if (hitEvent) {
 }
 ```
 
-After — now just `src/sim/world.js:127`:
+After — now just `src/sim/world.js:133` (line number as of the killfeed feature's weapon-field addition; unchanged in substance):
 
 ```js
 if (hitEvent) events.push({ type: 'hit', ...hitEvent });
 ```
 
-**3. Added a single pass over every `'hit'` event this tick produced, after both the per-entity combat loop and `grenades.tick()` have run** — `src/sim/world.js:144-164`:
+**3. Added a single pass over every `'hit'` event this tick produced, after both the per-entity combat loop and `grenades.tick()` have run** — `src/sim/world.js:152-170`:
 
 ```js
 if (grenades) events.push(...grenades.tick(entityAccessor, dt));
@@ -113,3 +113,4 @@ The fix's shape is the generalizable lesson: when an invariant must hold "regard
 
 - `docs/solutions/logic-errors/bot-retreat-survives-death.md` is the closest thematic neighbor in this repo's logic-errors set, but the overlap is shallower than it first looks. Both bugs are "a death-adjacent invariant fails to hold in a subset of cases," but structurally they differ on every concrete dimension: `bot-retreat-survives-death.md` is a *single* code path (`transitionBotState`) whose absolute-tick deadline silently desyncs from a per-entity clock that pauses while the bot is dead — there is no second producer that independently "forgot" to enforce anything, just one check computed against the wrong clock domain. This bug is a genuine *two-producer* problem: two independent code paths (the hitscan combat loop and `grenades.tick()`) both emit kill outcomes, and the invariant-enforcing side effect was nested inside only one producer's branch. The fixes are shaped oppositely, too — bot-retreat's fix trusts an already-correct, already-computed per-call value (`armed`) instead of re-testing a stale deadline; this fix hoists a check *out of* a single producer's inline branch to run once, centrally, over the tick's unified event list. No file overlap, no shared solution mechanism, no shared prevention-rule content — but both are examples of an invariant that was correct for the one path it was written against and silently inapplicable the moment a second path came into play without being individually re-checked against it.
 - `bot-obstacle-avoidance-reversal.md`, `strafe-direction-camera-basis-mismatch.md`, and `minimap-rotation-composition-sign-error.md` are all vector/coordinate-math sign-and-handedness bugs with no mechanism in common with this one — a logic-placement gap, not a math error — so they're left out here.
+- `killfeed-survives-match-restart.md` is the same family — "an invariant held for the paths it was written against but silently didn't extend to a new one" — arriving from the opposite direction. There, the enforcing mechanism (`resetMatch()`'s optional-system-plus-`resetAll()` convention) was already correctly built and already working for two prior systems; the new `killfeed.js` module simply never registered with it. Here, the enforcing mechanism itself was incomplete (the death-strip check lived inline in one producer's branch), so no amount of "remembering to register" could have helped a second producer — the aggregator had to be built. Same family, opposite remedy: that fix is "build the aggregator correctly"; this fix already was the aggregator, and stayed correct without needing to change.
