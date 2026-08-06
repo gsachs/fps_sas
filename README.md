@@ -1,13 +1,20 @@
 # FPS Arena
 
-A browser-based 3D shooter: hunt AI bots through a rooms-and-corridors map
-in deathmatch, built with Three.js and Rapier physics. Bots patrol,
-chase, search a last-seen position when they lose sight of you, and
-retreat toward a doorway when hurt. Each corner room carries its own accent
-color, echoed on a player-only rotating minimap, so you always know where
-you are without giving away anything about the bots. A killfeed under the
-score narrates every kill as it happens — yours in gold, your death in
-red — without ever revealing a position.
+A browser-based 3D shooter: hunt AI bots through a textured,
+rooms-and-corridors map in deathmatch, built with Three.js and Rapier
+physics. Bots patrol, chase, search a last-seen position when they lose
+sight of you, and retreat toward a doorway when hurt. Each corner room
+carries its own accent color, echoed on a player-only rotating minimap, so
+you always know where you are without giving away anything about the
+bots. A killfeed under the score narrates every kill as it happens —
+yours in gold, your death in red — without ever revealing a position.
+
+The pistol is infinite but weak; a machine gun and grenades spawn as map
+pickups (the MG in the central landmark room, grenades in the corners) and
+respawn on a timer, so holding those rooms matters. Bullet hits leave
+persistent impact decals, and the arena runs through a light
+post-processing pass (bloom, ambient occlusion, a skybox) on top of real
+sourced models and audio for the weapons.
 
 ## Run locally
 
@@ -21,7 +28,7 @@ Open the printed `localhost` URL, click "Click to Play", and go.
 - **Move:** WASD
 - **Look:** Mouse
 - **Fire:** Click (hold, for the machine gun — it auto-equips on pickup and auto-reverts to the pistol when dry)
-- **Throw grenade:** G
+- **Throw grenade:** G (grenades are picked up from corner rooms; area damage hits everyone in blast radius, including the thrower, and is blocked by walls)
 - **Jump:** Space
 
 ## Build for deployment
@@ -59,9 +66,10 @@ npm test
 
 ## Documentation
 
-- `docs/plans/` — the design plan this project was built from: product
-  requirements, key technical decisions, and the implementation unit
-  breakdown.
+- `docs/plans/` — the design plans this project was built from, one per
+  feature pass (arena, combat feel, minimap, armory loop, killfeed, visual
+  fidelity): product requirements, key technical decisions, and the
+  implementation unit breakdown.
 - `docs/solutions/` — documented bugs and their root causes, organized by
   category with searchable frontmatter. Worth checking before touching
   bot AI or simulation code.
