@@ -8,7 +8,7 @@ import { createArena } from './arena/arena.js';
 import { selectSpawnPoint } from './arena/spawnPlacement.js';
 import { createSimulation } from './sim/index.js';
 import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/movement.js';
-import { createWeaponSystem, MACHINEGUN_WEAPON_ID } from './sim/weapon.js';
+import { createWeaponSystem, DEFAULT_WEAPON_ID, MACHINEGUN_WEAPON_ID } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createPickupSystem } from './sim/pickups.js';
 import { createGrenadeSystem } from './sim/grenades.js';
@@ -38,7 +38,7 @@ import { createImpactSystem } from './render/impacts.js';
 import { createDecalSystem } from './render/decals.js';
 import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGrenadeFX } from './render/grenadeFX.js';
-import { createGunshotAudio } from './audio/gunshots.js';
+import { createGunshotAudio, EXPLOSION_SOUND_SET_ID } from './audio/gunshots.js';
 import { createGameShell } from './shell/states.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
 import { renderStartupError } from './shell/startupError.js';
@@ -130,13 +130,15 @@ const grenadeFX = createGrenadeFX(scene);
 const gunshots = createGunshotAudio({
   camera,
   scene,
-  urls: GUNSHOT_PATHS.map(assetUrl),
   // U5/R4: the machine gun and the explosion each play through their own
   // real sample pool now, not the pistol's buffers replayed at a different
   // pitch -- a set with no load yet (or a failed one) falls back to the
   // pistol pool inside gunshots.js itself, so this is purely additive.
-  weaponSoundUrls: { [MACHINEGUN_WEAPON_ID]: MACHINEGUN_GUNSHOT_PATHS.map(assetUrl) },
-  explosionUrls: EXPLOSION_PATHS.map(assetUrl),
+  soundSetUrls: {
+    [DEFAULT_WEAPON_ID]: GUNSHOT_PATHS.map(assetUrl),
+    [MACHINEGUN_WEAPON_ID]: MACHINEGUN_GUNSHOT_PATHS.map(assetUrl),
+    [EXPLOSION_SOUND_SET_ID]: EXPLOSION_PATHS.map(assetUrl),
+  },
   onError: (error) => console.warn('Failed to load gunshot audio:', error),
 });
 // Any click reaches this before the pointer-lock request it belongs to, so
@@ -259,36 +261,29 @@ for (let i = 0; i < BOT_COUNT; i++) {
   });
 }
 
-// Swaps the placeholder box for the real weapon once it arrives. Same
-// non-blocking shape as the bot models: a failed load leaves the box in
-// place and the game stays playable (R18).
-loadPropModel(assetUrl(WEAPON_MODEL.path), {
-  onError: (error) => console.warn('Failed to load weapon model:', error),
-}).then((result) => {
-  if (!result.loaded) return;
-  weaponView.setModel(result.scene, {
-    position: new THREE.Vector3(WEAPON_MODEL.offset.x, WEAPON_MODEL.offset.y, WEAPON_MODEL.offset.z),
-    scale: new THREE.Vector3(WEAPON_MODEL.scale, WEAPON_MODEL.scale, WEAPON_MODEL.scale),
+// Swaps a placeholder box for a real weapon model once it arrives, through
+// weaponView.js's setModel(model, transform, weaponId) seam -- shared by the
+// pistol and the machine gun below (U5/R3). Same non-blocking shape as the
+// bot models: a failed load leaves the box in place and the game stays
+// playable (R18). `weaponId` omitted picks up setModel's own
+// DEFAULT_WEAPON_ID (the pistol).
+function loadWeaponModel(model, label, weaponId) {
+  loadPropModel(assetUrl(model.path), {
+    onError: (error) => console.warn(`Failed to load ${label} model:`, error),
+  }).then((result) => {
+    if (!result.loaded) return;
+    weaponView.setModel(
+      result.scene,
+      {
+        position: new THREE.Vector3(model.offset.x, model.offset.y, model.offset.z),
+        scale: new THREE.Vector3().setScalar(model.scale),
+      },
+      weaponId
+    );
   });
-});
-
-// U5/R3: same non-blocking shape as the pistol above, replacing
-// MACHINEGUN_WEAPON_ID's placeholder box through weaponView.js's existing
-// setModel(model, transform, weaponId) seam -- a failed load leaves the box
-// in place and the game stays playable (R18).
-loadPropModel(assetUrl(MACHINEGUN_MODEL.path), {
-  onError: (error) => console.warn('Failed to load machine-gun model:', error),
-}).then((result) => {
-  if (!result.loaded) return;
-  weaponView.setModel(
-    result.scene,
-    {
-      position: new THREE.Vector3(MACHINEGUN_MODEL.offset.x, MACHINEGUN_MODEL.offset.y, MACHINEGUN_MODEL.offset.z),
-      scale: new THREE.Vector3(MACHINEGUN_MODEL.scale, MACHINEGUN_MODEL.scale, MACHINEGUN_MODEL.scale),
-    },
-    MACHINEGUN_WEAPON_ID
-  );
-});
+}
+loadWeaponModel(WEAPON_MODEL, 'weapon');
+loadWeaponModel(MACHINEGUN_MODEL, 'machine-gun', MACHINEGUN_WEAPON_ID);
 
 // Ramp reinforcements in (shell/botRamp.js): later-indexed bots start
 // parked and inactive, then get moved to a real spawn and unlocked as the

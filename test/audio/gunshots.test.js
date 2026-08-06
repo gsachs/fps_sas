@@ -81,17 +81,18 @@ THREE.AudioLoader.prototype.load = (url, onLoad) => onLoad({ url });
 // using this helper can tell which pool a played buffer came from by its
 // URL, the same way the real per-set buffer pools in gunshots.js do. Callers
 // that want to exercise the "a set's own pool hasn't loaded" fallback path
-// pass an override (e.g. `{ weaponSoundUrls: {} }`) to blank one out.
-async function createLoadedGunshotAudio(overrides = {}) {
+// pass e.g. `{ machinegunUrls: [] }` to blank out just that set.
+async function createLoadedGunshotAudio({
+  pistolUrls = ['a.ogg', 'b.ogg', 'c.ogg'],
+  machinegunUrls = ['mg-a.ogg', 'mg-b.ogg', 'mg-c.ogg'],
+  explosionUrls = ['boom-000.ogg'],
+} = {}) {
   const camera = new THREE.PerspectiveCamera();
   const scene = new THREE.Scene();
   const gunshots = createGunshotAudio({
     camera,
     scene,
-    urls: ['a.ogg', 'b.ogg', 'c.ogg'],
-    weaponSoundUrls: { machinegun: ['mg-a.ogg', 'mg-b.ogg', 'mg-c.ogg'] },
-    explosionUrls: ['boom-000.ogg'],
-    ...overrides,
+    soundSetUrls: { pistol: pistolUrls, machinegun: machinegunUrls, explosion: explosionUrls },
   });
   // Flushes the Promise.all(...).then(...) chain createGunshotAudio kicks off
   // to load buffers and build its voices -- two microtask turns covers it,
@@ -222,7 +223,7 @@ describe('createGunshotAudio: setRunning stops retrying a failing resume() (#11)
     try {
       const camera = new THREE.PerspectiveCamera();
       const scene = new THREE.Scene();
-      const gunshots = createGunshotAudio({ camera, scene, urls: ['a.ogg'], onError });
+      const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { pistol: ['a.ogg'] }, onError });
 
       gunshots.unlock();
       await Promise.resolve(); // let unlock's own resume() rejection settle
@@ -265,7 +266,7 @@ describe('createGunshotAudio: unlock() reports its own resume() failure (U23)', 
     try {
       const camera = new THREE.PerspectiveCamera();
       const scene = new THREE.Scene();
-      const gunshots = createGunshotAudio({ camera, scene, urls: ['a.ogg'], onError });
+      const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { pistol: ['a.ogg'] }, onError });
 
       gunshots.unlock();
       await Promise.resolve(); // let unlock's own resume() rejection settle
@@ -302,7 +303,7 @@ describe('createGunshotAudio: a stalled buffer load times out instead of hanging
       createGunshotAudio({
         camera,
         scene,
-        urls: ['a.ogg', 'stuck.ogg', 'b.ogg'],
+        soundSetUrls: { pistol: ['a.ogg', 'stuck.ogg', 'b.ogg'] },
         onError,
       });
 
@@ -327,7 +328,7 @@ describe('createGunshotAudio: playExplosion', () => {
   it('does nothing before buffers have loaded (no explosion voice exists yet)', () => {
     const camera = new THREE.PerspectiveCamera();
     const scene = new THREE.Scene();
-    const gunshots = createGunshotAudio({ camera, scene, urls: ['a.ogg'] });
+    const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { pistol: ['a.ogg'] } });
 
     expect(() => gunshots.playExplosion({ x: 0, y: 0, z: 0 })).not.toThrow();
     expect(positionalAudioChildren(scene)).toHaveLength(0);
@@ -409,13 +410,13 @@ describe('createGunshotAudio: per-weapon-set buffer pools (U5, R3/R4)', () => {
   });
 
   it('loader fallback holds: falls back to the pistol pool when the machine gun\'s own sample has not loaded', async () => {
-    // No weaponSoundUrls entry for 'machinegun' at all -- the shape a caller
+    // No entry for 'machinegun' in soundSetUrls at all -- the shape a caller
     // gets before main.js is wired to pass real MG sample URLs, or if that
     // load fails/times out. playAt('machinegun') must still produce sound
     // (R18: a load failure leaves the game silent but playable, never
     // silently dropping fire the player pressed the trigger for) rather than
     // picking from an empty pool.
-    const { gunshots, scene } = await createLoadedGunshotAudio({ weaponSoundUrls: {} });
+    const { gunshots, scene } = await createLoadedGunshotAudio({ machinegunUrls: [] });
 
     gunshots.playAt({ x: 0, y: 0, z: 0 }, 'machinegun');
 

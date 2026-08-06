@@ -34,8 +34,10 @@ const DEFAULT_SOUND_SET_ID = DEFAULT_WEAPON_ID; // unheld/unknown weapon ids fal
 // pickVariantForSet's per-set cursor works the same either way, keyed by
 // this id. U5: now a real explosion recording (modelAssets.js's
 // EXPLOSION_PATHS, see CREDITS.md) rather than a gunshot buffer pitched down
-// to fake a boom, so it plays at its own sample's natural rate too.
-const EXPLOSION_SOUND_SET_ID = 'explosion';
+// to fake a boom, so it plays at its own sample's natural rate too. Exported
+// so a caller building createGunshotAudio's soundSetUrls map (main.js) has
+// the real id instead of a raw string.
+export const EXPLOSION_SOUND_SET_ID = 'explosion';
 export const EXPLOSION_SOUND = { playbackRate: 1 };
 // R11: audible information for everyone who hears it, and farther-reaching
 // than a gunshot -- louder than REMOTE_SHOT_VOLUME (0.8) and a wider linear
@@ -103,16 +105,17 @@ export function audioContextAction(contextState, shouldPlay) {
   return null;
 }
 
-// U5: each named sound set (the pistol's `urls`, the machine gun's own
-// `weaponSoundUrls.machinegun`, the explosion's own `explosionUrls`) now
-// loads its own buffer pool instead of every set replaying the pistol's --
-// this is the seam a real sample drops into. `weaponSoundUrls` is keyed by
-// weapon id and optional: a weapon with no entry here (or whose own load
-// comes back empty -- absent files, a network failure, U28's stall timeout)
-// falls back to playing through DEFAULT_SOUND_SET_ID's pool rather than
-// staying silent, the same "degrade gracefully, never throw" contract
-// resolveSoundSet already holds for an unknown weapon id.
-export function createGunshotAudio({ camera, scene, urls, weaponSoundUrls = {}, explosionUrls = [], onError }) {
+// U5: each named sound set (the pistol's DEFAULT_SOUND_SET_ID entry, the
+// machine gun's own MACHINEGUN_WEAPON_ID entry, the explosion's own
+// EXPLOSION_SOUND_SET_ID entry) now loads its own buffer pool instead of
+// every set replaying the pistol's -- this is the seam a real sample drops
+// into. `soundSetUrls` is keyed by set id and every entry is optional: a set
+// with no entry here (or whose own load comes back empty -- absent files, a
+// network failure, U28's stall timeout) falls back to playing through
+// DEFAULT_SOUND_SET_ID's pool rather than staying silent, the same
+// "degrade gracefully, never throw" contract resolveSoundSet already holds
+// for an unknown weapon id.
+export function createGunshotAudio({ camera, scene, soundSetUrls = {}, onError }) {
   const listener = new THREE.AudioListener();
   camera.add(listener);
 
@@ -162,7 +165,6 @@ export function createGunshotAudio({ camera, scene, urls, weaponSoundUrls = {}, 
     ).then((loaded) => loaded.filter(Boolean));
   }
 
-  const soundSetUrls = { [DEFAULT_SOUND_SET_ID]: urls, ...weaponSoundUrls, [EXPLOSION_SOUND_SET_ID]: explosionUrls };
   Promise.all(
     Object.entries(soundSetUrls).map(([setId, setUrls]) => loadBufferPool(setUrls).then((pool) => [setId, pool]))
   ).then((entries) => {

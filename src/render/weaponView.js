@@ -150,14 +150,17 @@ export function createWeaponView(camera) {
   }
 
   function update(deltaSeconds) {
-    // Kept in sync here rather than wired into main.js's resize handler --
-    // fov never changes at runtime today and aspect only changes on window
+    // Checked here rather than wired into main.js's resize handler -- fov
+    // never changes at runtime today and aspect only changes on window
     // resize, but this way the weapon camera can't drift out of sync with
-    // the main camera no matter what changes it or when; the cost is one
-    // cheap projection-matrix rebuild per frame.
-    weaponCamera.fov = camera.fov;
-    weaponCamera.aspect = camera.aspect;
-    weaponCamera.updateProjectionMatrix();
+    // the main camera no matter what changes it or when. Guarded so the
+    // (otherwise per-frame) projection-matrix rebuild only actually runs on
+    // the rare frame where one of them changed.
+    if (camera.fov !== weaponCamera.fov || camera.aspect !== weaponCamera.aspect) {
+      weaponCamera.fov = camera.fov;
+      weaponCamera.aspect = camera.aspect;
+      weaponCamera.updateProjectionMatrix();
+    }
 
     // The active visual's own rest position (usually 0,0,0 for a
     // placeholder, but a loaded model may need a non-zero local offset --
@@ -224,9 +227,8 @@ export function createWeaponView(camera) {
     activeWeaponId = weaponId;
   }
 
-  // weaponCamera and its future postfx wiring: see this module's KTD4
-  // comments above -- main.js needs one follow-up line, `postfx.addWeaponPass
-  // (weaponView.weaponCamera)`, to actually register the depth-clear pass;
-  // exposing the camera here is the seam that call needs.
+  // weaponCamera is exposed here so main.js's own
+  // `postfx.addWeaponPass(weaponView.weaponCamera)` can register the
+  // depth-clear pass (KTD4) once both this view and the composer exist.
   return { fire, update, setModel, setHeldWeapon, getCameraKick, weaponCamera };
 }
