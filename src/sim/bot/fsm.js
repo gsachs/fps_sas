@@ -129,10 +129,10 @@ export function transitionBotState(state, sensors, tick) {
   const acquired = targetAlive && hasLineOfSight && distanceToPlayer <= AWARENESS_RANGE;
 
   if (acquired && distanceToPlayer <= ATTACK_RANGE) {
-    return { ...state, phase: 'attack', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: playerPosition };
+    return { ...state, phase: 'attack', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: { x: playerPosition.x, z: playerPosition.z } };
   }
   if (acquired) {
-    return { ...state, phase: 'chase', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: playerPosition };
+    return { ...state, phase: 'chase', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: { x: playerPosition.x, z: playerPosition.z } };
   }
   if (state.phase === 'attack') {
     // "sight or range lost" -- existing transition, unchanged (KTD3's

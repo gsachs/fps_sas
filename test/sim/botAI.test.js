@@ -29,7 +29,12 @@ describe('transitionBotState (pure)', () => {
       1
     );
     expect(next.phase).toBe('chase');
-    expect(next.lastSeenPosition).toEqual(PLAYER_POSITION); // KTD3: refreshed while sight holds
+    // A frozen copy of x/z only (U13): y is never read by anything
+    // lastSeenPosition feeds (navigation.js's goalPoint, the search
+    // dwell-facing read), and a shallow copy of just the fields that
+    // matter is what guards against the aliasing bug -- see the aliasing
+    // regression test in the search describe block below.
+    expect(next.lastSeenPosition).toEqual({ x: PLAYER_POSITION.x, z: PLAYER_POSITION.z });
   });
 
   it('covers AE5: stays in patrol when within awareness range but occluded (no line of sight)', () => {
@@ -60,7 +65,7 @@ describe('transitionBotState (pure)', () => {
       10
     );
     expect(next.phase).toBe('attack');
-    expect(next.lastSeenPosition).toEqual(PLAYER_POSITION);
+    expect(next.lastSeenPosition).toEqual({ x: PLAYER_POSITION.x, z: PLAYER_POSITION.z }); // U13: frozen x/z copy, not the live object
   });
 
   it('never acquires a dead target, even in range and in sight (targetAlive: false)', () => {
@@ -152,6 +157,40 @@ describe('transitionBotState (pure)', () => {
       expect(next.lastSeenPosition).toEqual(PLAYER_POSITION);
     });
 
+    it('freezes lastSeenPosition against later in-place mutation of the same player-position object (U13 aliasing regression)', () => {
+      // movement.js's resolveMovement mutates entity.position's x/z fields in
+      // place every tick (`entity.position.x = next.x`, etc.) -- it never
+      // reassigns the object. If transitionBotState stored a *reference* to
+      // that same object instead of a copy, a later tick's movement would
+      // retroactively "move" an already-frozen sighting, defeating the
+      // honest-sensing guarantee search's dwell-facing read exists to
+      // enforce (see the comment above that read in fsm.js).
+      const mutablePlayerPosition = { x: 3, y: 1, z: 4 };
+      const state = createInitialBotState();
+
+      const acquired = transitionBotState(
+        state,
+        { distanceToPlayer: AWARENESS_RANGE - 1, hasLineOfSight: true, health: 100, playerPosition: mutablePlayerPosition },
+        1
+      );
+      expect(acquired.phase).toBe('chase');
+
+      const searching = transitionBotState(
+        acquired,
+        { distanceToPlayer: 5, hasLineOfSight: false, health: 100, playerPosition: mutablePlayerPosition, searchExhausted: false },
+        2
+      );
+      expect(searching.phase).toBe('search');
+
+      // Simulate the player moving while hidden from the bot: mutate the
+      // SAME object's fields in place, exactly as resolveMovement does --
+      // never create a new object.
+      mutablePlayerPosition.x = 999;
+      mutablePlayerPosition.z = 999;
+
+      expect(searching.lastSeenPosition).toEqual({ x: 3, z: 4 });
+    });
+
     it('stays in Search while not yet exhausted', () => {
       const searching = { phase: 'search', retreatArmed: true, retreatEndTick: 0, lastSeenPosition: PLAYER_POSITION };
       const next = transitionBotState(
@@ -216,16 +255,21 @@ describe('transitionBotState (pure)', () => {
       // itself as soon as the timer ran out, the bot would retreat forever
       // in one-tick flickers back to "attack".
       let state = { phase: 'retreat', retreatArmed: false, retreatEndTick: 50 };
-      state = transitionBotState(state, { distanceToPlayer: 5, hasLineOfSight: true, health: 10 }, 51);
+      state = transitionBotState(state, { distanceToPlayer: 5, hasLineOfSight: true, health: 10, playerPosition: PLAYER_POSITION }, 51);
       expect(state.phase).not.toBe('retreat');
       // One more tick at the same still-low health must not flip it back.
-      const again = transitionBotState(state, { distanceToPlayer: 5, hasLineOfSight: true, health: 10 }, 52);
+      // (Now falls through to the acquisition check below the retreat
+      // branch, same as any real sample() call, so playerPosition must be
+      // present -- a real sensor bundle always carries one.)
+      const again = transitionBotState(state, { distanceToPlayer: 5, hasLineOfSight: true, health: 10, playerPosition: PLAYER_POSITION }, 52);
       expect(again.phase).not.toBe('retreat');
     });
 
     it('re-arms retreat once health recovers (post-respawn), allowing a fresh trigger', () => {
       let state = { phase: 'chase', retreatArmed: false, retreatEndTick: 0 };
-      state = transitionBotState(state, { distanceToPlayer: 5, hasLineOfSight: true, health: 100 }, 200); // respawn heals
+      // Health-only respawn recovery also falls through to the acquisition
+      // check (same as above), so this needs a real playerPosition too.
+      state = transitionBotState(state, { distanceToPlayer: 5, hasLineOfSight: true, health: 100, playerPosition: PLAYER_POSITION }, 200); // respawn heals
       expect(state.retreatArmed).toBe(true);
       state = transitionBotState(
         state,
