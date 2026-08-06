@@ -1,7 +1,7 @@
 ---
 name: goal
 description: Fix the whole-repo review findings one unit at a time, re-reviewing until no P0/P1/P2 remains
-argument-hint: "[U1 … U10 | all] — defaults to the next unfinished unit in plan order; `all` runs the loop to completion"
+argument-hint: "[a unit id | all] — defaults to the next unfinished unit in plan order; `all` runs the loop to completion"
 ---
 
 # Goal: clear the review findings
@@ -76,8 +76,8 @@ The plan's "Known landmines" section is the full list. The two that bite hardest
 
 End every run with:
 
-1. Which unit ran, and the full `npm test` result stated plainly — including any test you changed and why.
-2. The commit you made.
+1. Which unit(s) ran, and the full `npm test` result stated plainly — including any test you changed and why.
+2. The commit(s) you made, one per unit.
 3. What the next unit is, or — if a review round just ran — the finding counts by severity and whether the loop continues.
 
 For U4 and for any unit whose success criteria are about feel rather than inspection, add: `npm run dev`, the exact thing to go look at, and one specific question only a human can answer. Report those as ready to judge, not done.
