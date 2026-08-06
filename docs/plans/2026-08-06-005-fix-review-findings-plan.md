@@ -200,7 +200,7 @@ U3 fixed the reject path; a hang (blocked fetch that never settles rather than e
 - Race `RAPIER.init()` against a timeout; treat the timeout the same as a rejection.
 - **Test first:** a `RAPIER.init` that never resolves should still reach the startup-error screen after the timeout.
 
-### U16 — A fire queued right before pause discharges itself on resume (P2)
+### U16 — A fire queued right before pause discharges itself on resume (P2) — DONE (678d212)
 
 `src/main.js:461`, `src/input/sampler.js:66-74`
 
