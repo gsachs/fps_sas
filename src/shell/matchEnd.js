@@ -3,6 +3,7 @@
 import { getLeaderboard } from '../sim/score.js';
 import { selectSpawnPoint } from '../arena/spawnPlacement.js';
 import { DEFAULT_WEAPON_ID } from '../sim/weapon.js';
+import { MAX_HEALTH } from '../sim/health.js';
 
 export const KILLS_TO_WIN = 10; // tuned during playtest (Outstanding Questions)
 
@@ -48,7 +49,7 @@ export function resetMatch(
     assignedSpawns.push(spawn);
 
     entity.position = { ...spawn };
-    entity.health = 100;
+    entity.health = MAX_HEALTH;
     entity.dead = false;
     entity.animHint = 'idle';
     entity.score = 0;

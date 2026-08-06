@@ -8,6 +8,11 @@ import { DEFAULT_WEAPON_ID } from './weapon.js';
 
 const DEFAULT_DAMAGE_PER_HIT = 20; // pistol's damage, kept only as applyHit's fallback for callers that omit it
 const RESPAWN_DELAY_TICKS = 180; // 3s at a 60Hz tick rate
+// Full health (U18): the one place this value is declared -- a new entity's
+// initial health, a respawn/match-reset heal, and bot AI's respawn-detection
+// heuristic (fsm.js) all import this instead of re-typing 100, so they can
+// never drift out of lockstep with each other.
+export const MAX_HEALTH = 100;
 // Where a corpse's physics collider goes for the respawn window (mirrors
 // main.js's PARK_POSITION for un-ramped bots). Collider.setEnabled() does
 // not reliably exclude a kinematic character's collider from castRay in
@@ -86,7 +91,7 @@ export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem })
         occupiedPositions,
       });
       entity.position = { ...spawn };
-      entity.health = 100;
+      entity.health = MAX_HEALTH;
       entity.dead = false;
       entity.animHint = 'idle';
       movementSystem.teleport(entityId, spawn); // also pulls the collider back out of CORPSE_PARK_POSITION

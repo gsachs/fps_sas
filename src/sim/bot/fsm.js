@@ -14,6 +14,7 @@ import { hasLineOfSight as checkLineOfSight } from '../lineOfSight.js';
 import { seek, avoidObstacles } from './steering.js';
 import { DEFAULT_DIFFICULTY } from './difficulty.js';
 import { isHeldFireWeapon, DEFAULT_WEAPON_ID } from '../weapon.js';
+import { MAX_HEALTH } from '../health.js';
 import { createNavigator, createPatrolPicker, nearestNodeId, GRAPH, ROOM_IDS } from './navigation.js';
 import { ROOMS, DOORWAYS } from '../../arena/layout.js';
 
@@ -174,7 +175,7 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
   let tick = 0;
   let ticksSinceEnteredAttack = 0;
   let ticksSinceFire = 0;
-  let previousHealth = 100;
+  let previousHealth = MAX_HEALTH;
   let searchDwellStartTick = null;
   let retreatOriginRoomId = null;
   let retreatDoorwayId = null;
@@ -198,7 +199,7 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     tick = 0;
     ticksSinceEnteredAttack = 0;
     ticksSinceFire = 0;
-    previousHealth = 100;
+    previousHealth = MAX_HEALTH;
     retreatOriginRoomId = null;
     retreatDoorwayId = null;
     retreatContinued = false;

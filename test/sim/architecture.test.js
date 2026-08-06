@@ -5,6 +5,7 @@ import { join } from 'node:path';
 const SIM_DIR = join(import.meta.dirname, '..', '..', 'src', 'sim');
 const SRC_DIR = join(import.meta.dirname, '..', '..', 'src');
 const WEAPON_ID_SOURCE_FILE = join(SRC_DIR, 'sim', 'weapon.js');
+const MAX_HEALTH_SOURCE_FILE = join(SRC_DIR, 'sim', 'health.js');
 
 function listJsFiles(dir) {
   const files = [];
@@ -52,6 +53,28 @@ describe('weapon id architecture guard (U12)', () => {
       if (file === WEAPON_ID_SOURCE_FILE) continue;
       const source = stripComments(readFileSync(file, 'utf8'));
       if (WEAPON_ID_LITERAL_PATTERN.test(source)) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+// Matches only the specific shapes that re-declare full health as a bare
+// literal (an entity's initial `health: 100`, a respawn/reset's
+// `entity.health = 100`, or bot AI's tracked `previousHealth = 100`) --
+// not every bare 100 in the codebase, which also appears in unrelated
+// constants like BLAST_MAX_DAMAGE, HITSCAN_MAX_DISTANCE, and PARK_POSITION's
+// y coordinate.
+const MAX_HEALTH_LITERAL_PATTERN = /\bhealth\s*:\s*100\b|\.health\s*=\s*100\b|\bpreviousHealth\s*=\s*100\b/;
+
+describe('max health architecture guard (U18)', () => {
+  it('never re-types the full-health literal outside health.js', () => {
+    const offenders = [];
+    for (const file of listJsFiles(SRC_DIR)) {
+      if (file === MAX_HEALTH_SOURCE_FILE) continue;
+      const source = stripComments(readFileSync(file, 'utf8'));
+      if (MAX_HEALTH_LITERAL_PATTERN.test(source)) {
         offenders.push(file);
       }
     }

@@ -4,6 +4,7 @@
 // as steps inside step(), not as separate loops -- this stays the one
 // mutation path (KTD2).
 import { DEFAULT_WEAPON_ID } from './weapon.js';
+import { MAX_HEALTH } from './health.js';
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -28,7 +29,7 @@ function createEntity(id, overrides = {}) {
     position: { x: 0, y: 0, z: 0 },
     yaw: 0,
     pitch: 0,
-    health: 100,
+    health: MAX_HEALTH,
     dead: false,
     score: 0,
     animHint: 'idle',
