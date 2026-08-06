@@ -242,7 +242,7 @@ The actual U3/U4/U5 fixes (startup-error handling, `targetAlive` threading, inpu
 - After U19's extraction, unit test the extracted functions directly (mirroring how U2 tested `createGameShell`).
 - **Test first:** the tests are the point of this unit.
 
-### U21 — `build-combat-feel.md` misstates asset licenses (P2) — docs only
+### U21 — `build-combat-feel.md` misstates asset licenses (P2) — docs only — DONE (d5d2f4e)
 
 `.claude/commands/build-combat-feel.md:34` vs `CREDITS.md:3` (CC BY 3.0 claimed vs CC0 actual)
 
