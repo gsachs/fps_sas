@@ -125,6 +125,25 @@ describe('resetMatch', () => {
     }
   });
 
+  // The killfeed only ages its entries while a match plays, so without an
+  // explicit reset hook a restarted match would open showing the previous
+  // match's frozen kill lines -- same rationale as pickupSystem/grenadeSystem
+  // above, asserted the same way with a fake killfeed.
+  it('clears the killfeed on restart, so a new match opens with an empty feed', () => {
+    const entities = [makeEntity('a', 0)];
+    const accessor = createFakeEntityAccessor(entities);
+    const rapierWorld = buildFlatRapierWorld();
+    const spawnPoints = [{ x: 10, y: 1, z: 10 }];
+    const movementSystem = { teleport: () => {} };
+    const healthSystem = { clearRespawnTimer: () => {} };
+    let resetAllCalls = 0;
+    const killfeed = { resetAll: () => { resetAllCalls += 1; } };
+
+    resetMatch(accessor, { rapierWorld, spawnPoints, movementSystem, healthSystem, killfeed });
+
+    expect(resetAllCalls).toBe(1);
+  });
+
   it('still resets health/dead/score/position without a pickupSystem (back-compat)', () => {
     const entities = [makeEntity('a', 5)];
     const accessor = createFakeEntityAccessor(entities);

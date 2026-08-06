@@ -1,5 +1,5 @@
 import { createPointerLockController } from './pointerLock.js';
-import { displayName } from '../ui/names.js';
+import { displayName, LOCAL_PLAYER_ID } from '../ui/names.js';
 
 // Pure state machine -- no DOM, no pointer lock -- so transitions are
 // unit-testable in isolation. The orchestrator below (createGameShell)
@@ -55,9 +55,7 @@ function styledButton(label) {
   return button;
 }
 
-// entityAccessor: passed at showResults() time so the results screen can
-// name the local player distinctly ("You") on the scoreboard.
-export function createGameShell({ container, lockElement, localPlayerId, onRestart }) {
+export function createGameShell({ container, lockElement, onRestart }) {
   let state = STATES.START;
 
   const startScreen = createScreen(container, { visible: true });
@@ -130,8 +128,8 @@ export function createGameShell({ container, lockElement, localPlayerId, onResta
     if (pointerLock.isLocked()) document.exitPointerLock();
     dispatch('matchEnded');
 
-    const playerEntry = leaderboard.find((entry) => entry.id === localPlayerId);
-    const isPlayerLeading = leaderboard[0]?.id === localPlayerId;
+    const playerEntry = leaderboard.find((entry) => entry.id === LOCAL_PLAYER_ID);
+    const isPlayerLeading = leaderboard[0]?.id === LOCAL_PLAYER_ID;
     resultsHeading.textContent = isPlayerLeading ? 'You Win!' : 'You Lose';
     resultsList.innerHTML = '';
     for (const entry of leaderboard) {
@@ -143,7 +141,7 @@ export function createGameShell({ container, lockElement, localPlayerId, onResta
     // omitted it for some reason (defensive; should not happen in practice).
     if (!playerEntry) {
       const item = document.createElement('li');
-      item.textContent = formatResultsEntry({ id: localPlayerId, score: 0 });
+      item.textContent = formatResultsEntry({ id: LOCAL_PLAYER_ID, score: 0 });
       resultsList.appendChild(item);
     }
   }

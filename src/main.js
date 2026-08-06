@@ -21,6 +21,7 @@ import { createAnimatedCharacter } from './render/mixer.js';
 import { createHud } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { createKillfeed } from './ui/killfeed.js';
+import { LOCAL_PLAYER_ID } from './ui/names.js';
 import { createDamageIndicator, computeAngleFromPlayer } from './render/feedback.js';
 import { createWeaponView } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
@@ -99,7 +100,6 @@ const combat = {
   tickRespawns: healthSystem.tickRespawns,
 };
 
-const LOCAL_PLAYER_ID = 'player';
 // R7: grenade pickups are player-only -- pickups.js has no concept of a
 // local-player id of its own, so this predicate is the seam that decides
 // eligibility without leaking a render/DOM concern into the sim layer.
@@ -274,7 +274,6 @@ window.addEventListener('resize', () => {
 const gameShell = createGameShell({
   container: app,
   lockElement: renderer.domElement,
-  localPlayerId: LOCAL_PLAYER_ID,
   onRestart: () => {
     resetMatch(sim.world, {
       rapierWorld: arena.rapierWorld,
@@ -283,6 +282,7 @@ const gameShell = createGameShell({
       healthSystem,
       pickupSystem,
       grenadeSystem,
+      killfeed,
     });
     // resetMatch repositions every entity in the world, including bots the
     // ramp hadn't unlocked yet -- re-park those so the new match starts the

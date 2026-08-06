@@ -451,4 +451,28 @@ describe('combat: hit event carries the weapon used (R7, U1 foundation)', () => 
 
     expect(hitEvent.weapon).toBe('machinegun');
   });
+
+  it('reads machinegun even on the last-round shot that empties the mag and auto-reverts the shooter', () => {
+    // Regression coverage for the timing-sensitive capture in weapon.js's
+    // resolveFire: weaponId is read from entity.heldWeapon before the
+    // auto-revert mutation later in that same call, so a killing shot fired
+    // with the very last round still reports 'machinegun' even though
+    // shooter.heldWeapon has already flipped back to 'pistol' by the time
+    // this event is read.
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
+    rig.world.getEntity('shooter').heldWeapon = 'machinegun';
+    rig.world.getEntity('shooter').ammo = 1; // last round
+    rig.world.getEntity('target').health = 10; // less than the MG's per-shot damage -- one shot kills
+    primeBroadPhase(rig);
+
+    const events = rig.world.step(new Map([['shooter', HELD_FIRE], ['target', HOLD]]), 1 / 60);
+    const hitEvent = events.find((e) => e.type === 'hit');
+
+    expect(hitEvent.killed).toBe(true);
+    expect(hitEvent.weapon).toBe('machinegun');
+    expect(rig.world.getEntity('shooter').heldWeapon).toBe('pistol'); // R1's auto-revert, same tick
+    expect(rig.world.getEntity('shooter').ammo).toBeNull();
+  });
 });

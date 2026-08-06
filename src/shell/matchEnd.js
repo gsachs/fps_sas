@@ -27,13 +27,16 @@ export function checkMatchEnd(entityAccessor) {
 // (also optional, U4) clears every in-flight grenade and pending blast --
 // distinct from grenadeCount below, which is per-entity pocket state the
 // per-entity loop already zeroes; a mid-air grenade is a projectile, not a
-// pocket, and needs its own clear hook (KTD5).
+// pocket, and needs its own clear hook (KTD5). killfeed (also optional)
+// clears its entries the same way -- it only ages while a match plays, so
+// without this the previous match's frozen lines would bleed into the new one.
 export function resetMatch(
   entityAccessor,
-  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem, grenadeSystem }
+  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem, grenadeSystem, killfeed }
 ) {
   if (pickupSystem) pickupSystem.resetAll();
   if (grenadeSystem) grenadeSystem.resetAll();
+  if (killfeed) killfeed.resetAll();
 
   const assignedSpawns = [];
   for (const entity of entityAccessor.allEntities()) {

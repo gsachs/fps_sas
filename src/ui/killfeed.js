@@ -75,17 +75,27 @@ export function createKillfeed(container) {
     'text-shadow:0 1px 3px #000;';
   container.appendChild(root);
 
+  // One row element per cap slot, created once and reused -- render() runs
+  // every frame (via update below), so updating each cached row in place
+  // mirrors hud.js's cached elements instead of tearing down and rebuilding
+  // DOM nodes 60 times a second.
+  const rows = Array.from({ length: FEED_CAP }, () => {
+    const row = document.createElement('div');
+    root.appendChild(row);
+    return row;
+  });
+
   let entries = [];
 
   function render() {
-    root.innerHTML = '';
-    for (const entry of entries) {
-      const line = document.createElement('div');
-      line.textContent = entry.text;
-      line.style.color = HIGHLIGHT_COLORS[entry.highlightClass] ?? HIGHLIGHT_COLORS.neutral;
-      line.style.opacity = entry.dimmed ? '0.4' : '1';
-      root.appendChild(line);
-    }
+    rows.forEach((row, index) => {
+      const entry = entries[index];
+      row.style.display = entry ? 'block' : 'none';
+      if (!entry) return;
+      row.textContent = entry.text;
+      row.style.color = HIGHLIGHT_COLORS[entry.highlightClass] ?? HIGHLIGHT_COLORS.neutral;
+      row.style.opacity = entry.dimmed ? '0.4' : '1';
+    });
   }
 
   function addKill(event) {
@@ -98,5 +108,13 @@ export function createKillfeed(container) {
     render();
   }
 
-  return { addKill, update };
+  // R13-style match reset (mirrors grenadeSystem.resetAll()/pickupSystem.resetAll()):
+  // clears every entry so a new match opens with an empty feed instead of the
+  // previous match's frozen lines bleeding through pause/results and into play.
+  function resetAll() {
+    entries = [];
+    render();
+  }
+
+  return { addKill, update, resetAll };
 }
