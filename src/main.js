@@ -322,6 +322,20 @@ if (debugMode) {
   window.__debugSetScore = (entityId, score) => {
     sim.world.getEntity(entityId).score = score;
   };
+  // Directly repositions an entity, mirroring the same movementSystem.teleport
+  // call activateBot/deactivateBot already use for a real gameplay reason --
+  // here so automated verification can reach a specific pickup or room
+  // without solving pathfinding through the corridor layout by hand.
+  window.__debugTeleportEntity = (entityId, position) => {
+    sim.world.getEntity(entityId).position = { ...position };
+    movementSystem.teleport(entityId, position);
+  };
+  // Directly grants an entity's grenade pocket, so automated verification can
+  // reach the throw/blast path without first walking a corner-room pickup
+  // route -- same rationale as __debugSetScore above.
+  window.__debugGrantGrenades = (entityId, count) => {
+    sim.world.getEntity(entityId).grenadeCount = count;
+  };
   window.__debugShellState = () => gameShell.getState();
   // See states.js's debugForceLockAcquired doc comment: real Pointer Lock
   // cannot be acquired under headless automation at all.
