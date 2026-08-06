@@ -156,7 +156,12 @@ export function createGrenadeSystem({ rapierWorld, healthSystem, movementSystem 
             undefined,
             ownerCollider
           );
-          if (hit) {
+          // A character capsule is not "wall contact" -- only world geometry
+          // (no entry in movementSystem's collider->entity map) stops the
+          // arc. Passing through a body just continues the sweep to this
+          // tick's candidate position rather than latching landed there.
+          const hitEntityId = hit && movementSystem?.getEntityIdForCollider(hit.collider);
+          if (hit && hitEntityId === undefined) {
             const contactDistance = Math.max(hit.timeOfImpact - LANDING_BACKOFF, 0);
             grenade.position = {
               x: grenade.position.x + rayDirection.x * contactDistance,

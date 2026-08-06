@@ -4,12 +4,13 @@ import {
   createGrenadeSystem,
   GRENADE_FUSE_TICKS,
   GRENADE_THROW_SPEED,
+  GRENADE_PITCH_UPWARD_BIAS_RADIANS,
   BLAST_RADIUS,
 } from '../../src/sim/grenades.js';
 import { createCommand } from '../../src/sim/command.js';
 import { createWorld } from '../../src/sim/world.js';
 import { resetMatch } from '../../src/shell/matchEnd.js';
-import { buildBotRig, primeBroadPhase } from '../support/rig.js';
+import { buildBotRig, addEntity, primeBroadPhase } from '../support/rig.js';
 
 await RAPIER.init();
 
@@ -143,6 +144,41 @@ describe('grenades: arc under gravity and landing (R3)', () => {
     const [grenade] = grenadeSystem.getInFlightGrenades();
     // Stopped at or short of the wall's near face -- never past it.
     expect(grenade.position.z).toBeLessThanOrEqual(WALL_Z - WALL_HALF_THICKNESS + 1e-6);
+  });
+});
+
+describe('grenades: passes through characters -- only world geometry stops the arc (finding #9)', () => {
+  it('does not land against a character standing in its path, and keeps flying past them', () => {
+    const rig = buildBotRig();
+    const grenadeSystem = createGrenadeSystem({
+      rapierWorld: rig.rapierWorld,
+      healthSystem: rig.healthSystem,
+      movementSystem: rig.movementSystem,
+    });
+    // A level throw (pitch cancels the module's own upward bias) so the
+    // grenade travels roughly at the bystander's own capsule height instead
+    // of arcing over them.
+    rig.world.addEntity('thrower', {
+      position: { x: 0, y: 1, z: 0 },
+      pitch: -GRENADE_PITCH_UPWARD_BIAS_RADIANS,
+      grenadeCount: 1,
+    });
+    addEntity(rig, 'bystander', { x: 0, y: 1, z: 3 }); // directly in the throw's path
+    primeBroadPhase(rig); // must run after the bystander's collider is created
+
+    const thrown = grenadeSystem.tryThrow(rig.world.getEntity('thrower'), THROW_COMMAND);
+    expect(thrown).toBeTruthy();
+
+    // Old behavior: this sweep would hit the bystander's capsule around
+    // z=3 and latch `landed` there, freezing the grenade mid-air. It must
+    // instead fly straight through.
+    for (let i = 0; i < 20; i++) {
+      grenadeSystem.tick(rig.world, TICK_DT);
+      expect(grenadeSystem.getInFlightGrenades()[0].landed).toBe(false);
+    }
+
+    const [grenade] = grenadeSystem.getInFlightGrenades();
+    expect(grenade.position.z).toBeGreaterThan(3);
   });
 });
 
