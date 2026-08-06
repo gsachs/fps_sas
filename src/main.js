@@ -137,23 +137,18 @@ const PARK_POSITION = { x: 0, y: -100, z: 0 };
 let matchElapsedSeconds = 0;
 let lastRenderState = [];
 
-// gatherCommands (sim/gatherCommands.js) is wired via a getter for `sim`,
-// not a direct reference: this object literal is still mid-assignment to
-// `const sim` when the arrow function below is created, and a direct `sim`
-// parameter would try to read that not-yet-assigned binding. The getter is
-// only actually invoked later, from sim.tick() in the render loop, by which
-// point `sim` is fully assigned -- the same shape as installDebugHooks's
-// getMatchElapsedSeconds/getLastRenderState getters below. `bots` is passed
-// directly (safe: it's a `const` array declared further down, only ever
-// mutated via .push(), so later pushes stay visible through this same
-// reference -- bots need sim.world to add entities to, so they can't be
-// built before sim exists).
+// gatherCommands (sim/gatherCommands.js) closes over `sim` and `bots`
+// before either is assigned -- safe because the arrow function below only
+// *runs* later, from sim.tick() in the render loop, by which point both
+// exist (bots need sim.world to add entities to, so they can't be built
+// before sim exists). `bots` is a `const` array only ever mutated via
+// .push(), so the same reference stays valid across pushes.
 const sim = createSimulation({
   physics: movementSystem,
   combat,
   pickups: pickupSystem,
   grenades: grenadeSystem,
-  gatherCommands: () => gatherCommands({ getSim: () => sim, bots, inputSampler }),
+  gatherCommands: () => gatherCommands({ sim, bots, inputSampler }),
 });
 
 // R11: match start additionally places no two entities in mutual view --

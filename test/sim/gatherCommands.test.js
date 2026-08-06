@@ -27,7 +27,7 @@ describe('gatherCommands', () => {
     const inputSampler = { sample: vi.fn(() => playerCommand) };
     const sim = fakeSim({ [LOCAL_PLAYER_ID]: { position: { x: 0, y: 0, z: 0 }, dead: false } });
 
-    const commands = gatherCommands({ getSim: () => sim, bots: [], inputSampler });
+    const commands = gatherCommands({ sim, bots: [], inputSampler });
 
     expect(inputSampler.sample).toHaveBeenCalledTimes(1);
     expect(commands.get(LOCAL_PLAYER_ID)).toBe(playerCommand);
@@ -42,7 +42,7 @@ describe('gatherCommands', () => {
       bot0: { position: { x: 1, y: 0, z: 1 }, dead: false, health: 100, heldWeapon: 'pistol' },
     });
 
-    const commands = gatherCommands({ getSim: () => sim, bots: [botEntry], inputSampler });
+    const commands = gatherCommands({ sim, bots: [botEntry], inputSampler });
 
     expect(commands.get('bot0')).toBe(botCommand);
     expect(botEntry.bot.sample).toHaveBeenCalledTimes(1);
@@ -56,7 +56,7 @@ describe('gatherCommands', () => {
       bot0: { position: { x: 1, y: 0, z: 1 }, dead: false, health: 100, heldWeapon: 'pistol' },
     });
 
-    const commands = gatherCommands({ getSim: () => sim, bots: [botEntry], inputSampler });
+    const commands = gatherCommands({ sim, bots: [botEntry], inputSampler });
 
     expect(commands.has('bot0')).toBe(false);
     expect(botEntry.bot.sample).not.toHaveBeenCalled();
@@ -70,7 +70,7 @@ describe('gatherCommands', () => {
       bot0: { position: { x: 1, y: 0, z: 1 }, dead: true, health: 0, heldWeapon: 'pistol' },
     });
 
-    const commands = gatherCommands({ getSim: () => sim, bots: [botEntry], inputSampler });
+    const commands = gatherCommands({ sim, bots: [botEntry], inputSampler });
 
     expect(commands.has('bot0')).toBe(false);
     expect(botEntry.bot.sample).not.toHaveBeenCalled();
@@ -86,7 +86,7 @@ describe('gatherCommands', () => {
       bot0: { position: botPosition, dead: false, health: 42, heldWeapon: 'machinegun' },
     });
 
-    gatherCommands({ getSim: () => sim, bots: [botEntry], inputSampler });
+    gatherCommands({ sim, bots: [botEntry], inputSampler });
 
     expect(botEntry.bot.sample).toHaveBeenCalledWith(botPosition, playerPosition, 42, 'machinegun', false);
   });
@@ -101,7 +101,7 @@ describe('gatherCommands', () => {
       bot0: { position: botPosition, dead: false, health: 42, heldWeapon: 'pistol' },
     });
 
-    gatherCommands({ getSim: () => sim, bots: [botEntry], inputSampler });
+    gatherCommands({ sim, bots: [botEntry], inputSampler });
 
     expect(botEntry.bot.sample).toHaveBeenCalledWith(botPosition, playerPosition, 42, 'pistol', true);
   });

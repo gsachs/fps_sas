@@ -3,18 +3,18 @@ import { LOCAL_PLAYER_ID } from '../ui/names.js';
 // Exists so the per-tick command-gathering logic -- U3/U4/U5's fixes: local-
 // player sampling, active/dead bot skipping, corpse-liveness threading --
 // can be unit-tested without pulling in main.js's entire composition-root
-// state. `sim` is threaded as a getter, not a direct value: main.js builds
-// this call inside the object literal passed to `const sim =
-// createSimulation({...})`, so `sim` hasn't finished being assigned at the
-// moment the wiring closure is written. The getter is only ever invoked
-// later, once sim.tick() genuinely calls this function, by which point
-// `sim` is fully assigned -- the same shape as testHooks.js's
-// getMatchElapsedSeconds/getLastRenderState getters. `bots` and
-// `inputSampler` are passed directly: `bots` is a `const` array only ever
-// mutated via .push(), so the same reference stays valid across pushes, and
-// `inputSampler` is already a stable object.
-export function gatherCommands({ getSim, bots, inputSampler }) {
-  const sim = getSim();
+// state. `sim`, `bots`, and `inputSampler` are all passed directly, not via
+// getters: main.js builds this call inside the object literal passed to
+// `const sim = createSimulation({...})`, so `sim` hasn't finished being
+// assigned at the moment the wiring closure is *written* -- but that
+// closure (`() => gatherCommands({ sim, bots, inputSampler })`) only
+// *runs* later, once sim.tick() genuinely calls it, by which point `sim`
+// is fully assigned and never reassigned again. A getter is only needed
+// for a value that changes *after* the point where a caller might read it
+// (testHooks.js's getMatchElapsedSeconds/getLastRenderState wrap `let`
+// bindings reassigned every tick, read by hooks invoked much later,
+// asynchronously); `sim`, `bots`, and `inputSampler` are none of that.
+export function gatherCommands({ sim, bots, inputSampler }) {
   const commands = new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]);
   const playerEntity = sim.world.getEntity(LOCAL_PLAYER_ID);
   for (const { id, bot, active } of bots) {
