@@ -114,9 +114,11 @@ Two `CLAUDE.md` invariant violations on external-call failure paths.
 
 `test/render/models.test.js` covers only `disposeObject3D` — the loaders have zero coverage in either direction. Add it.
 
-### U9 — Knowledge duplication and conventions (findings #10, #13, #16 — P2, P2, P3)
+### U9 — Knowledge duplication and conventions (findings #10, #13, #16 — P2, P2, P3) — #10, #13 DONE (980f146); #16 (P3) deferred
 
 Structural only. **This unit contains no behavioral change — commit it separately** (`CLAUDE.md`: never mix structural and behavioral changes in the same commit).
+
+**#16 was out of scope for the P1/P2 remediation pass and was not fixed.** It remains open for a future round.
 
 - **#10 `src/sim/world.js:33`** — `DEFAULT_WEAPON_ID` is exported from `sim/weapon.js` and correctly reused by `health.js` and `killfeed.js`, but four sites re-encode it as the bare literal `'pistol'`: `world.js:33`, `world.js:167`, `matchEnd.js:54`, `fsm.js:205`. Change the default and those four silently stay on the old value while killfeed glyphs and the `health.js` fallback move. This project has already shipped this divergence shape twice. Import the constant at all four.
 - **#13 `src/main.js:1`** — the largest and most consequential module (606 lines, the composition root) is the only file in `src/` with no one-line why-it-exists comment. Every sibling has one, including `sim/index.js` and `shell/states.js`, which place theirs right after the import block. Add it there.
