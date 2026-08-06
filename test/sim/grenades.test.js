@@ -224,6 +224,9 @@ describe('grenades: blast (AE2, KTD4) -- radius, line-of-sight, falloff, self-da
       // R11: damage-direction feedback points at the blast center, never the
       // thrower's live position.
       expect(hit.damageOrigin).toEqual(blastCenter);
+      // R7: a blast kill reads as a grenade kill, not whatever the thrower
+      // happens to be holding.
+      expect(hit.weapon).toBe('grenade');
     }
     expect(finalEvents.some((e) => e.type === 'explosion')).toBe(true);
     expect(grenadeSystem.getInFlightGrenades()).toHaveLength(0);

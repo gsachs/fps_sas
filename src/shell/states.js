@@ -1,4 +1,5 @@
 import { createPointerLockController } from './pointerLock.js';
+import { displayName } from '../ui/names.js';
 
 // Pure state machine -- no DOM, no pointer lock -- so transitions are
 // unit-testable in isolation. The orchestrator below (createGameShell)
@@ -25,6 +26,12 @@ export function transition(state, event) {
     default:
       return state;
   }
+}
+
+// R6, AE4: pure per-entry label, extracted so the results list's naming is
+// unit-testable without a DOM (mirrors src/ui/hud.js's exported formatters).
+export function formatResultsEntry(entry) {
+  return `${displayName(entry.id)} — ${entry.score}`;
 }
 
 const CONTROLS_TEXT = 'WASD move · Mouse look · Click fire · Space jump';
@@ -129,15 +136,14 @@ export function createGameShell({ container, lockElement, localPlayerId, onResta
     resultsList.innerHTML = '';
     for (const entry of leaderboard) {
       const item = document.createElement('li');
-      const name = entry.id === localPlayerId ? 'You' : entry.id;
-      item.textContent = `${name} — ${entry.score}`;
+      item.textContent = formatResultsEntry(entry);
       resultsList.appendChild(item);
     }
     // Keep the player's own entry discoverable even if the scoreboard
     // omitted it for some reason (defensive; should not happen in practice).
     if (!playerEntry) {
       const item = document.createElement('li');
-      item.textContent = 'You — 0';
+      item.textContent = formatResultsEntry({ id: localPlayerId, score: 0 });
       resultsList.appendChild(item);
     }
   }

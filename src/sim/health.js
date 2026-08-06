@@ -4,6 +4,7 @@
 // it (AE2).
 import { creditKill } from './score.js';
 import { selectSpawnPoint } from '../arena/spawnPlacement.js';
+import { DEFAULT_WEAPON_ID } from './weapon.js';
 
 const DEFAULT_DAMAGE_PER_HIT = 20; // pistol's damage, kept only as applyHit's fallback for callers that omit it
 const RESPAWN_DELAY_TICKS = 180; // 3s at a 60Hz tick rate
@@ -11,17 +12,20 @@ const RESPAWN_DELAY_TICKS = 180; // 3s at a 60Hz tick rate
 export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem }) {
   const respawnTicksRemaining = new Map(); // entityId -> ticks left until respawn
 
-  // Returns a hit event ({ shooterId, targetId, damage, killed,
+  // Returns a hit event ({ shooterId, targetId, damage, killed, weapon,
   // targetPosition, shooterPosition, damageOrigin }) for observers (HUD
-  // feedback, damage indicator), or null if the hit didn't apply (target
-  // already dead). `damage` is the caller's resolved per-weapon amount
-  // (KTD1) -- callers that omit it get the pistol's default. `damageOrigin`
+  // feedback, damage indicator, killfeed), or null if the hit didn't apply
+  // (target already dead). `damage` is the caller's resolved per-weapon
+  // amount (KTD1) -- callers that omit it get the pistol's default; `weapon`
+  // (R7, KTD4) is the weapon identifier the caller resolved it from, and
+  // callers that omit it get the same pistol default, so every hit event
+  // carries a weapon even before every call site is updated. `damageOrigin`
   // is where the damage indicator should point from; for this hitscan path
   // it's always the shooter's live position (same value as
   // `shooterPosition`), but it's a distinct field because a future
   // projectile source (e.g. a grenade blast) will supply an origin that
   // isn't the shooter's current position.
-  function applyHit(entityAccessor, targetId, shooterId, damage = DEFAULT_DAMAGE_PER_HIT) {
+  function applyHit(entityAccessor, targetId, shooterId, damage = DEFAULT_DAMAGE_PER_HIT, weapon = DEFAULT_WEAPON_ID) {
     const target = entityAccessor.getEntity(targetId);
     if (!target || target.dead) return null;
 
@@ -42,7 +46,7 @@ export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem })
       creditKill(shooter, target);
     }
 
-    return { shooterId, targetId, damage, killed, targetPosition, shooterPosition, damageOrigin };
+    return { shooterId, targetId, damage, killed, weapon, targetPosition, shooterPosition, damageOrigin };
   }
 
   // Advances every pending respawn timer by one tick; respawns any entity

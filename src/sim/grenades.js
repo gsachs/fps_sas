@@ -101,7 +101,7 @@ export function createGrenadeSystem({ rapierWorld, healthSystem, movementSystem 
       if (!hasLineOfSightFromBlastCenter(rapierWorld, grenade.position, entity.position)) continue;
 
       const damage = Math.max(BLAST_MAX_DAMAGE * (1 - distance / BLAST_RADIUS), 0);
-      const hitEvent = healthSystem.applyHit(entityAccessor, entity.id, grenade.ownerId, damage);
+      const hitEvent = healthSystem.applyHit(entityAccessor, entity.id, grenade.ownerId, damage, 'grenade');
       if (hitEvent) {
         // R11: damage-direction feedback for a blast points at the blast
         // center, never at the thrower's live position -- applyHit only

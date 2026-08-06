@@ -123,7 +123,13 @@ export function createWorld({ physics, combat, pickups, grenades } = {}) {
           });
         }
         if (fireResult.hitEntityId) {
-          const hitEvent = combat.applyHit(entityAccessor, fireResult.hitEntityId, id, fireResult.damage);
+          const hitEvent = combat.applyHit(
+            entityAccessor,
+            fireResult.hitEntityId,
+            id,
+            fireResult.damage,
+            fireResult.weapon
+          );
           if (hitEvent) events.push({ type: 'hit', ...hitEvent });
         }
       }

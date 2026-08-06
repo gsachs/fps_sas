@@ -424,3 +424,31 @@ describe('combat: hit event carries damage and a damage-origin position (U1 foun
     expect(angleFromDamageOrigin).toBe(angleFromShooterPosition);
   });
 });
+
+describe('combat: hit event carries the weapon used (R7, U1 foundation)', () => {
+  it('reads pistol with only pistols in play', () => {
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
+    primeBroadPhase(rig);
+
+    const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
+    const hitEvent = events.find((e) => e.type === 'hit');
+
+    expect(hitEvent.weapon).toBe('pistol');
+  });
+
+  it('reads machinegun for a shot fired while the machine gun is held', () => {
+    const rig = buildBotRig({ cooldownTicks: 6 });
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
+    rig.world.getEntity('shooter').heldWeapon = 'machinegun';
+    rig.world.getEntity('shooter').ammo = 30;
+    primeBroadPhase(rig);
+
+    const events = rig.world.step(new Map([['shooter', HELD_FIRE], ['target', HOLD]]), 1 / 60);
+    const hitEvent = events.find((e) => e.type === 'hit');
+
+    expect(hitEvent.weapon).toBe('machinegun');
+  });
+});

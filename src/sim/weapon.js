@@ -69,17 +69,23 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks,
 
   // Resolves a hitscan shot for `entity` if its command requests fire (edge
   // or held level, per the weapon's config) and its cooldown allows it.
-  // Returns { fired, hitEntityId, origin, endPoint, damage } -- `fired` is
-  // true whenever the weapon actually discharges this tick (hit or miss),
-  // so callers can trigger fire feedback (recoil, muzzle flash, tracers)
-  // even on a miss; `hitEntityId` is the hit entity's id, or null (miss,
-  // blocked by cover, on cooldown, or not firing). `origin` and `endPoint`
-  // describe the ray's path (muzzle to hit point, or to max range on a
-  // miss) so the render layer can draw a tracer without recomputing this
-  // geometry itself. `damage` is the firing entity's resolved weapon
+  // Returns { fired, hitEntityId, origin, endPoint, damage, weapon } --
+  // `fired` is true whenever the weapon actually discharges this tick (hit
+  // or miss), so callers can trigger fire feedback (recoil, muzzle flash,
+  // tracers) even on a miss; `hitEntityId` is the hit entity's id, or null
+  // (miss, blocked by cover, on cooldown, or not firing). `origin` and
+  // `endPoint` describe the ray's path (muzzle to hit point, or to max range
+  // on a miss) so the render layer can draw a tracer without recomputing
+  // this geometry itself. `damage` is the firing entity's resolved weapon
   // damage, carried back so callers (world.js) don't have to re-resolve the
-  // same config to apply a hit.
+  // same config to apply a hit. `weapon` (R7) is the weapon id that fired
+  // this shot, for the same callers to stamp onto the resulting kill event.
   function resolveFire(entity, command) {
+    // Captured before any mutation below (the auto-revert reassigns
+    // entity.heldWeapon later in this same function) -- R7's kill event
+    // needs the weapon that actually fired the shot, not whatever the
+    // entity holds by the time this returns.
+    const weaponId = weaponConfigs[entity.heldWeapon] ? entity.heldWeapon : DEFAULT_WEAPON_ID;
     const config = weaponConfigs[entity.heldWeapon ?? DEFAULT_WEAPON_ID] ?? weaponConfigs[DEFAULT_WEAPON_ID];
 
     const cooldown = remainingCooldown.get(entity.id) ?? 0;
@@ -141,7 +147,7 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks,
       }
     }
 
-    return { fired: true, hitEntityId, origin, endPoint, damage: config.damage };
+    return { fired: true, hitEntityId, origin, endPoint, damage: config.damage, weapon: weaponId };
   }
 
   return { resolveFire };
