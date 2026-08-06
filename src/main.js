@@ -32,16 +32,21 @@ import { createGunshotAudio } from './audio/gunshots.js';
 import { createGameShell } from './shell/states.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
 import { renderStartupError } from './shell/startupError.js';
+import { raceInitWithTimeout, InitTimeoutError } from './shell/initTimeout.js';
 
 // The composition root: boots the renderer, physics, and sim, wires every
 // render/HUD/audio system to the sim's per-frame events, and starts the
 // game loop. Everything else in src/ is a system this file assembles --
 // none of them know about each other directly.
 try {
-  await RAPIER.init();
+  await raceInitWithTimeout(() => RAPIER.init());
 } catch (error) {
   console.error('RAPIER.init failed:', error);
-  renderStartupError(document.getElementById('app'), 'Physics engine failed to load. Reload to try again.');
+  const message =
+    error instanceof InitTimeoutError
+      ? 'Physics engine timed out loading. Reload to try again.'
+      : 'Physics engine failed to load. Reload to try again.';
+  renderStartupError(document.getElementById('app'), message);
   throw error;
 }
 
