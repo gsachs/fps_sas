@@ -79,6 +79,18 @@ describe('createInputSampler', () => {
     expect(sampler.sample().buttons.throwGrenade).toBe(true);
   });
 
+  it('clearHeldInput drops held movement keys and the fire-held level (window blur)', () => {
+    const sampler = createInputSampler();
+    sampler.onKeyDown({ code: 'KeyW' });
+    sampler.onFirePressed(); // sets fireHeld true and queues one edge-triggered shot
+
+    sampler.clearHeldInput();
+
+    const command = sampler.sample();
+    expect(command.moveZ).toBe(0); // KeyW no longer reads as held
+    expect(command.buttons.fireHeld).toBe(false);
+  });
+
   it('setYaw sets the yaw directly without touching pitch', () => {
     const sampler = createInputSampler();
     sampler.onMouseMove({ movementX: 0, movementY: -50 }); // establish a non-zero pitch

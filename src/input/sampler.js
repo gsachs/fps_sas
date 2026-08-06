@@ -63,6 +63,16 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
     fireHeld = false;
   }
 
+  // Drops every held key and the fire-held level, but never the edge
+  // latches -- for window blur, where the browser delivers no keyup/mouseup
+  // to an unfocused window, so a physically-held key or button would
+  // otherwise stay latched forever and resume acting the instant focus
+  // (and the pointer lock it requires) returns.
+  function clearHeldInput() {
+    keys.clear();
+    fireHeld = false;
+  }
+
   function sample() {
     let moveZ = 0;
     let moveX = 0;
@@ -91,6 +101,7 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
     onKeyUp,
     onFirePressed,
     onFireReleased,
+    clearHeldInput,
     sample,
     getYawPitch: () => ({ yaw, pitch }),
     setYaw: (newYaw) => {

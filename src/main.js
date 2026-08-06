@@ -437,8 +437,24 @@ document.addEventListener('mousedown', (event) => {
 document.addEventListener('mouseup', (event) => {
   if (event.button === 0) inputSampler.onFireReleased();
 });
-document.addEventListener('keydown', (event) => inputSampler.onKeyDown(event));
+// Pointer-lock-gated like mousedown above, for the same reason: an edge-
+// latched action key (currently only G/throw) reaching the sampler while
+// paused or at a menu would queue a press that fires the instant play
+// resumes, with no input from the player at that moment.
+document.addEventListener('keydown', (event) => {
+  if (document.pointerLockElement === renderer.domElement) {
+    inputSampler.onKeyDown(event);
+  }
+});
+// Not pointer-lock-gated, unlike keydown above -- mirrors mouseup: a key
+// released after pointer lock has already dropped must still clear `keys`,
+// or it reads as held forever (window.blur below covers the alt-tab case,
+// where no keyup event arrives at all).
 document.addEventListener('keyup', (event) => inputSampler.onKeyUp(event));
+// The browser delivers no keyup/mouseup to a window that loses focus, so a
+// physically-held key or button would otherwise stay latched and resume
+// acting -- auto-walk, an unintended throw -- the instant focus returns.
+window.addEventListener('blur', () => inputSampler.clearHeldInput());
 
 const statsEl = document.createElement('div');
 statsEl.style.cssText = 'position:absolute;top:8px;left:8px;color:#0f0;font:12px monospace;';
