@@ -18,6 +18,20 @@ const RECOIL_RECOVERY_RATE = 11; // higher = snaps back faster
 const MUZZLE_FLASH_SECONDS = 0.07;
 const MUZZLE_FLASH_INTENSITY = 9;
 const MUZZLE_FLASH_RADIUS = 0.07;
+// KTD4: the render layer the viewmodel lives on exclusively. It is drawn
+// only through the weapon camera's own depth-cleared pass (postfx.js's
+// addWeaponPass), never through the main world camera -- moving it off the
+// default layer (0) is what excludes it from the main RenderPass, which is
+// what stops world geometry (walls) from ever being able to occlude it.
+export const WEAPON_LAYER = 1;
+// KTD4 "tight-frustum weapon camera": the viewmodel only ever sits a few
+// tenths of a unit in front of the camera (group.position.z is -0.5, and
+// recoil/rest offsets keep every visual within roughly [-0.7, -0.1]) -- a
+// near/far range this short keeps depth precision high in that narrow band
+// and comfortably contains any placeholder or loaded weapon model, current
+// or future.
+const WEAPON_CAMERA_NEAR = 0.01;
+const WEAPON_CAMERA_FAR = 2;
 // The camera jolts by a fraction of the weapon's own kick. Deliberately
 // small: this is cosmetic only and must never move the aim point, so the
 // simulation's pitch (which is what hitscans are actually resolved against)
@@ -31,6 +45,21 @@ const CAMERA_KICK_RATIO = 0.55;
 // U5's eventual MG-model load replace one entry's visual in place without
 // disturbing the others. Only the active entry's visual is ever a child of
 // `group`; `setHeldWeapon` is what moves that membership.
+// KTD4: every viewmodel mesh -- placeholder, a loaded model, and any nested
+// child a GLTF brings with it -- must land on WEAPON_LAYER exclusively and
+// cast/receive no shadows. Layers and shadow flags don't cascade from a
+// parent to its children on their own, so this has to walk the whole
+// subtree rather than set them once at the root; centralising it here
+// means every seam that hands `group` a new visual (registerVisual, and so
+// setModel too) gets the guarantee automatically instead of by convention.
+function moveToWeaponLayer(object) {
+  object.traverse((node) => {
+    node.layers.set(WEAPON_LAYER);
+    node.castShadow = false;
+    node.receiveShadow = false;
+  });
+}
+
 function createPlaceholderVisual(color, size) {
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(size.x, size.y, size.z),
@@ -52,6 +81,7 @@ export function createWeaponView(camera) {
   // currently active.
   function registerVisual(weaponId, newVisual, localTransform = {}) {
     newVisual.name = 'weaponVisual';
+    moveToWeaponLayer(newVisual);
     if (localTransform.position) newVisual.position.copy(localTransform.position);
     if (localTransform.rotation) newVisual.rotation.copy(localTransform.rotation);
     if (localTransform.scale) newVisual.scale.copy(localTransform.scale);
@@ -75,6 +105,13 @@ export function createWeaponView(camera) {
   const muzzleLight = new THREE.PointLight(0xffcc66, 0, 3);
   muzzleLight.position.set(0, 0, -0.2);
   muzzleLight.name = 'muzzleLight';
+  muzzleLight.castShadow = false;
+  // KTD4: enabled on *both* layers, not moved like the meshes above -- the
+  // weapon camera's pass (layer WEAPON_LAYER only) needs it to light the
+  // gun itself during the flash, and the main camera's pass (layer 0, its
+  // default) still needs it to light the world, or a shot fired next to a
+  // wall would stop lighting that wall the moment the gun moved layers.
+  muzzleLight.layers.enable(WEAPON_LAYER);
   group.add(muzzleLight);
 
   // The light alone only brightens nearby surfaces; at arena range there are
@@ -88,7 +125,21 @@ export function createWeaponView(camera) {
   muzzleFlash.position.set(0, 0, -0.26);
   muzzleFlash.name = 'muzzleFlash';
   muzzleFlash.visible = false;
+  moveToWeaponLayer(muzzleFlash);
   group.add(muzzleFlash);
+
+  // KTD4: a second camera, driven by the same transform as `camera` --
+  // parenting it the same way `group` is parented above means its world
+  // matrix tracks `camera`'s automatically every frame via the normal scene
+  // graph update, including the camera-kick jolt (main.js mutates `camera`'s
+  // own rotation before each render). It only ever sees WEAPON_LAYER, so
+  // postfx.js's depth-cleared weapon pass draws the viewmodel and nothing
+  // else -- not even a wall a few centimetres away -- which is what makes
+  // clipping impossible regardless of how close the player stands to
+  // geometry.
+  const weaponCamera = new THREE.PerspectiveCamera(camera.fov, camera.aspect, WEAPON_CAMERA_NEAR, WEAPON_CAMERA_FAR);
+  weaponCamera.layers.set(WEAPON_LAYER);
+  camera.add(weaponCamera);
 
   let recoilOffset = 0;
   let muzzleFlashRemaining = 0;
@@ -99,6 +150,15 @@ export function createWeaponView(camera) {
   }
 
   function update(deltaSeconds) {
+    // Kept in sync here rather than wired into main.js's resize handler --
+    // fov never changes at runtime today and aspect only changes on window
+    // resize, but this way the weapon camera can't drift out of sync with
+    // the main camera no matter what changes it or when; the cost is one
+    // cheap projection-matrix rebuild per frame.
+    weaponCamera.fov = camera.fov;
+    weaponCamera.aspect = camera.aspect;
+    weaponCamera.updateProjectionMatrix();
+
     // The active visual's own rest position (usually 0,0,0 for a
     // placeholder, but a loaded model may need a non-zero local offset --
     // e.g. to align its grip/muzzle with the group's origin). Recoil
@@ -164,5 +224,9 @@ export function createWeaponView(camera) {
     activeWeaponId = weaponId;
   }
 
-  return { fire, update, setModel, setHeldWeapon, getCameraKick };
+  // weaponCamera and its future postfx wiring: see this module's KTD4
+  // comments above -- main.js needs one follow-up line, `postfx.addWeaponPass
+  // (weaponView.weaponCamera)`, to actually register the depth-clear pass;
+  // exposing the camera here is the seam that call needs.
+  return { fire, update, setModel, setHeldWeapon, getCameraKick, weaponCamera };
 }

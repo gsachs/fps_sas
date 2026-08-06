@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { createWeaponView } from '../../src/render/weaponView.js';
+import { createWeaponView, WEAPON_LAYER } from '../../src/render/weaponView.js';
 
 // Children are found by name, never by index. setModel appends the
 // replacement model to the end of the group, so positional destructuring
@@ -173,5 +173,131 @@ describe('createWeaponView', () => {
 
     weaponView.setHeldWeapon('machinegun');
     expect(group.getObjectByName('weaponVisual')).toBe(mgModel);
+  });
+
+  // KTD4/AE2: the viewmodel is only ever drawn through its own depth-cleared
+  // pass (postfx.js's addWeaponPass), never through the main world camera --
+  // that's what makes it impossible for world geometry to occlude it. Moving
+  // it off layer 0 is what excludes it from the main RenderPass; landing it
+  // on WEAPON_LAYER exclusively (not both) is what stops it from *also*
+  // getting drawn -- and potentially depth-tested against a wall a few
+  // centimetres away -- a second time in the main pass.
+  describe('weapon render layer (KTD4)', () => {
+    it('puts the weapon visual and muzzle flash on the weapon layer only, not the default layer', () => {
+      const camera = new THREE.PerspectiveCamera();
+      const weaponView = createWeaponView(camera);
+      const { gun, flash } = parts(camera);
+
+      expect(gun.layers.isEnabled(WEAPON_LAYER)).toBe(true);
+      expect(gun.layers.isEnabled(0)).toBe(false);
+      expect(flash.layers.isEnabled(WEAPON_LAYER)).toBe(true);
+      expect(flash.layers.isEnabled(0)).toBe(false);
+    });
+
+    it('enables the muzzle light on both the default layer and the weapon layer, so it lights the world and the gun', () => {
+      const camera = new THREE.PerspectiveCamera();
+      const weaponView = createWeaponView(camera);
+      const { light } = parts(camera);
+
+      expect(light.layers.isEnabled(0)).toBe(true);
+      expect(light.layers.isEnabled(WEAPON_LAYER)).toBe(true);
+    });
+
+    it('moves a model swapped in via setModel onto the weapon layer, including nested child meshes', () => {
+      const camera = new THREE.PerspectiveCamera();
+      const weaponView = createWeaponView(camera);
+
+      const nestedMesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+      const root = new THREE.Group();
+      root.add(nestedMesh);
+
+      weaponView.setModel(root);
+
+      expect(root.layers.isEnabled(WEAPON_LAYER)).toBe(true);
+      expect(root.layers.isEnabled(0)).toBe(false);
+      expect(nestedMesh.layers.isEnabled(WEAPON_LAYER)).toBe(true);
+      expect(nestedMesh.layers.isEnabled(0)).toBe(false);
+    });
+  });
+
+  // KTD4: "the viewmodel casts and receives no shadows" -- asserted directly
+  // rather than left as an accident of these meshes' defaults, so a future
+  // model swap (U5's real MG model, which may default shadows on) can't
+  // silently regress it.
+  describe('viewmodel shadows off (KTD4)', () => {
+    it('disables cast and receive shadow on the weapon visual and muzzle flash', () => {
+      const camera = new THREE.PerspectiveCamera();
+      const weaponView = createWeaponView(camera);
+      const { gun, flash } = parts(camera);
+
+      expect(gun.castShadow).toBe(false);
+      expect(gun.receiveShadow).toBe(false);
+      expect(flash.castShadow).toBe(false);
+      expect(flash.receiveShadow).toBe(false);
+    });
+
+    it('forces shadows off on a model swapped in via setModel, even if the source model defaults them on', () => {
+      const camera = new THREE.PerspectiveCamera();
+      const weaponView = createWeaponView(camera);
+
+      const nestedMesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+      nestedMesh.castShadow = true;
+      nestedMesh.receiveShadow = true;
+      const root = new THREE.Group();
+      root.castShadow = true;
+      root.add(nestedMesh);
+
+      weaponView.setModel(root);
+
+      expect(root.castShadow).toBe(false);
+      expect(nestedMesh.castShadow).toBe(false);
+      expect(nestedMesh.receiveShadow).toBe(false);
+    });
+  });
+
+  // KTD4: "its own tight-frustum camera ... driven by the same transform."
+  // Parenting it to the main camera with an identity local transform is what
+  // makes it track the main camera's world transform (position, rotation,
+  // and the existing camera-kick jolt) for free every frame, the same way
+  // the weapon group itself already does.
+  describe('weapon camera (KTD4)', () => {
+    it('exposes a weapon camera parented to the main camera at an identity local transform', () => {
+      const camera = new THREE.PerspectiveCamera(75, 1.5, 0.1, 1000);
+      const weaponView = createWeaponView(camera);
+
+      expect(weaponView.weaponCamera).toBeInstanceOf(THREE.PerspectiveCamera);
+      expect(weaponView.weaponCamera.parent).toBe(camera);
+      expect(weaponView.weaponCamera.position.equals(new THREE.Vector3(0, 0, 0))).toBe(true);
+    });
+
+    it('renders only the weapon layer', () => {
+      const camera = new THREE.PerspectiveCamera();
+      const weaponView = createWeaponView(camera);
+
+      expect(weaponView.weaponCamera.layers.isEnabled(WEAPON_LAYER)).toBe(true);
+      expect(weaponView.weaponCamera.layers.isEnabled(0)).toBe(false);
+    });
+
+    it('uses a tight near/far frustum, much shorter than the main camera\'s', () => {
+      const camera = new THREE.PerspectiveCamera(75, 1.5, 0.1, 1000);
+      const weaponView = createWeaponView(camera);
+
+      expect(weaponView.weaponCamera.near).toBeGreaterThan(0);
+      expect(weaponView.weaponCamera.far).toBeLessThan(10);
+      expect(weaponView.weaponCamera.far).toBeLessThan(camera.far);
+    });
+
+    it('keeps fov and aspect synced to the main camera as they change, on update', () => {
+      const camera = new THREE.PerspectiveCamera(75, 1.5, 0.1, 1000);
+      const weaponView = createWeaponView(camera);
+
+      camera.fov = 90;
+      camera.aspect = 2;
+      camera.updateProjectionMatrix();
+      weaponView.update(0);
+
+      expect(weaponView.weaponCamera.fov).toBe(90);
+      expect(weaponView.weaponCamera.aspect).toBe(2);
+    });
   });
 });

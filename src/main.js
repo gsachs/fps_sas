@@ -97,6 +97,10 @@ const killfeed = createKillfeed(app);
 const minimap = createMinimap(app, arena);
 const damageIndicator = createDamageIndicator(app);
 const weaponView = createWeaponView(camera);
+// U2/KTD4: registers the viewmodel's depth-cleared pass now that its weapon
+// camera exists -- postfx.js reserved the composer slot for it at
+// construction, before weaponView existed to hand it a camera.
+postfx.addWeaponPass(weaponView.weaponCamera);
 const tracers = createTracerSystem(scene);
 const impacts = createImpactSystem(scene);
 const pickupMeshes = createPickupMeshes(scene, arena.pickups);

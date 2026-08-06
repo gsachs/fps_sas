@@ -42,14 +42,16 @@ export function createPostFX({ renderer, scene, camera, width, height }) {
   const ssaoPass = new SSAOPass(scene, camera, width * AO_RESOLUTION_SCALE, height * AO_RESOLUTION_SCALE);
   composer.addPass(ssaoPass);
 
-  // --- U2 insertion point -------------------------------------------
-  // KTD4's viewmodel depth-clear pass (the held weapon rendered through its
-  // own tight-frustum camera, depth buffer cleared first, so it can never
-  // clip into world geometry) belongs here -- after AO, before bloom, so
-  // its muzzle flash still blooms and it picks up no AO boundary artifacts
-  // from the world geometry behind it. This unit only reserves the
-  // position; U2 owns building and inserting that pass.
-  // --------------------------------------------------------------------
+  // --- U2: viewmodel depth-clear pass insertion point ------------------
+  // KTD4's weapon pass belongs here -- after AO, before bloom -- so its
+  // muzzle flash still blooms and it picks up no AO boundary artifacts from
+  // the world geometry behind it. Captured as an index (not inserted
+  // directly) because main.js builds the weapon camera (createWeaponView)
+  // after it builds this composer, so there is nothing to insert yet at
+  // construction time; addWeaponPass below is what a caller uses once that
+  // camera exists.
+  const weaponPassIndex = composer.passes.length;
+  // ----------------------------------------------------------------------
 
   composer.addPass(
     new UnrealBloomPass(new THREE.Vector2(width, height), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD)
@@ -78,5 +80,26 @@ export function createPostFX({ renderer, scene, camera, width, height }) {
     ssaoPass.setSize(newWidth * AO_RESOLUTION_SCALE, newHeight * AO_RESOLUTION_SCALE);
   }
 
-  return { composer, setSize };
+  // KTD4: registers the viewmodel's depth-clear pass at the index reserved
+  // above, once a weapon camera exists to give it (see that comment for
+  // why this can't just happen inline during construction). `clear: false`
+  // keeps the AO-composited world color already in the buffer instead of
+  // erasing it; `clearDepth: true` resets only the depth buffer first, so
+  // the weapon geometry always wins the depth test against whatever world
+  // geometry is behind it -- including a wall a few centimetres away -- no
+  // matter how close it is. Verified against RenderPass's own source
+  // (three/examples/jsm/postprocessing/RenderPass.js): `clearDepth` calls
+  // `renderer.clearDepth()` independently of `clear`, and `needsSwap`
+  // defaults to false, so this composites into the same buffer the next
+  // pass (bloom) already expects to read from, the same way RenderPass and
+  // SSAOPass above it do.
+  function addWeaponPass(weaponCamera) {
+    const weaponPass = new RenderPass(scene, weaponCamera);
+    weaponPass.clear = false;
+    weaponPass.clearDepth = true;
+    composer.insertPass(weaponPass, weaponPassIndex);
+    return weaponPass;
+  }
+
+  return { composer, setSize, addWeaponPass };
 }
