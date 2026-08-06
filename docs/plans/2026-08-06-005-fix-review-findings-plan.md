@@ -148,6 +148,118 @@ Verified during review — do not rediscover these.
 - `render/models.js` caches a rejected GLTF promise per URL forever, so a transient failure in a U8 test poisons later loads of that URL in the same run.
 - **`Collider.setEnabled(false)` does not exclude a kinematic character's collider from `castRay`** in `rapier3d-compat` 0.19.3, even though `isEnabled()` reports correctly. Confirmed by direct probe (fixed-body colliders honor it; kinematic-position-based ones don't). Don't reach for `setEnabled` to take a character out of hitscan/line-of-sight queries -- teleport its physics body far away instead (see U4, `CORPSE_PARK_POSITION`).
 
+## Round 1 re-review (2026-08-06, whole-repo `ce-code-review` after U1-U10)
+
+Nine reviewers (correctness, testing, maintainability, agent-native, learnings-researcher, performance, reliability, adversarial; project-standards skipped — no `CLAUDE.md`/`AGENTS.md` inside this repo; cross-model peer skipped — no non-Claude CLI installed on the host). 13 findings survived independent validation (12/12 in the automated validator batch, plus one additional finding surfaced by `learnings-researcher`'s recurrence check and independently derived/confirmed by direct computation): 2 P1, 10 P2, 1 P3. Not yet P0/P1/P2-clean — the loop continues. Full findings, evidence, and reasoning are in the review transcript; units below are ready to pick up one at a time.
+
+Fix in this order. Each unit is one commit, test-first, per the loop's non-negotiables.
+
+### U11 — Damage indicator points the wrong way (P1)
+
+`src/render/feedback.js:9-18` (`computeAngleFromPlayer`)
+
+The incoming-damage HUD arrow is mirrored left-right. Its formula, its own doc comment, and its own test (`test/render/feedback.test.js:12-15`) all agree with each other — but disagree with the codebase's one already-verified ground truth for "right" (`src/sim/movement.js:85`, `right = {x: -cos(yaw), z: sin(yaw)}`, confirmed live via Playwright when the strafe-direction bug was fixed). An attacker standing at the player's real visual-right position computes a *negative* angle from `computeAngleFromPlayer`, which `createDamageIndicator.show()` renders as the arrow pointing screen-left. This is the same failure shape as `strafe-direction-camera-basis-mismatch.md` and `minimap-rotation-composition-sign-error.md` — an internally self-consistent coordinate transform never cross-checked against the actual consumer — now confirmed at a fourth site.
+
+- Flip the sign the same way `movement.js`'s `right` vector was flipped, or re-derive `bearingYaw`'s relationship to `playerYaw` against the verified right-vector directly.
+- The existing test's own expected values are backwards and must be corrected as part of this fix, not left as a regression guard for the wrong behavior.
+- **Test first:** assert an attacker at the player's real visual-right position (per `movement.js`'s verified basis, not a bare `+X` literal) produces a positive angle.
+
+### U12 — Weapon-id string literal duplicated with no canonical source (P1)
+
+`src/sim/weapon.js:34-49` and 6+ call sites (`render/weaponView.js:64,68,70,139`, `audio/gunshots.js:28`, `sim/pickups.js:35,41`, `ui/killfeed.js`)
+
+Only `DEFAULT_WEAPON_ID` is exported from `weapon.js`; every other reference to `'pistol'`/`'machinegun'` is re-typed as a bare literal. This is the exact failure shape U9 already fixed once for `DEFAULT_WEAPON_ID` alone — the fix didn't reach the full id set.
+
+- Export a canonical weapon-id source (e.g. `WEAPON_IDS` derived from `WEAPON_CONFIGS`) and import it at every listed call site.
+- **Test first:** an architecture-style test asserting every non-`sim/weapon.js` weapon-id reference resolves through the exported source, not a bare literal.
+
+### U13 — Bot search-phase `lastSeenPosition` aliases the live player object (P2)
+
+`src/sim/bot/fsm.js:132,135,288`
+
+`lastSeenPosition: playerPosition` stores a reference to the same mutable object `movement.js` updates in place every tick, so the Search phase's "frozen last-seen point" silently tracks the player's *current* position — defeating the honest-sensing guarantee the phase's own adjacent comment (`fsm.js:283-287`) states.
+
+- Store a shallow copy (`{ x: playerPosition.x, z: playerPosition.z }`) at both return sites that set `lastSeenPosition`.
+- **Test first:** move the player after a sighting is recorded; assert the bot's Search-phase facing does not track the move.
+
+### U14 — GLTF loader caches a rejected promise forever (P2)
+
+`src/render/models.js:11-21`
+
+A failed model load poisons `gltfCache` for the rest of the session — no later call for that URL can ever succeed again, even after the transient cause (network blip) clears.
+
+- On rejection, delete the cache entry so a later call re-attempts the load.
+- **Test first:** a rejected `loadGltf(url)` followed by a second call for the same URL should attempt the load again, not replay the cached rejection.
+
+### U15 — `RAPIER.init()` has no timeout, only a reject handler (P2)
+
+`src/main.js:40-46`
+
+U3 fixed the reject path; a hang (blocked fetch that never settles rather than errors) still black-screens the game forever, invisible to the `try`/`catch`.
+
+- Race `RAPIER.init()` against a timeout; treat the timeout the same as a rejection.
+- **Test first:** a `RAPIER.init` that never resolves should still reach the startup-error screen after the timeout.
+
+### U16 — A fire queued right before pause discharges itself on resume (P2)
+
+`src/main.js:461`, `src/input/sampler.js:66-74`
+
+`clearHeldInput()` (wired to `blur`, mirroring the pause boundary) clears held keys and the fire-held level but — by its own comment — never the edge latches (`fireLatch`/`throwLatch`). A press queued immediately before pause stays pending through the pause and fires with zero live input on the first tick after resume. Same shape as the already-fixed U5 grenade-throw-while-paused bug (P2), on the fire latch instead of the throw latch.
+
+- Drain `fireLatch`/`throwLatch` pending counts from the same sites `clearHeldInput()` is already called from.
+- **Test first:** queue a fire, then pause before the next tick consumes it; assert no fire event fires on resume with no new input.
+
+### U17 — `mixer.js` hardcodes a `'Death'` substring the module's own design says to avoid (P2)
+
+`src/render/mixer.js:25`
+
+The module's header comment (`mixer.js:9-15`) explains clip names are caller-supplied per model specifically so no module hardcodes a single rig's naming; line 25 does exactly that.
+
+- Use `clipNames.dead` (the caller-supplied mapping) instead of `clip.name.includes('Death')`.
+- **Test first:** a model whose death clip name doesn't contain `'Death'` should still get the one-shot/clamp treatment.
+
+### U18 — Full-health `100` literal duplicated in 5 places (P2)
+
+`src/sim/world.js:31`, `src/sim/health.js:89`, `src/shell/matchEnd.js:51`, `src/sim/bot/fsm.js:177,201`
+
+Same failure shape as U9/U12 — one of the five call sites (`fsm.js`'s respawn-detection heuristic) depends on its own hardcoded value staying in lockstep with the others. Already listed once in "Deferred residual risks" below; promoted here per this document's own rule now that a review has flagged it P2.
+
+- Export `MAX_HEALTH` from `sim/health.js`; import at all five sites.
+- **Test first:** assert a newly-spawned entity's health equals the same constant `fsm.js`'s respawn-detection heuristic compares against.
+
+### U19 — `main.js` bundles composition wiring, debug instrumentation, and per-frame event policy (P2) — structural only
+
+`src/main.js:316-424` (debug hooks), `:473-637` (`onFrame`)
+
+639 lines with no automated size/responsibility guard (unlike `src/sim/`, which has an architecture test). Extract `window.__debug*` into `src/debug/testHooks.js`; extract `onFrame`'s per-event switch into `src/render/frameEvents.js`. No behavior change — commit separately from U20, which depends on this extraction to be testable.
+
+### U20 — `main.js`'s composition-root wiring has zero test coverage (P2)
+
+`src/main.js:141-158` (`gatherCommands`) and the pieces U19 extracts
+
+The actual U3/U4/U5 fixes (startup-error handling, `targetAlive` threading, input-clearing wiring) live here and are exercised by no test at all.
+
+- After U19's extraction, unit test the extracted functions directly (mirroring how U2 tested `createGameShell`).
+- **Test first:** the tests are the point of this unit.
+
+### U21 — `build-combat-feel.md` misstates asset licenses (P2) — docs only
+
+`.claude/commands/build-combat-feel.md:34` vs `CREDITS.md:3` (CC BY 3.0 claimed vs CC0 actual)
+
+Correct the claim: existing assets are CC0, no attribution required.
+
+### U22 — `goal.md`'s "run to completion" mode has no defined trigger syntax (P2) — **needs a human decision**
+
+`.claude/commands/goal.md:27` says "unless the loop below is explicitly running to completion" but `argument-hint` (line 4) documents only unit selectors — no such trigger exists anywhere in the file. This is the exact ambiguity this session hit when deciding how to proceed after this review.
+
+**Stop and ask**, same as U4: what should the actual trigger be (a literal argument like `all`/`complete`, a different mechanism, or should the single-unit-per-run default simply be documented as permanent)? Implement only after the answer.
+
+### U23 — `gunshots.js`'s `unlock()` has a bare `catch(() => {})` U8 didn't reach (P3)
+
+`src/audio/gunshots.js:196-200`
+
+Cheap, same pattern as U8's already-fixed `setRunning()` path. Route through the same `onError` callback.
+
 ## Accepted (not fixed)
 
 Nothing yet. Every P3 or advisory item the loop decides not to fix goes here with a one-line reason, so the decision is durable rather than re-litigated each round.
@@ -159,11 +271,13 @@ Reviewed and judged out of scope for this remediation. Listed so they are not re
 - Deterministic match openings — `spawns.js:22-30` always returns `spawnPoints[0]` first, so every match and restart starts identically.
 - `fsm.js:206`'s strict health-increase respawn detection misses a full-health one-tick kill — a residual hole in `bot-retreat-survives-death.md`.
 - `se-bottom` / `se-right` doorway ids swapped at `layout.js:178-179`. Harmless only while every doorway shares one width; the moment one is widened, the gap opens in the wrong wall.
-- Full-health `100` bare in five places (`world.js:29`, `health.js:73`, `matchEnd.js:50`, `fsm.js:175`, `:199`).
-- `weaponSystem` cooldowns and `nextGrenadeId` sit outside `resetMatch`'s reset convention — same shape as `killfeed-survives-match-restart.md`.
-- `tracer.js`'s active array is unbounded, unlike `impacts.js` and `grenadeFX.js`.
+- `weaponSystem` cooldowns and `nextGrenadeId` sit outside `resetMatch`'s reset convention — same shape as `killfeed-survives-match-restart.md`. Round 1 re-review re-confirmed this (bounded impact: max ~6 stale ticks after a restart) and left it deferred.
+- `tracer.js`'s active array is unbounded, unlike `impacts.js` and `grenadeFX.js`. Round 1 re-review re-confirmed this is genuinely low-impact given `BOT_COUNT=4` and exactly one machine-gun pickup on the map (worst case ~10 short-lived objects).
 - WebGL context loss is handled nowhere.
-- `pointerLock.js:21`'s `NotSupportedError` retry has no `.catch()`.
+- `pointerLock.js:21`'s `NotSupportedError` retry has no `.catch()`. Round 1 re-review re-confirmed this is cosmetic (console warning only) — the sibling `pointerlockerror` event already backstops it functionally.
 - `createPointerLockController` has no tests at all.
+- Escape-triggered pause doesn't clear held movement keys the way window `blur` does (`states.js`'s `onUnlock` only dispatches `lockLost`) — lower-confidence, narrower version of U16; revisit if it recurs as its own report.
+- Ramp-parked (not-yet-activated) bots are filtered by `!entity.dead` rather than activity state in spawn-safety scoring — low confidence this triggers in practice given bots activate early in a match.
+- Citation drift in the three `docs/solutions/logic-errors/` docs NOT touched by U10's refresh (`killfeed-survives-match-restart.md`, `minimap-rotation-composition-sign-error.md`, `bot-obstacle-avoidance-reversal.md`), plus one passage inside an already-refreshed doc (`grenade-blast-kill-bypasses-mg-death-strip.md`'s historical grep narrative still names the pre-U9 literal `'pistol'` call sites) — all caused by later, unrelated commits shifting `main.js`/`fsm.js` line numbers. Documentation-only, P3-grade; promote to a unit only if it actively misleads someone.
 
 Promote any of these into a work unit only if a later review raises it as P0/P1/P2.
