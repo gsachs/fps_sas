@@ -18,7 +18,8 @@ Open the printed `localhost` URL, click "Click to Play", and go.
 
 - **Move:** WASD
 - **Look:** Mouse
-- **Fire:** Click
+- **Fire:** Click (hold, for the machine gun — it auto-equips on pickup and auto-reverts to the pistol when dry)
+- **Throw grenade:** G
 - **Jump:** Space
 
 ## Build for deployment
