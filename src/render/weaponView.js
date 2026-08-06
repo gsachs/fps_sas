@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { disposeObject3D } from './models.js';
+import { DEFAULT_WEAPON_ID, MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
 
 // First-person weapon: a model parented to the camera (so it always renders
 // at a fixed screen position), with a recoil kick and muzzle flash on fire.
@@ -61,13 +62,13 @@ export function createWeaponView(camera) {
     });
   }
 
-  registerVisual('pistol', createPlaceholderVisual(0x2b2b2b, { x: 0.08, y: 0.08, z: 0.35 }));
+  registerVisual(DEFAULT_WEAPON_ID, createPlaceholderVisual(0x2b2b2b, { x: 0.08, y: 0.08, z: 0.35 }));
   // Deliberately different size/color from the pistol placeholder (not just
   // a recolor of the same box) so the swap reads as a different weapon at a
   // glance even before U5's real MG model lands through setModel's same seam.
-  registerVisual('machinegun', createPlaceholderVisual(0x3f6f9f, { x: 0.09, y: 0.1, z: 0.55 }));
+  registerVisual(MACHINEGUN_WEAPON_ID, createPlaceholderVisual(0x3f6f9f, { x: 0.09, y: 0.1, z: 0.55 }));
 
-  let activeWeaponId = 'pistol';
+  let activeWeaponId = DEFAULT_WEAPON_ID;
   let visual = weaponVisuals.get(activeWeaponId).visual;
   group.add(visual);
 
@@ -136,7 +137,7 @@ export function createWeaponView(camera) {
   // change is visible immediately; otherwise it takes effect the next time
   // setHeldWeapon switches to it -- the seam U5 uses to register a real MG
   // model without changing this call's shape.
-  function setModel(model, localTransform = {}, weaponId = 'pistol') {
+  function setModel(model, localTransform = {}, weaponId = DEFAULT_WEAPON_ID) {
     const previous = weaponVisuals.get(weaponId);
     const isActive = activeWeaponId === weaponId;
     if (isActive) group.remove(visual);

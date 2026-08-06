@@ -3,7 +3,7 @@
 // descriptors; collection is a proximity check against entity.position, not
 // a Rapier query -- pickups have no collider. Three.js/Rapier-free, like the
 // rest of the sim layer (KTD7).
-import { MACHINEGUN_MAX_AMMO } from './weapon.js';
+import { MACHINEGUN_MAX_AMMO, MACHINEGUN_WEAPON_ID } from './weapon.js';
 
 // 3D distance an entity must be within to collect a pickup.
 export const PICKUP_COLLECTION_RADIUS = 1.5;
@@ -32,13 +32,13 @@ export function createPickupSystem({ pickups, isLocalPlayer }) {
   // holding it just refills); a grenade pickup is player-only and only
   // while the pocket has room.
   function isEligible(entity, pickup) {
-    if (pickup.type === 'machinegun') return true;
+    if (pickup.type === MACHINEGUN_WEAPON_ID) return true;
     return isLocalPlayer(entity) && entity.grenadeCount < GRENADE_POCKET_CAPACITY;
   }
 
   function collect(entity, pickup) {
-    if (pickup.type === 'machinegun') {
-      entity.heldWeapon = 'machinegun';
+    if (pickup.type === MACHINEGUN_WEAPON_ID) {
+      entity.heldWeapon = MACHINEGUN_WEAPON_ID;
       entity.ammo = MACHINEGUN_MAX_AMMO;
     } else {
       entity.grenadeCount = Math.min(entity.grenadeCount + 1, GRENADE_POCKET_CAPACITY);

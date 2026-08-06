@@ -8,6 +8,7 @@
 // footprint so the outer perimeter closes without a mitred-corner case per
 // room pair; rooms are told apart by interior landmark geometry instead
 // (KD4) -- proportions stay identical, pillars differ.
+import { MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
 
 const GRID_OFFSET = 26; // corner room centre distance from the origin, each axis
 const CORNER_HALF = 8; // 16x16 corner rooms
@@ -273,7 +274,7 @@ export const NEUTRAL_ACCENT_COLOR = 0xa89f8a;
 // pickup grants (src/sim/pickups.js); `roomId` is for the render layer and
 // debugging, not gameplay logic.
 export const PICKUPS = [
-  { id: 'pickup-mg-central', type: 'machinegun', x: 5, y: 1, z: 5, roomId: 'central' },
+  { id: 'pickup-mg-central', type: MACHINEGUN_WEAPON_ID, x: 5, y: 1, z: 5, roomId: 'central' },
   { id: 'pickup-grenade-nw', type: 'grenade', x: nw.x - 6, y: 1, z: nw.z + 6, roomId: 'nw' },
   { id: 'pickup-grenade-ne', type: 'grenade', x: ne.x + 6, y: 1, z: ne.z + 6, roomId: 'ne' },
   { id: 'pickup-grenade-se', type: 'grenade', x: se.x + 6, y: 1, z: se.z - 6, roomId: 'se' },

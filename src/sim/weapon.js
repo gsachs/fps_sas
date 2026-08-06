@@ -47,6 +47,7 @@ const WEAPON_CONFIGS = {
   },
 };
 export const DEFAULT_WEAPON_ID = 'pistol'; // entities with no heldWeapon field fire as today's pistol
+export const MACHINEGUN_WEAPON_ID = 'machinegun'; // sibling id constant (U12): every other module imports this instead of re-typing the literal
 
 // Whether `weaponId` fires on the Command's held-fire level rather than its
 // edge latch (KTD2) -- the one place that distinction is decided, so bot

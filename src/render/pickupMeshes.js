@@ -4,6 +4,7 @@
 // main.js already uses for bot meshes -- deliberately not effect-pooling
 // (KTD7): a pickup mesh exists for the whole match, it just hides.
 import * as THREE from 'three';
+import { MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
 
 const PICKUP_HALF_SIZE = 0.4;
 // Lifts the box above the pickup's ground-level descriptor position so it
@@ -14,7 +15,7 @@ const PICKUP_Y_OFFSET = 0.5;
 // real presentation for held weapons; floor pickups just need to read as two
 // different things (R5).
 const PICKUP_COLOR_BY_TYPE = {
-  machinegun: 0xd55e00,
+  [MACHINEGUN_WEAPON_ID]: 0xd55e00,
   grenade: 0x2f8f5a,
 };
 const DEFAULT_PICKUP_COLOR = 0xffffff;

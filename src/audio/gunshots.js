@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEFAULT_WEAPON_ID, MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
 
 // Gunshots for every shooter. The player's own shot plays flat, since it
 // happens at the listener and has no direction to convey; every other
@@ -22,10 +23,10 @@ const MAX_DISTANCE = 70;
 // read as a different weapon until a real sample lands through the same
 // `urls` seam.
 export const WEAPON_SOUND_SETS = {
-  pistol: { playbackRate: 1 },
-  machinegun: { playbackRate: 1.6 },
+  [DEFAULT_WEAPON_ID]: { playbackRate: 1 },
+  [MACHINEGUN_WEAPON_ID]: { playbackRate: 1.6 },
 };
-const DEFAULT_SOUND_SET_ID = 'pistol'; // unheld/unknown weapon ids fall back here
+const DEFAULT_SOUND_SET_ID = DEFAULT_WEAPON_ID; // unheld/unknown weapon ids fall back here
 
 // KTD8: the explosion is not a weapon set (nothing ever "holds" it), so it
 // gets its own sibling constant rather than a WEAPON_SOUND_SETS entry --

@@ -5,7 +5,7 @@
 // regressions would hide, so they're unit-tested without a DOM; only the
 // thin mount below touches the DOM.
 import { displayName, LOCAL_PLAYER_ID } from './names.js';
-import { DEFAULT_WEAPON_ID } from '../sim/weapon.js';
+import { DEFAULT_WEAPON_ID, MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
 
 const FEED_CAP = 6; // visible entries; oldest drops beyond this (R4) -- tuned in U3
 const ENTRY_LIFETIME_SECONDS = 5; // total time an entry survives before expiring (R4) -- tuned in U3
@@ -16,8 +16,8 @@ const ENTRY_DIM_AFTER_SECONDS = 2; // remaining time at which an entry starts di
 // characters are tunable (U3); an id with no entry here (or none supplied
 // yet, pre-armory) falls back to the pistol's.
 const WEAPON_GLYPHS = {
-  pistol: '▸',
-  machinegun: '≫',
+  [DEFAULT_WEAPON_ID]: '▸',
+  [MACHINEGUN_WEAPON_ID]: '≫',
   grenade: '💥',
 };
 
