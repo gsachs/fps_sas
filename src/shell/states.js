@@ -115,6 +115,7 @@ export function createGameShell({ container, lockElement, onRestart }) {
     pointerLock.requestLock();
   });
   returnButtonFromPause.addEventListener('click', () => {
+    onRestart();
     if (pointerLock.isLocked()) document.exitPointerLock();
     dispatch('returnToStart');
   });
@@ -122,7 +123,10 @@ export function createGameShell({ container, lockElement, onRestart }) {
     onRestart();
     pointerLock.requestLock();
   });
-  returnButtonFromResults.addEventListener('click', () => dispatch('returnToStart'));
+  returnButtonFromResults.addEventListener('click', () => {
+    onRestart();
+    dispatch('returnToStart');
+  });
 
   function showResults(leaderboard) {
     if (pointerLock.isLocked()) document.exitPointerLock();
