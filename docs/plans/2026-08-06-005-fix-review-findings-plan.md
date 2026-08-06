@@ -96,7 +96,7 @@ A grenade thrown at an enemy stops dead against their capsule at chest height an
 - Assumption named: grenades pass through bodies rather than sticking, matching the module's own "wall contact" framing at `:5-6`. If the intended behaviour is stick-to-body, say so and this unit becomes a comment fix instead.
 - **Test first:** `test/sim/grenades.test.js` never throws a grenade at an entity. Add that case.
 
-### U7 — Player diagonal speed (finding #12, P2)
+### U7 — Player diagonal speed (finding #12, P2) — DONE (a902a0b)
 
 `src/input/sampler.js:69-72`
 
