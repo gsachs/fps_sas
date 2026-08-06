@@ -209,7 +209,7 @@ U3 fixed the reject path; a hang (blocked fetch that never settles rather than e
 - Drain `fireLatch`/`throwLatch` pending counts from the same sites `clearHeldInput()` is already called from.
 - **Test first:** queue a fire, then pause before the next tick consumes it; assert no fire event fires on resume with no new input.
 
-### U17 — `mixer.js` hardcodes a `'Death'` substring the module's own design says to avoid (P2)
+### U17 — `mixer.js` hardcodes a `'Death'` substring the module's own design says to avoid (P2) — DONE (ae16097)
 
 `src/render/mixer.js:25`
 
