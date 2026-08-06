@@ -132,7 +132,7 @@ Deferred for later:
 
 - A static, non-skinned weapon model must be sourced. The shipped `public/assets/weapons/quaternius-pistol.glb` is skinned with a baked 100× scale split across its armature and mesh nodes and is not usable; `src/main.js` records the three scale attempts that failed and concludes re-sourcing is required.
 - A robot from the same Quaternius rig family preserves the clip names hardcoded in `src/render/mixer.js`. A rig from elsewhere means remapping animation hints to clip names.
-- New models and audio carry a license compatible with a public portfolio piece, and are credited in `CREDITS.md` before the work is shared. The existing assets are CC BY 3.0 and already require attribution.
+- New models and audio carry a license compatible with a public portfolio piece, and are credited in `CREDITS.md` before the work is shared. The existing assets are CC0 and require no attribution.
 - Browsers block audio until a user gesture. The existing click-to-play pointer-lock gesture is the natural unlock point.
 - The target remains desktop WebGL, not WebGPU.
 - Two render tests break on any added mesh: `test/render/arenaMesh.test.js` asserts an exact child count, and `test/render/weaponView.test.js` destructures the weapon group's children positionally. `test/smoke.test.js` asserts at least two lights, so added lights are safe.
