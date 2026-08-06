@@ -35,6 +35,7 @@ import { renderStartupError } from './shell/startupError.js';
 import { raceInitWithTimeout, InitTimeoutError } from './shell/initTimeout.js';
 import { installDebugHooks } from './debug/testHooks.js';
 import { applyFrameEvents } from './render/frameEvents.js';
+import { gatherCommands } from './sim/gatherCommands.js';
 
 // The composition root: boots the renderer, physics, and sim, wires every
 // render/HUD/audio system to the sim's per-frame events, and starts the
@@ -136,33 +137,23 @@ const PARK_POSITION = { x: 0, y: -100, z: 0 };
 let matchElapsedSeconds = 0;
 let lastRenderState = [];
 
-// gatherCommands closes over `sim` and `bots` before either is assigned --
-// safe because it only runs later, from sim.tick() in the render loop, by
-// which point both exist (bots need sim.world to add entities to, so they
-// can't be built first).
+// gatherCommands (sim/gatherCommands.js) is wired via a getter for `sim`,
+// not a direct reference: this object literal is still mid-assignment to
+// `const sim` when the arrow function below is created, and a direct `sim`
+// parameter would try to read that not-yet-assigned binding. The getter is
+// only actually invoked later, from sim.tick() in the render loop, by which
+// point `sim` is fully assigned -- the same shape as installDebugHooks's
+// getMatchElapsedSeconds/getLastRenderState getters below. `bots` is passed
+// directly (safe: it's a `const` array declared further down, only ever
+// mutated via .push(), so later pushes stay visible through this same
+// reference -- bots need sim.world to add entities to, so they can't be
+// built before sim exists).
 const sim = createSimulation({
   physics: movementSystem,
   combat,
   pickups: pickupSystem,
   grenades: grenadeSystem,
-  gatherCommands: () => {
-    const commands = new Map([[LOCAL_PLAYER_ID, inputSampler.sample()]]);
-    const playerEntity = sim.world.getEntity(LOCAL_PLAYER_ID);
-    for (const { id, bot, active } of bots) {
-      if (!active) continue; // not yet unlocked by the ramp -- frozen in place, no command at all
-      const botEntity = sim.world.getEntity(id);
-      if (botEntity && !botEntity.dead) {
-        // !playerEntity.dead: a corpse is never a live target (U4) -- the
-        // sim's own liveness gate, threaded in rather than the FSM guessing
-        // it from position alone (Core Invariant: never pass null).
-        commands.set(
-          id,
-          bot.sample(botEntity.position, playerEntity.position, botEntity.health, botEntity.heldWeapon, !playerEntity.dead)
-        );
-      }
-    }
-    return commands;
-  },
+  gatherCommands: () => gatherCommands({ getSim: () => sim, bots, inputSampler }),
 });
 
 // R11: match start additionally places no two entities in mutual view --
