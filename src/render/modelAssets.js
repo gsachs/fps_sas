@@ -117,6 +117,6 @@ export const SKY_TEXTURE_PATH = 'assets/environment/sky.jpg';
 // real size by it, so the tiling stays correct even if the arena's
 // dimensions ever change.
 export const ARENA_SURFACE_TEXTURE = {
-  colorPath: 'assets/textures/panel-metal-color.jpg',
+  colorPath: 'assets/textures/panel-composite-color.jpg',
   metersPerTile: ARENA_TEXTURE_METERS_PER_TILE,
 };

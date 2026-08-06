@@ -61,6 +61,20 @@ class WeaponDepthClearPass extends Pass {
 // U1's report -- not measured in this sandbox).
 const AO_RESOLUTION_SCALE = 0.5;
 
+// SSAOPass's own default kernelRadius (8 world units) is a scale mismatch
+// for this arena, not a subtle-vs-strong taste question: pillars are 2-5
+// units, wall thickness is 0.5, and even a corridor can be only a few units
+// wide (layout.js), so an 8-unit sampling radius reaches clean across a
+// room's whole width -- confirmed empirically (live-rendered screenshots):
+// standing at point-blank range against any wall or pillar read as nearly
+// pitch black, because the AO sample hemisphere was picking up the opposite
+// wall, floor, and ceiling as "nearby occluding geometry" instead of just
+// the local contact-shadow area right around the sampled point. Scaled down
+// to the size of this arena's actual small features (wall thickness, pillar
+// edges, decal-scale detail) so AO reads as a subtle contact shadow near a
+// corner or seam, per R8, rather than a room-wide darkening filter.
+const AO_KERNEL_RADIUS = 0.6;
+
 // High threshold / low strength so only genuinely bright sources (muzzle
 // flash, accent trim) catch bloom -- R8 requires this read as polish, never
 // as a filter. Starting point for the owner's retune spike under R10's
@@ -82,6 +96,7 @@ export function createPostFX({ renderer, scene, camera, width, height }) {
   composer.addPass(new RenderPass(scene, camera));
 
   const ssaoPass = new SSAOPass(scene, camera, width * AO_RESOLUTION_SCALE, height * AO_RESOLUTION_SCALE);
+  ssaoPass.kernelRadius = AO_KERNEL_RADIUS;
   composer.addPass(ssaoPass);
   // EffectComposer.addPass() unconditionally calls pass.setSize() on every
   // pass it's given, sized to the composer's own full resolution -- which

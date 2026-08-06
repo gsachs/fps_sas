@@ -41,14 +41,20 @@ By [Quaternius](https://poly.pizza/u/Quaternius), via [Poly Pizza](https://poly.
 
 ## Textures
 
-By Rob Tuytel, via [ambientCG](https://ambientcg.com) (CC0 1.0, ambientCG's
-site-wide license).
+Via [ambientCG](https://ambientcg.com) (CC0 1.0, ambientCG's site-wide
+license).
 
-- **Metal Plates 006** — [source](https://ambientcg.com/a/MetalPlates006).
-  Shared panel/composite detail map for the arena's walls, floor, and
-  pillars (`panel-metal-color.jpg`) — only the colour/albedo map is used,
-  not the full PBR set (normal/roughness/displacement), since
-  `arenaMesh.js`'s materials only need `map`. Chosen over ambientCG's more
-  common weathered/rusted metal sets for its clean, regular geometric plate
-  pattern, which fits the arena's deliberately artificial style rather than
-  photoreal industrial grunge.
+- **Tiles 136 A** — [source](https://ambientcg.com/a/Tiles136A). Shared
+  panel/composite detail map for the arena's walls, floor, and pillars
+  (`panel-composite-color.jpg`) — only the colour/albedo map is used, not
+  the full PBR set (normal/roughness/displacement), since `arenaMesh.js`'s
+  materials only need `map`. Replaces an earlier dark gunmetal plate texture
+  (Metal Plates 006): with `metalness: 0` throughout this codebase's
+  materials, that texture's true bare-metal albedo (~28% average luminance,
+  authored to be lit mostly by specular reflection, which this arena's
+  materials don't use) compounded with this scene's dimmer, ambient-only-lit
+  surfaces -- e.g. any wall facing away from the sun -- and crushed them to
+  near-black. This clean offset-panel pattern (~81% average luminance) reads
+  as composite panelling in the arena's artificial style without that
+  compounding, confirmed by live-rendering both textures at the same
+  in-scene camera position and comparing.
