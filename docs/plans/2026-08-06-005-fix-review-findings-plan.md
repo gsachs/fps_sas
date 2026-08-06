@@ -164,7 +164,7 @@ The incoming-damage HUD arrow is mirrored left-right. Its formula, its own doc c
 - The existing test's own expected values are backwards and must be corrected as part of this fix, not left as a regression guard for the wrong behavior.
 - **Test first:** assert an attacker at the player's real visual-right position (per `movement.js`'s verified basis, not a bare `+X` literal) produces a positive angle.
 
-### U12 — Weapon-id string literal duplicated with no canonical source (P1)
+### U12 — Weapon-id string literal duplicated with no canonical source (P1) — DONE (6360f04)
 
 `src/sim/weapon.js:34-49` and 6+ call sites (`render/weaponView.js:64,68,70,139`, `audio/gunshots.js:28`, `sim/pickups.js:35,41`, `ui/killfeed.js`)
 
