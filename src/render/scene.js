@@ -32,7 +32,7 @@ const SUN_INTENSITY = 2.6;
 // High and off to one side: a sun near the zenith casts shadows directly
 // under objects, where they are invisible from standing eye height, and the
 // grounding they provide is the entire point.
-const SUN_POSITION = { x: 18, y: 26, z: 12 };
+const SUN_DIRECTION = { x: 18, y: 26, z: 12 };
 
 // Sky-based ambient rather than a single flat term: surfaces facing up catch
 // sky light and surfaces facing down catch bounce off the ground, so a box
@@ -52,11 +52,32 @@ const SHADOW_EXTENT_MARGIN = 4; // clearance past the outermost wall face, beyon
 const SHADOW_EXTENT = FLOOR_HALF_SIZE + SHADOW_EXTENT_MARGIN;
 const SHADOW_MAP_SIZE = 2048;
 const SHADOW_CAMERA_NEAR = 1;
-// Far plane budget: the sun's own distance from the target (~34, from
-// SUN_POSITION below) plus the floor's half-diagonal (worst-case corner
-// distance from the target), with headroom -- covers every wall regardless
-// of which direction the light looks across the (now much bigger) floor.
-const SHADOW_CAMERA_FAR = Math.hypot(SUN_POSITION.x, SUN_POSITION.y, SUN_POSITION.z) + FLOOR_HALF_SIZE * Math.SQRT2 + 20;
+
+// The shadow camera sits AT the light and looks down SUN_DIRECTION, so how
+// far out the light stands is not cosmetic: anything behind that camera's
+// near plane is clipped and casts nothing, exactly as silently as something
+// outside the box above. A directional light's shading depends only on its
+// direction, never its distance, so the distance is free to set from
+// geometry -- and one floor half-diagonal guarantees every point on the
+// floor projects in front of the camera whichever way the light looks.
+// The retired fixed position stood only ~34 units out, which was past the
+// old 34-unit floor but well inside this one: the whole Bazaar district,
+// both cross-cut corridors and part of the Maze fell behind the near plane
+// and stopped casting. test/render/shadowCoverage.test.js now projects
+// every wall and pillar corner into light space to keep all four limits
+// honest, not just the two this file re-derived.
+const SUN_DIRECTION_LENGTH = Math.hypot(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z);
+const SUN_DISTANCE = FLOOR_HALF_SIZE * Math.SQRT2 + SHADOW_EXTENT_MARGIN;
+const SUN_POSITION = {
+  x: (SUN_DIRECTION.x / SUN_DIRECTION_LENGTH) * SUN_DISTANCE,
+  y: (SUN_DIRECTION.y / SUN_DIRECTION_LENGTH) * SUN_DISTANCE,
+  z: (SUN_DIRECTION.z / SUN_DIRECTION_LENGTH) * SUN_DISTANCE,
+};
+// Far plane budget: the sun's own distance from the target plus the floor's
+// half-diagonal (worst-case corner distance from the target), with headroom
+// -- covers every wall regardless of which direction the light looks across
+// the floor.
+const SHADOW_CAMERA_FAR = SUN_DISTANCE + FLOOR_HALF_SIZE * Math.SQRT2 + 20;
 // Depth-comparison offsets that keep a surface from shadowing itself. Without
 // them a lit floor is covered in acne; too much and shadows detach from the
 // object casting them (peter-panning).

@@ -103,7 +103,7 @@ export function buildArenaMeshes(arena) {
   // U3/R1/R2: a shared panel/composite detail map multiplies under every
   // material's existing `color` (KTD6) -- ground, the neutral wall/pillar
   // materials, and every per-room accent material all get the same texture
-  // image, so a corner room's hue keeps naming the room exactly as it did
+  // image, so a district's hue keeps naming the district exactly as it did
   // before this map existed. Applied after the group above is fully built
   // rather than awaited before returning it: buildArenaMeshes must stay
   // synchronous (main.js does `scene.add(buildArenaMeshes(arena))` with no
@@ -113,7 +113,7 @@ export function buildArenaMeshes(arena) {
   //
   // Two separate loadSurfaceTexture calls, not one shared texture, because
   // the floor and the walls/pillars sit at wildly different real-world
-  // scales (a ~68-unit floor vs. 2-5-unit pillars) -- tiling everything at
+  // scales (a ~113-unit floor vs. 2-5-unit pillars) -- tiling everything at
   // the floor's own span would compress dozens of tiles onto a single
   // pillar face. Walls, pillars, and the per-room accent materials (which
   // cover both) share one "structure" repeat measured from the real wall

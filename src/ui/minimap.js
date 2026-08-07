@@ -7,7 +7,7 @@
 // when the rotation pivots on a fixed point (rotation preserves
 // distance-from-center; panning to follow the player would need a frame
 // sized for the worst-case corner-to-corner distance instead).
-import { ROOM_ACCENTS, NEUTRAL_ACCENT_COLOR, findRoomAt } from '../arena/layout.js';
+import { ROOM_ACCENTS, NEUTRAL_ACCENT_COLOR, WALL_THICKNESS, findRoomAt } from '../arena/layout.js';
 
 export { findRoomAt };
 
@@ -17,7 +17,16 @@ const FRAME_DIAMETER_PX = 160;
 const FRAME_MARGIN_PX = 16;
 const MARKER_HALF_WIDTH = 0.045;
 const MARKER_HALF_LENGTH = 0.06;
-const WALL_STROKE_WIDTH = 0.02;
+
+// A wall stroke drawn at the wall's real world thickness, converted into map
+// space -- not a fixed map-space width. Map space is normalised to the floor
+// diagonal, so a fixed width silently fattens as the arena grows: at the
+// retired 34-unit floor 0.02 map units happened to equal about one world
+// unit, but at this arena's 56.5 it drew walls 60% overweight and ate most
+// of a 2-unit corridor's channel. Derived, it reads true at any arena size.
+function wallStrokeWidth(scale) {
+  return WALL_THICKNESS * 2 * scale;
+}
 
 // A circular frame must contain the whole square floor at every rotation.
 // Rotation preserves distance-from-center, so sizing the frame to the
@@ -88,7 +97,7 @@ export function projectToMap(worldPoint, playerPosition, playerYaw, floorHalfSiz
 }
 
 // R4: a room's map-cell tint -- the same palette world accents use
-// (layout.js's ROOM_ACCENTS, KTD6), neutral for corridors and the central
+// (layout.js's ROOM_ACCENTS, KTD6), neutral for corridors and the landmark
 // room (R5).
 export function roomTint(room) {
   if (!room) return NEUTRAL_CELL_COLOR;
@@ -129,7 +138,7 @@ export function createMinimap(container, layout) {
   // what's in front of the player right now.
   svg.appendChild(rotatingGroup);
 
-  // Room cells first (under the walls), corridors/central left untinted (R4/R5).
+  // Room cells first (under the walls), corridors/landmark left untinted (R4/R5).
   for (const room of layout.rooms) {
     const centre = toMapSpace(room, scale);
     const halfW = room.halfX * scale;
@@ -155,7 +164,15 @@ export function createMinimap(container, layout) {
       ? [centre.x - halfLength, centre.y, centre.x + halfLength, centre.y]
       : [centre.x, centre.y - halfLength, centre.x, centre.y + halfLength];
     rotatingGroup.appendChild(
-      svgEl('line', { x1, y1, x2, y2, stroke: '#3a3a3a', 'stroke-width': WALL_STROKE_WIDTH, 'stroke-linecap': 'round' })
+      svgEl('line', {
+        x1,
+        y1,
+        x2,
+        y2,
+        stroke: '#3a3a3a',
+        'stroke-width': wallStrokeWidth(scale),
+        'stroke-linecap': 'round',
+      })
     );
   }
 

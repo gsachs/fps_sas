@@ -12,10 +12,16 @@ import * as THREE from 'three';
 const IMPACT_LIFETIME_SECONDS = 0.18;
 const START_RADIUS = 0.04;
 const END_RADIUS = 0.2;
-// Bots fire ~10 shots/second each, so an unbounded pool would grow without
-// limit during a busy fight. Oldest is recycled rather than dropping the new
-// one, since the newest impact is the one the player is looking at.
-const MAX_ACTIVE_IMPACTS = 24;
+// Every entity now holds the held-fire machine gun (weapon.js), so a firing
+// entity lands ~30 shots/second rather than the retired pistol's ~1.3, and
+// an unbounded pool would grow without limit during a busy fight. Oldest is
+// recycled rather than dropping the new one, since the newest impact is the
+// one the player is looking at -- but recycling a spark before it has lived
+// out IMPACT_LIFETIME_SECONDS pops it off the wall early, so the cap has to
+// clear the peak concurrent count. The player plus two or three bots in
+// earshot land roughly 120 shots/second, which over a 0.18s life is about
+// 22 alive at once; 48 keeps headroom for a heavier fight.
+export const MAX_ACTIVE_IMPACTS = 48;
 
 const IMPACT_COLORS = {
   surface: 0xffd9a0,

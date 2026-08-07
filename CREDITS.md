@@ -9,15 +9,17 @@ first when an asset needs replacing.
 By [Quaternius](https://poly.pizza/u/Quaternius), via [Poly Pizza](https://poly.pizza).
 
 - **Animated Robot** — [source](https://poly.pizza/m/QCm7qe9uNJ). Bot avatar.
-- **Pistol** — [source](https://poly.pizza/m/1vBdqOfUNd). First-person weapon view.
+- **Pistol** — [source](https://poly.pizza/m/1vBdqOfUNd). **No longer used.**
+  Was the first-person weapon view until the loadout collapsed to a
+  machine-gun-only model; the file still ships but nothing references it.
   Static, not skinned — see `src/render/modelAssets.js` for why that matters.
 - **Rifle** — [source](https://poly.pizza/m/cCAgiMOQow). First-person machine-gun
   view, replacing the placeholder box (U5). Static, not skinned, same as the
   Pistol above. Chosen over Quaternius's other sci-fi-styled guns on Poly
   Pizza for its grey/black/red palette, which matches the Pistol's rather
-  than clashing with it. Also used, unchanged, as the ground model for the
-  machine-gun floor pickup, with its own separate scale/offset/rotation for
-  that world-space use — see `src/render/modelAssets.js`.
+  than clashing with it. It was also the ground model for the machine-gun
+  floor pickup, which was retired along with the pistol — the machine gun is
+  now every entity's starting weapon, so there is nothing to pick up.
 - **Scifi Grenade** — [source](https://poly.pizza/m/uooNRUiCa9). Grenade
   pickup on the floor, replacing the placeholder box. Chosen over
   Quaternius's plainer "Grenade" (also CC0) for its sci-fi styling, matching
@@ -26,12 +28,13 @@ By [Quaternius](https://poly.pizza/u/Quaternius), via [Poly Pizza](https://poly.
 ## Audio
 
 - **Sci-Fi Sounds** — [Kenney](https://kenney.nl/assets/sci-fi-sounds).
-  `laserSmall_000/001/002`, shipped as `gunshot-000/001/002.ogg`.
-  `laserLarge_000/001/002`, shipped as `machinegun-000/001/002.ogg` (U5,
-  machine-gun fire — a distinct recording from the pistol's, not the same
-  buffers pitched up). `explosionCrunch_000`, shipped as `explosion-000.ogg`
-  (U5, grenade explosion — a distinct recording, not the gunshot buffers
-  pitched down).
+  `laserSmall_000/001/002`, shipped as `gunshot-000/001/002.ogg` — **no longer
+  used**, the pistol's fire samples, kept on disk but unreferenced since the
+  pistol was retired. `laserLarge_000/001/002`, shipped as
+  `machinegun-000/001/002.ogg` (U5, machine-gun fire — its own recording, not
+  the same buffers pitched up). `explosionCrunch_000`, shipped as
+  `explosion-000.ogg` (U5, grenade explosion — a distinct recording, not the
+  gunshot buffers pitched down).
 
 ## Environment
 

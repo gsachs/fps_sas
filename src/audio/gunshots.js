@@ -8,14 +8,22 @@ import { raceInitWithTimeout } from '../shell/initTimeout.js';
 // by ear before the damage indicator confirms it.
 const LOCAL_SHOT_VOLUME = 0.6;
 const REMOTE_SHOT_VOLUME = 0.8;
-// Bots fire ~10 shots/second each and shots overlap, so voices are pooled and
-// cycled rather than allocated per shot. Twelve is comfortably more than the
-// number of shots that can be audible at once at this fire rate.
-const VOICE_POOL_SIZE = 12;
+// Every entity now holds the held-fire machine gun (weapon.js), so a firing
+// bot shoots ~30 times a second rather than the retired pistol's ~1.3 -- the
+// rate this pool was originally sized against. A voice reused before its own
+// sample has finished cuts that shot off mid-report, which at close range is
+// the difference between a burst and a stutter. One sample runs a few
+// tenths of a second, so a single sustained shooter alone needs about ten
+// voices; twenty-four covers the player plus the two or three bots that can
+// realistically be in earshot at once.
+const VOICE_POOL_SIZE = 24;
 // Linear falloff reaching silence past the arena's far corner: predictable
 // across a bounded space, where the default inverse model stays faintly
 // audible forever and muddies a busy fight.
 const REFERENCE_DISTANCE = 5;
+// Deliberately far short of this arena's ~142-unit corner-to-corner span:
+// walls cap real engagement range long before that, and gunfire audible
+// across three districts would read as noise rather than as a cue.
 const MAX_DISTANCE = 70;
 
 // KTD8: the gunshot pool has a per-weapon set, keyed by weapon id -- a

@@ -13,7 +13,6 @@
 // distinguishable by structure alone, accent colour only a secondary cue.
 
 const GRID_HALF = 1.5; // corridor/doorway half-width -- KTD5: uniform everywhere
-const BEND_CLEARANCE = 3; // how far short of a bend each segment's walls stop (see the perimeter chain below)
 // How far each spoke doorway sits off its room's centre-axis, on both the
 // landmark end and the outlying district's end of the same spoke (the two
 // must match -- a spoke is one straight corridor, so both of its doorways
@@ -23,7 +22,10 @@ const BEND_CLEARANCE = 3; // how far short of a bend each segment's walls stop (
 // call sites can never drift out of sync with the others the way a
 // hand-typed literal at each site could.
 const SPOKE_OFFSET = 3;
-const WALL_THICKNESS = 0.5; // half-thickness, matches the retired arena's convention
+// Half-thickness, matching the retired arena's convention. Exported because
+// minimap.js draws walls as strokes and must size them from the real world
+// thickness (KTD6's one-dataset principle) rather than carry its own copy.
+export const WALL_THICKNESS = 0.5;
 export const WALL_HEIGHT = 4;
 const PILLAR_HALF_HEIGHT = WALL_HEIGHT / 2; // full-height landmarks, not peek-over cover
 
@@ -77,6 +79,39 @@ function corridorAlongX(z, from, to, spaceId) {
 }
 function corridorAlongZ(x, from, to, spaceId) {
   return [wallAlongZ(x + GRID_HALF, from, to, spaceId), wallAlongZ(x - GRID_HALF, from, to, spaceId)].flat();
+}
+
+// splitAroundGaps rejects a reversed run, and a bend's legs run in whichever
+// direction their district happens to lie.
+function ascending(a, b) {
+  return a < b ? [a, b] : [b, a];
+}
+
+// A two-segment corridor bend (KTD4): one leg along Z and one along X,
+// meeting at (bendX, bendZ) and running out to `zLegEnd` / `xLegEnd`. Only
+// the INNER pair of walls stops at the inside corner -- the OUTER pair runs
+// flush around the outside of the turn, the same mitre a room's own two
+// perpendicular walls already make.
+//
+// The shape this replaces stopped BOTH pairs short of the bend, on the
+// reasoning that a wall run to the corner would seal the turn shut. That is
+// true of the inner pair only: pulling the outer pair back too left the
+// outside of every turn open to the exterior, so the arena was not a closed
+// volume and a player could walk out of the map (test/arena/layout.test.js
+// now flood-fills from outside the floor to keep it closed).
+function bentLink(bendX, bendZ, zLegEnd, xLegEnd, zLegSpaceId, xLegSpaceId) {
+  const towardX = Math.sign(xLegEnd - bendX); // which side of the Z leg the X leg leaves from
+  const towardZ = Math.sign(zLegEnd - bendZ);
+  const outerX = bendX - towardX * GRID_HALF;
+  const innerX = bendX + towardX * GRID_HALF;
+  const outerZ = bendZ - towardZ * GRID_HALF;
+  const innerZ = bendZ + towardZ * GRID_HALF;
+  return [
+    wallAlongZ(outerX, ...ascending(outerZ, zLegEnd), zLegSpaceId),
+    wallAlongZ(innerX, ...ascending(innerZ, zLegEnd), zLegSpaceId),
+    wallAlongX(outerZ, ...ascending(outerX, xLegEnd), xLegSpaceId),
+    wallAlongX(innerZ, ...ascending(innerX, xLegEnd), xLegSpaceId),
+  ].flat();
 }
 
 const DOOR_HALF = GRID_HALF;
@@ -237,21 +272,11 @@ const WALLS = [
   ...corridorAlongZ(42, maze.z + maze.halfZ, bazaar.z - bazaar.halfZ, 'link-bazaar-maze'),
 
   // Perimeter chain, each a bent two-segment link (KTD4): Yard-Hall,
-  // Maze-Warren, Warren-Yard. Each segment's wall pair stops BEND_CLEARANCE
-  // short of the bend itself (rather than running flush to it) -- two
-  // perpendicular corridor rectangles meeting exactly at a shared corner
-  // point would otherwise overlap right where they join, since each
-  // segment's own side walls extend across the full width the other
-  // segment needs open. Pulling both back leaves a clean, fully open
-  // junction square at the bend, at the cost of a slightly wider turn.
-  ...corridorAlongZ(-46, yard.z + yard.halfZ, 35 - BEND_CLEARANCE, 'link-yard-hall-v'),
-  ...corridorAlongX(35, -46 + BEND_CLEARANCE, hall.x - hall.halfX, 'link-yard-hall-h'),
-
-  ...corridorAlongZ(32, -30 + BEND_CLEARANCE, maze.z - maze.halfZ, 'link-maze-warren-v'),
-  ...corridorAlongX(-30, warren.x + warren.halfX, 32 - BEND_CLEARANCE, 'link-maze-warren-h'),
-
-  ...corridorAlongX(-40, -34 + BEND_CLEARANCE, warren.x - warren.halfX, 'link-warren-yard-h'),
-  ...corridorAlongZ(-34, -40 + BEND_CLEARANCE, yard.z - yard.halfZ, 'link-warren-yard-v'),
+  // Maze-Warren, Warren-Yard. bentLink mitres each turn -- see its own
+  // comment for why the outside of the turn must run flush.
+  ...bentLink(-46, 35, yard.z + yard.halfZ, hall.x - hall.halfX, 'link-yard-hall-v', 'link-yard-hall-h'),
+  ...bentLink(32, -30, maze.z - maze.halfZ, warren.x + warren.halfX, 'link-maze-warren-v', 'link-maze-warren-h'),
+  ...bentLink(-34, -40, yard.z - yard.halfZ, warren.x - warren.halfX, 'link-warren-yard-v', 'link-warren-yard-h'),
 ].map((w) => ({ ...w, halfY: WALL_HEIGHT / 2 }));
 
 // Interior cover/landmarks, one grammar-shaped cluster per district (KTD4).
@@ -265,8 +290,8 @@ export const PILLARS = [
 
   // Hall: three pillars, off both the spoke-to-centre and the west/east
   // doorway-to-centre lines -- a grand room, not an obstacle course.
-  { id: 'hall-pillar-a', x: -8, z: 33, halfX: 1.5, halfZ: 1.5 },
-  { id: 'hall-pillar-b', x: 8, z: 33, halfX: 1.5, halfZ: 1.5 },
+  { id: 'hall-pillar-a', x: -8, z: 34.5, halfX: 1.5, halfZ: 1.5 },
+  { id: 'hall-pillar-b', x: 8, z: 34.5, halfX: 1.5, halfZ: 1.5 },
   { id: 'hall-pillar-c', x: 0, z: 50, halfX: 1.5, halfZ: 1.5 },
 
   // Maze: four cover blocks in the four off-axis quadrants around the
@@ -278,10 +303,10 @@ export const PILLARS = [
 
   // Warren: four small partition blocks in a pinwheel, breaking the room
   // into short zigzag chambers -- tightest sightlines of any district.
-  { id: 'warren-block-a', x: 7, z: -28, halfX: 1, halfZ: 1 },
-  { id: 'warren-block-b', x: -7, z: -28, halfX: 1, halfZ: 1 },
-  { id: 'warren-block-c', x: 7, z: -44, halfX: 1, halfZ: 1 },
-  { id: 'warren-block-d', x: -7, z: -44, halfX: 1, halfZ: 1 },
+  { id: 'warren-block-a', x: 7, z: -29.5, halfX: 1, halfZ: 1 },
+  { id: 'warren-block-b', x: -7, z: -29.5, halfX: 1, halfZ: 1 },
+  { id: 'warren-block-c', x: 7, z: -42.5, halfX: 1, halfZ: 1 },
+  { id: 'warren-block-d', x: -7, z: -42.5, halfX: 1, halfZ: 1 },
 
   // Bazaar: four scattered stalls, denser and more irregular than Hall's
   // pillars, more organic than Maze's structured zigzag.
@@ -292,7 +317,7 @@ export const PILLARS = [
 ].map((p) => ({ ...p, halfY: PILLAR_HALF_HEIGHT }));
 
 // Two spawn points per district (twelve total), each clear of that
-// district's own cover and doorway openings (R11).
+// district's own cover and doorway openings.
 export const SPAWN_POINTS = [
   { x: 8, y: 1, z: -8 },
   { x: -8, y: 1, z: 8 },

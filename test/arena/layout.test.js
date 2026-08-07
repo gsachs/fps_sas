@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { LAYOUT, ROOMS, DOORWAYS, PILLARS, ROOM_ACCENTS } from '../../src/arena/layout.js';
 import { createArena } from '../../src/arena/arena.js';
-import { EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from '../../src/sim/movement.js';
+import { EYE_HEIGHT, CAPSULE_GROUND_OFFSET, CAPSULE_RADIUS } from '../../src/sim/movement.js';
 
 await RAPIER.init();
 
@@ -353,6 +353,88 @@ describe('layout: whole-map sightlines (R4, AE4)', () => {
       for (const other of ROOMS) {
         if (other.id === 'yard') continue;
         expect(hasLineOfSight(arena.rapierWorld, corner, { x: other.x, z: other.z })).toBe(false);
+      }
+    }
+  });
+});
+
+// The two invariants that a hand-authored coordinate table cannot be trusted
+// to hold by inspection, and that every other test in this file passed
+// straight through: that the playable region is a closed volume, and that no
+// cover block is embedded in the wall it sits against. Both bug classes are
+// invisible in unit tests that only check ownership, widths and clearances,
+// and both shipped once.
+describe('layout: the arena is a closed, coherent volume', () => {
+  const FILL_STEP = 0.25;
+
+  // Flood-fills the floor plane on a grid, treating a cell as walkable when a
+  // CAPSULE_RADIUS-inflated box test clears every wall and cover block --
+  // the same test the physics capsule effectively makes as it slides.
+  function reachableCellsFrom(startX, startZ) {
+    const blockers = [...LAYOUT.walls, ...LAYOUT.pillars];
+    const bound = LAYOUT.floorHalfSize;
+    const blocked = (x, z) =>
+      blockers.some(
+        (b) =>
+          Math.abs(x - b.x) <= b.halfX + CAPSULE_RADIUS && Math.abs(z - b.z) <= b.halfZ + CAPSULE_RADIUS
+      );
+    const key = (i, j) => `${i},${j}`;
+    const start = [Math.round(startX / FILL_STEP), Math.round(startZ / FILL_STEP)];
+    const seen = new Set([key(...start)]);
+    const frontier = [start];
+    while (frontier.length > 0) {
+      const [i, j] = frontier.pop();
+      for (const [di, dj] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const [ni, nj] = [i + di, j + dj];
+        const [x, z] = [ni * FILL_STEP, nj * FILL_STEP];
+        if (Math.abs(x) > bound || Math.abs(z) > bound) continue;
+        const cell = key(ni, nj);
+        if (seen.has(cell) || blocked(x, z)) continue;
+        seen.add(cell);
+        frontier.push([ni, nj]);
+      }
+    }
+    return { has: (x, z) => seen.has(key(Math.round(x / FILL_STEP), Math.round(z / FILL_STEP))) };
+  }
+
+  it('cannot be entered from outside: no spawn point is reachable from beyond the outermost wall', () => {
+    // Starting just inside the floor's own corner, which is always outside
+    // every district and corridor.
+    const corner = LAYOUT.floorHalfSize - 1;
+    const exterior = reachableCellsFrom(-corner, -corner);
+    for (const spawn of LAYOUT.spawnPoints) {
+      expect(
+        exterior.has(spawn.x, spawn.z),
+        `spawn (${spawn.x}, ${spawn.z}) is reachable from outside the arena`
+      ).toBe(false);
+    }
+  });
+
+  it('stays fully connected: every spawn, pickup and the flag site is reachable from any spawn', () => {
+    const [first] = LAYOUT.spawnPoints;
+    const interior = reachableCellsFrom(first.x, first.z);
+    for (const point of [...LAYOUT.spawnPoints, ...LAYOUT.pickups, LAYOUT.flagSite]) {
+      expect(
+        interior.has(point.x, point.z),
+        `(${point.x}, ${point.z}) is not reachable from the first spawn point`
+      ).toBe(true);
+    }
+  });
+
+  it('keeps every cover block free-standing: no pillar intersects a wall', () => {
+    for (const pillar of PILLARS) {
+      for (const wall of LAYOUT.walls) {
+        const overlapsX = Math.abs(pillar.x - wall.x) < pillar.halfX + wall.halfX;
+        const overlapsZ = Math.abs(pillar.z - wall.z) < pillar.halfZ + wall.halfZ;
+        expect(
+          overlapsX && overlapsZ,
+          `${pillar.id} is embedded in a "${wall.spaceId}" wall`
+        ).toBe(false);
       }
     }
   });

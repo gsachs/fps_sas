@@ -53,7 +53,7 @@ export function installDebugHooks({
     movementSystem.teleport(entityId, position);
   };
   // Directly grants an entity's grenade pocket, so automated verification can
-  // reach the throw/blast path without first walking a corner-room pickup
+  // reach the throw/blast path without first walking a district pickup
   // route -- same rationale as __debugSetScore above.
   window.__debugGrantGrenades = (entityId, count) => {
     sim.world.getEntity(entityId).grenadeCount = count;

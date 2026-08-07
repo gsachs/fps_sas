@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { createScene, loadSkyBackground, SKY_COLOR } from '../src/render/scene.js';
+import { LAYOUT } from '../src/arena/layout.js';
 
 describe('createScene', () => {
   it('builds a scene with a camera and lighting', () => {
@@ -29,11 +30,13 @@ describe('createScene', () => {
     const sun = scene.children.find((child) => child.isDirectionalLight);
     expect(sun).toBeDefined();
     expect(sun.castShadow).toBe(true);
-    // The rooms-and-corridors floor is 34 units half-size (layout.js);
-    // geometry outside the shadow camera's box stops casting with no error,
-    // so this guards the extent (R12).
-    expect(sun.shadow.camera.right).toBeGreaterThanOrEqual(34);
-    expect(sun.shadow.camera.top).toBeGreaterThanOrEqual(34);
+    // Geometry outside the shadow camera's box stops casting with no error,
+    // so this guards the extent against the live floor scalar (R12) rather
+    // than a copied number -- the copied number is what let the box go stale
+    // through an arena resize. test/render/shadowCoverage.test.js checks the
+    // remaining frustum limits per caster.
+    expect(sun.shadow.camera.right).toBeGreaterThanOrEqual(LAYOUT.floorHalfSize);
+    expect(sun.shadow.camera.top).toBeGreaterThanOrEqual(LAYOUT.floorHalfSize);
     expect(sun.shadow.camera.far).toBeGreaterThan(sun.position.length());
   });
 
