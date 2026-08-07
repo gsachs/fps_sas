@@ -11,16 +11,11 @@
 // swapping the file, since a replacement almost never matches.
 const HUMANOID_RENDER_HEIGHT = 1.605; // what the previous humanoid rig rendered at (1.783 native x 0.9)
 const ROBOT_NATIVE_HEIGHT = 4.634;
-const PISTOL_NATIVE_LENGTH = 2.75;
-const PISTOL_VIEW_LENGTH = 0.34; // roughly the placeholder box it replaces, which read at the right size
-// U5: same measurement method as the pistol above (Box3().setFromObject on
-// the loaded scene, longest axis -- barrel-to-stock, the same axis the
-// pistol's own length was measured along).
+// Box3().setFromObject on the loaded scene, longest axis -- barrel-to-stock.
 const MACHINEGUN_NATIVE_LENGTH = 8.854;
-// The MG's placeholder box (weaponView.js's registerVisual(MACHINEGUN_WEAPON_ID, ...))
-// is z: 0.55 -- deliberately longer than the pistol's placeholder so the two
-// weapons already read as different sizes; matching it here means the model
-// swap doesn't also change how big the gun reads.
+// The MG's placeholder box (weaponView.js's registerVisual) is z: 0.55;
+// matching it here means the model swap doesn't also change how big the gun
+// reads.
 const MACHINEGUN_VIEW_LENGTH = 0.55;
 
 // Measured by eye against the arena's real floor footprint (layout.js's
@@ -50,54 +45,29 @@ export const BOT_MODEL = {
   },
 };
 
-// Gunshot samples. Several, because one sample repeating at this fire rate
-// reads as a buzzer rather than a weapon; the player cycles through them.
-export const GUNSHOT_PATHS = [
-  'assets/audio/gunshot-000.ogg',
-  'assets/audio/gunshot-001.ogg',
-  'assets/audio/gunshot-002.ogg',
-];
-
-// U5: the machine gun's own fire samples -- a distinct recording, not the
-// pistol's buffers played back pitched (the placeholder trick this replaces;
-// see CREDITS.md). Same three-variant shape as GUNSHOT_PATHS and for the
-// same reason: the MG's fire rate is fast enough that one sample repeating
-// reads as a buzzer.
+// The machine gun's own fire samples. Several, because one sample repeating
+// at this fire rate reads as a buzzer rather than a weapon; the player
+// cycles through them.
 export const MACHINEGUN_GUNSHOT_PATHS = [
   'assets/audio/machinegun-000.ogg',
   'assets/audio/machinegun-001.ogg',
   'assets/audio/machinegun-002.ogg',
 ];
 
-// U5: the grenade explosion's own sample -- previously the gunshot buffers
-// played back pitched down (see CREDITS.md). One variant: explosions are
-// infrequent enough (one grenade at a time, not automatic fire) that a
-// repeating sample doesn't read as a buzzer the way gunfire would.
+// The grenade explosion's own sample. One variant: explosions are infrequent
+// enough (one grenade at a time, not automatic fire) that a repeating sample
+// doesn't read as a buzzer the way gunfire would.
 export const EXPLOSION_PATHS = ['assets/audio/explosion-000.ogg'];
 
-// First-person weapon. Static (non-skinned) by requirement: the skinned
-// pistol in this pack cannot survive loadPropModel's plain clone, which is
-// why the viewmodel stayed a grey box for so long.
-export const WEAPON_MODEL = {
-  path: 'assets/weapons/quaternius-pistol-static.glb',
-  scale: PISTOL_VIEW_LENGTH / PISTOL_NATIVE_LENGTH,
-  // The model's geometry sits off its own origin; this recentres it on the
-  // weapon group so recoil pivots around the weapon rather than swinging it.
-  // weaponView treats this z as the rest position and animates recoil on top.
-  offset: { x: 0, y: -0.027, z: 0.112 },
-};
-
-// U5: first-person machine gun, replacing weaponView.js's placeholder box
-// for MACHINEGUN_WEAPON_ID through the same setModel(model, transform,
-// 'machinegun') seam the pistol above loads through. Same pack/convention as
-// the pistol (no skin, single mesh, +Z-forward-at-origin authoring), so the
-// same recentre-by-bounding-box-center approach applies -- offset here is
-// -center * scale for the box measured below, not eyeballed. Unlike the
-// pistol, this exact model has not been rendered in this sandbox (no WebGL
-// context available), so the offset's *orientation* correctness (does the
-// muzzle actually point down -Z the way the pistol's does) is a defensible
-// assumption from the shared pack convention, not a confirmed visual
-// measurement -- flag for the live play-check.
+// First-person machine gun, replacing weaponView.js's placeholder box
+// through the setModel(model, transform, 'machinegun') seam. Static
+// (non-skinned) by requirement -- a skinned model in this pack cannot
+// survive loadPropModel's plain clone. Offset here is -center * scale for
+// the box measured below, not eyeballed; this exact model has not been
+// rendered in this sandbox (no WebGL context available), so the offset's
+// *orientation* correctness (does the muzzle actually point down -Z) is a
+// defensible assumption from the pack's shared convention, not a confirmed
+// visual measurement -- flag for the live play-check.
 export const MACHINEGUN_MODEL = {
   path: 'assets/weapons/quaternius-rifle-static.glb',
   scale: MACHINEGUN_VIEW_LENGTH / MACHINEGUN_NATIVE_LENGTH,
@@ -113,7 +83,7 @@ export const MACHINEGUN_MODEL = {
 // offset the same way MACHINEGUN_MODEL's viewmodel offset needed a
 // recentring one above.
 //
-// Measured the same way as BOT_MODEL/WEAPON_MODEL/MACHINEGUN_MODEL above:
+// Measured the same way as BOT_MODEL/MACHINEGUN_MODEL above:
 // load the model, `new THREE.Box3().setFromObject(scene)`, read size/
 // centre/min. Grenade native bbox: size (0.1785, 0.3033, 0.1447), centre
 // (-0.0036, -0.0039, ~0), min.y -0.1556 -- authored standing upright on its
@@ -134,37 +104,6 @@ export const GRENADE_MODEL = {
   // origin) to the floor. Computed from the measured bbox above, not
   // eyeballed -- same approach as MACHINEGUN_MODEL's own offset comment.
   offset: { x: 0.002, y: 0.091, z: 0 },
-};
-
-// Rifle native bbox (measured same way, reused from MACHINEGUN_NATIVE_LENGTH
-// above for the length axis): size (0.6303, 2.4689, 8.8541), centre (0,
-// 0.5656, -2.1570), min (-0.3152, -0.6688, -6.5840) -- authored in its held
-// orientation (Y up: scope-to-grip: 2.4689; X: 0.6303 width, its narrowest
-// axis; Z: 8.8541 barrel-to-stock length, matching MACHINEGUN_NATIVE_LENGTH).
-// A modern assault rifle is roughly 1m long -- about 60% of a 1.7m-tall
-// person's height. Calibrated off HUMANOID_RENDER_HEIGHT (1.605) the same
-// way as the grenade above, rather than guessed: 60% of that is 0.963.
-const MACHINEGUN_PICKUP_LENGTH = HUMANOID_RENDER_HEIGHT * 0.6; // ~0.963m
-
-export const MACHINEGUN_PICKUP_MODEL = {
-  path: 'assets/weapons/quaternius-rifle-static.glb', // same shipped file as MACHINEGUN_MODEL (see CREDITS.md) -- not re-downloaded, just a different ground-prop transform
-  // A separate scale from MACHINEGUN_MODEL's camera-relative
-  // MACHINEGUN_VIEW_LENGTH: this is a real-world-scale floor prop, so it
-  // targets MACHINEGUN_PICKUP_LENGTH instead, off the same measured native
-  // length.
-  scale: MACHINEGUN_PICKUP_LENGTH / MACHINEGUN_NATIVE_LENGTH,
-  // Rolled 90 degrees around its own barrel (Z) axis: authored standing in
-  // its held orientation (scope-and-grip axis up), which would read as
-  // balanced on end rather than dropped on a floor. Rolling onto its
-  // narrowest native axis (X, its width) is what makes that axis the
-  // on-ground "height" instead -- the way a rifle actually rests once it
-  // falls on its side.
-  rotation: { x: 0, y: 0, z: Math.PI / 2 },
-  // Native bbox rolled by the rotation above swaps the x/y extents (rolled
-  // min.y equals the pre-roll native min.x); offset.x/z = -centre*scale
-  // recentres over the pickup point the same way GRENADE_MODEL's does, and
-  // offset.y = -min.y(rolled)*scale grounds its lowest vertex.
-  offset: { x: 0.062, y: 0.034, z: 0.235 },
 };
 
 // U5: calm-horizon equirectangular sky (KTD5), used by scene.js as

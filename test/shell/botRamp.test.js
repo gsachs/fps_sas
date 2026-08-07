@@ -16,6 +16,19 @@ describe('getActiveBotCount', () => {
   it('never exceeds maxBots no matter how long the match runs', () => {
     expect(getActiveBotCount(10_000, 4)).toBe(4);
   });
+
+  // U5's retuned baseline (live play found the KTD6 first pass's initial 3
+  // too crowded an opening), checked at representative elapsed times -- 2
+  // initial, unlocking one more bot every 15s, capped at the new 6-bot max.
+  it('yields the retuned baseline values at representative elapsed times for the six-bot roster', () => {
+    expect(getActiveBotCount(0, 6)).toBe(2);
+    expect(getActiveBotCount(14, 6)).toBe(2); // just under the first interval
+    expect(getActiveBotCount(15, 6)).toBe(3);
+    expect(getActiveBotCount(30, 6)).toBe(4);
+    expect(getActiveBotCount(45, 6)).toBe(5);
+    expect(getActiveBotCount(60, 6)).toBe(6);
+    expect(getActiveBotCount(200, 6)).toBe(6); // capped, well past every interval
+  });
 });
 
 describe('buildOccupiedPositions', () => {

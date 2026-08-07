@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { raceInitWithTimeout } from '../shell/initTimeout.js';
+import { FLOOR_HALF_SIZE } from '../arena/layout.js';
 
 // The scene and its lighting rig. What makes an arena of untextured boxes
 // read as a place is not the geometry -- it is whether objects are grounded
@@ -16,13 +17,13 @@ import { raceInitWithTimeout } from '../shell/initTimeout.js';
 // constant here is exactly what reintroduces the seam KTD5 exists to avoid,
 // since loadSkyBackground below never touches this value itself.
 export const SKY_COLOR = 0x979baa;
-// Retuned for the rooms-and-corridors map (KTD8): walls cap real sightlines
-// far short of the old open arena's ~85-unit diagonal -- the longest is a
-// ~36-unit loop corridor or a ~30-unit corridor-through-spoke line into the
-// central room. Fog starts near that range and reaches full density with
-// margin past it, so it actually contributes instead of sitting unused
-// beyond where any line of sight can reach. Close fog would hide bots at
-// exactly the range where the player most needs to pick them out (R15).
+// Walls cap real sightlines well short of an open arena's full diagonal --
+// fog starts near the longest sightline any district's geometry actually
+// produces and reaches full density with margin past it, so it contributes
+// instead of sitting unused beyond where any line of sight can reach. Close
+// fog would hide bots at exactly the range where the player most needs to
+// pick them out (R15). U5 owns retuning this against the current map if
+// live play says otherwise.
 const FOG_NEAR = 20;
 const FOG_FAR = 60;
 
@@ -41,13 +42,21 @@ const GROUND_BOUNCE_COLOR = 0x55503f;
 const AMBIENT_INTENSITY = 1.4;
 
 // The shadow camera is an orthographic box that must contain everything
-// meant to cast a shadow; anything outside it silently stops casting. Sized
-// to the rooms-and-corridors map's floor (half-size 34, layout.js) with
-// margin for outermost wall thickness.
-const SHADOW_EXTENT = 36;
+// meant to cast a shadow; anything outside it silently stops casting --
+// invisibly, since a wall or pillar outside the box still renders, it just
+// stops grounding itself with a shadow, reading as floating with light
+// leaking under it. Derived from the live floor scalar (KTD1), not a
+// hand-copied number, so a future arena resize can never let this drift out
+// of sync with it again the way a hardcoded constant once did.
+const SHADOW_EXTENT_MARGIN = 4; // clearance past the outermost wall face, beyond its own thickness
+const SHADOW_EXTENT = FLOOR_HALF_SIZE + SHADOW_EXTENT_MARGIN;
 const SHADOW_MAP_SIZE = 2048;
 const SHADOW_CAMERA_NEAR = 1;
-const SHADOW_CAMERA_FAR = 90;
+// Far plane budget: the sun's own distance from the target (~34, from
+// SUN_POSITION below) plus the floor's half-diagonal (worst-case corner
+// distance from the target), with headroom -- covers every wall regardless
+// of which direction the light looks across the (now much bigger) floor.
+const SHADOW_CAMERA_FAR = Math.hypot(SUN_POSITION.x, SUN_POSITION.y, SUN_POSITION.z) + FLOOR_HALF_SIZE * Math.SQRT2 + 20;
 // Depth-comparison offsets that keep a surface from shadowing itself. Without
 // them a lit floor is covered in acne; too much and shadows detach from the
 // object casting them (peter-panning).
@@ -112,11 +121,11 @@ export function createScene({ aspect = 16 / 9 } = {}) {
 // Invariant) -- mirrors textures.js's loadSurfaceTexture contract.
 //
 // Deliberately not called from createScene itself: URL resolution for every
-// other loaded asset (BOT_MODEL, WEAPON_MODEL, GUNSHOT_PATHS) already lives
-// in main.js's own `assetUrl` helper, and createScene has no renderer/DOM
-// dependency today -- adding one here would duplicate that helper instead of
-// reusing it. main.js calls this once scene/camera exist, the same shape as
-// the pistol model's own load-and-wire call.
+// other loaded asset (BOT_MODEL, MACHINEGUN_MODEL, MACHINEGUN_GUNSHOT_PATHS)
+// already lives in main.js's own `assetUrl` helper, and createScene has no
+// renderer/DOM dependency today -- adding one here would duplicate that
+// helper instead of reusing it. main.js calls this once scene/camera exist,
+// the same shape as the machine gun model's own load-and-wire call.
 export function loadSkyBackground(scene, url, { onError } = {}) {
   const loader = new THREE.TextureLoader();
   return raceInitWithTimeout(

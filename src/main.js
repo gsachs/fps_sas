@@ -8,7 +8,7 @@ import { createArena } from './arena/arena.js';
 import { selectSpawnPoint } from './arena/spawnPlacement.js';
 import { createSimulation } from './sim/index.js';
 import { createMovementSystem, EYE_HEIGHT, CAPSULE_GROUND_OFFSET } from './sim/movement.js';
-import { createWeaponSystem, DEFAULT_WEAPON_ID, MACHINEGUN_WEAPON_ID } from './sim/weapon.js';
+import { createWeaponSystem, MACHINEGUN_WEAPON_ID } from './sim/weapon.js';
 import { createHealthSystem } from './sim/health.js';
 import { createPickupSystem } from './sim/pickups.js';
 import { createGrenadeSystem } from './sim/grenades.js';
@@ -19,9 +19,7 @@ import { createCharacterMesh, computeBotMeshYaw, computeBotMeshY, computeCameraY
 import { loadCharacterModel, loadPropModel, disposeObject3D } from './render/models.js';
 import {
   BOT_MODEL,
-  WEAPON_MODEL,
   MACHINEGUN_MODEL,
-  GUNSHOT_PATHS,
   MACHINEGUN_GUNSHOT_PATHS,
   EXPLOSION_PATHS,
   SKY_TEXTURE_PATH,
@@ -138,12 +136,10 @@ const grenadeFX = createGrenadeFX(scene);
 const gunshots = createGunshotAudio({
   camera,
   scene,
-  // U5/R4: the machine gun and the explosion each play through their own
-  // real sample pool now, not the pistol's buffers replayed at a different
-  // pitch -- a set with no load yet (or a failed one) falls back to the
-  // pistol pool inside gunshots.js itself, so this is purely additive.
+  // R4: the machine gun and the explosion each play through their own real
+  // sample pool -- a set with no load yet (or a failed one) falls back to
+  // the default pool inside gunshots.js itself, so this is purely additive.
   soundSetUrls: {
-    [DEFAULT_WEAPON_ID]: GUNSHOT_PATHS.map(assetUrl),
     [MACHINEGUN_WEAPON_ID]: MACHINEGUN_GUNSHOT_PATHS.map(assetUrl),
     [EXPLOSION_SOUND_SET_ID]: EXPLOSION_PATHS.map(assetUrl),
   },
@@ -176,7 +172,7 @@ const pickupSystem = createPickupSystem({
   isLocalPlayer: (entity) => entity.id === LOCAL_PLAYER_ID,
 });
 const grenadeSystem = createGrenadeSystem({ rapierWorld: arena.rapierWorld, healthSystem, movementSystem });
-const BOT_COUNT = 4; // v1 target bot count (Success Criteria); tune here during playtest
+const BOT_COUNT = 6; // KTD6: scaled for the bigger arena's contact density (R8)
 // Reinforcements not yet unlocked by the ramp (shell/botRamp.js) sit parked
 // here -- far enough below the arena that no hitscan ray reaches them
 // (HITSCAN_MAX_DISTANCE is 100; the ground collider blocks a downward ray
@@ -270,11 +266,9 @@ for (let i = 0; i < BOT_COUNT; i++) {
 }
 
 // Swaps a placeholder box for a real weapon model once it arrives, through
-// weaponView.js's setModel(model, transform, weaponId) seam -- shared by the
-// pistol and the machine gun below (U5/R3). Same non-blocking shape as the
-// bot models: a failed load leaves the box in place and the game stays
-// playable (R18). `weaponId` omitted picks up setModel's own
-// DEFAULT_WEAPON_ID (the pistol).
+// weaponView.js's setModel(model, transform, weaponId) seam (R3). Same
+// non-blocking shape as the bot models: a failed load leaves the box in
+// place and the game stays playable (R18).
 function loadWeaponModel(model, label, weaponId) {
   loadPropModel(assetUrl(model.path), {
     onError: (error) => console.warn(`Failed to load ${label} model:`, error),
@@ -290,7 +284,6 @@ function loadWeaponModel(model, label, weaponId) {
     );
   });
 }
-loadWeaponModel(WEAPON_MODEL, 'weapon');
 loadWeaponModel(MACHINEGUN_MODEL, 'machine-gun', MACHINEGUN_WEAPON_ID);
 
 // Ramp reinforcements in (shell/botRamp.js): later-indexed bots start
@@ -538,7 +531,6 @@ const loop = createRenderLoop({
       score: playerEntity.score,
       dead: playerEntity.dead,
       respawnSecondsRemaining: healthSystem.getRespawnTicksRemaining(LOCAL_PLAYER_ID) * sim.dt,
-      ammo: playerEntity.ammo,
       grenadeCount: playerEntity.grenadeCount,
     });
     // R4, R8, KTD2: ages/expires entries by sim delta time, only reached

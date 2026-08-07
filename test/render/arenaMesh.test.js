@@ -1,8 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { buildArenaMeshes } from '../../src/render/arenaMesh.js';
 import { loadSurfaceTexture } from '../../src/render/textures.js';
 import { ARENA_SURFACE_TEXTURE } from '../../src/render/modelAssets.js';
+import { createArena } from '../../src/arena/arena.js';
+import { ROOM_ACCENTS } from '../../src/arena/layout.js';
+
+await RAPIER.init();
 
 // arenaMesh.js applies the shared surface map asynchronously (buildArenaMeshes
 // itself must stay synchronous -- main.js does `scene.add(buildArenaMeshes(arena))`
@@ -29,34 +34,34 @@ beforeEach(() => {
 });
 
 // Reflects the real shape callers pass since U2: rooms plus wall.spaceId
-// ownership. One accented corner room (nw), one room with no pillar of its
-// own (se, matching the real SE room -- KTD3), one neutral central room, and
-// one neutral corridor wall.
+// ownership. One accented district (yard), one district with no pillar of
+// its own (maze, standing in for whichever real district lacks one --
+// KTD3), one neutral landmark room, and one neutral corridor wall.
 const FAKE_ARENA = {
   floorHalfSize: 15,
   wallHeight: 4,
   rooms: [
-    { id: 'nw', x: -10, z: 10, halfX: 5, halfZ: 5 },
-    { id: 'se', x: 10, z: -10, halfX: 5, halfZ: 5 },
-    { id: 'central', x: 0, z: 0, halfX: 3, halfZ: 3 },
+    { id: 'yard', x: -10, z: 10, halfX: 5, halfZ: 5 },
+    { id: 'maze', x: 10, z: -10, halfX: 5, halfZ: 5 },
+    { id: 'landmark', x: 0, z: 0, halfX: 3, halfZ: 3 },
   ],
   walls: [
-    { x: -10, z: 15, halfX: 5, halfY: 2, halfZ: 0.5, spaceId: 'nw' },
-    { x: 10, z: -15, halfX: 5, halfY: 2, halfZ: 0.5, spaceId: 'se' },
-    { x: 0, z: 3, halfX: 3, halfY: 2, halfZ: 0.5, spaceId: 'central' },
+    { x: -10, z: 15, halfX: 5, halfY: 2, halfZ: 0.5, spaceId: 'yard' },
+    { x: 10, z: -15, halfX: 5, halfY: 2, halfZ: 0.5, spaceId: 'maze' },
+    { x: 0, z: 3, halfX: 3, halfY: 2, halfZ: 0.5, spaceId: 'landmark' },
     { x: 0, z: 15, halfX: 15, halfY: 2, halfZ: 0.5, spaceId: 'corridor-top' },
-    // nw's own west wall, running along Z (halfZ > halfX) -- every other
+    // yard's own west wall, running along Z (halfZ > halfX) -- every other
     // wall above runs along X, so this is the only one that exercises
     // buildTrimMesh's alongX=false branch.
-    { x: -15, z: 10, halfX: 0.5, halfY: 2, halfZ: 5, spaceId: 'nw' },
+    { x: -15, z: 10, halfX: 0.5, halfY: 2, halfZ: 5, spaceId: 'yard' },
   ],
   pillars: [
-    { x: -10, z: 10, halfX: 1, halfY: 1, halfZ: 1 }, // inside nw
-    { x: 0, z: 0, halfX: 1, halfY: 1, halfZ: 1 }, // inside central
-    // se has none -- matches the real SE room, which has no pillar geometry.
+    { x: -10, z: 10, halfX: 1, halfY: 1, halfZ: 1 }, // inside yard
+    { x: 0, z: 0, halfX: 1, halfY: 1, halfZ: 1 }, // inside landmark
+    // maze has none here -- exercises the no-pillar-owner fallback path.
   ],
 };
-const ACCENTED_WALL_COUNT = FAKE_ARENA.walls.filter((w) => ['nw', 'se'].includes(w.spaceId)).length; // 2
+const ACCENTED_WALL_COUNT = FAKE_ARENA.walls.filter((w) => ['yard', 'maze'].includes(w.spaceId)).length; // 2
 
 describe('buildArenaMeshes', () => {
   // KTD6: mesh count derives from the same descriptor arrays as the
@@ -189,8 +194,8 @@ describe('buildArenaMeshes: per-room accents (KTD3, R5, U1 verdict palette)', ()
   }
 
   it('tints an accented room\'s wall with its palette hue', () => {
-    const nwWall = findWall(-10, 15);
-    expect(`#${nwWall.material.color.getHexString()}`).toBe('#e69f00');
+    const yardWall = findWall(-10, 15);
+    expect(`#${yardWall.material.color.getHexString()}`).toBe('#e69f00');
   });
 
   it('leaves a corridor wall on the neutral material', () => {
@@ -198,9 +203,9 @@ describe('buildArenaMeshes: per-room accents (KTD3, R5, U1 verdict palette)', ()
     expect(`#${corridorWall.material.color.getHexString()}`).toBe('#a89f8a');
   });
 
-  it('leaves the central room\'s wall neutral -- it has no accent (R5)', () => {
-    const centralWall = findWall(0, 3);
-    expect(`#${centralWall.material.color.getHexString()}`).toBe('#a89f8a');
+  it('leaves the landmark room\'s wall neutral -- it has no accent (R5)', () => {
+    const landmarkWall = findWall(0, 3);
+    expect(`#${landmarkWall.material.color.getHexString()}`).toBe('#a89f8a');
   });
 
   it('adds exactly one trim mesh per accented-room wall, positioned on that wall', () => {
@@ -237,25 +242,62 @@ describe('buildArenaMeshes: per-room accents (KTD3, R5, U1 verdict palette)', ()
 
   it('tints an accented room\'s pillar with the same hue as its walls', () => {
     const group = buildArenaMeshes(FAKE_ARENA);
-    const nwPillar = group.children.find((c) => c.name === 'pillar' && c.position.x === -10 && c.position.z === 10);
-    expect(`#${nwPillar.material.color.getHexString()}`).toBe('#e69f00');
+    const yardPillar = group.children.find((c) => c.name === 'pillar' && c.position.x === -10 && c.position.z === 10);
+    expect(`#${yardPillar.material.color.getHexString()}`).toBe('#e69f00');
   });
 
-  it('leaves the central room\'s pillar on the neutral material -- no accent (R5)', () => {
+  it('leaves the landmark room\'s pillar on the neutral material -- no accent (R5)', () => {
     const group = buildArenaMeshes(FAKE_ARENA);
-    const centralPillar = group.children.find((c) => c.name === 'pillar' && c.position.x === 0 && c.position.z === 0);
-    expect(`#${centralPillar.material.color.getHexString()}`).toBe('#8a6a4f');
+    const landmarkPillar = group.children.find((c) => c.name === 'pillar' && c.position.x === 0 && c.position.z === 0);
+    expect(`#${landmarkPillar.material.color.getHexString()}`).toBe('#8a6a4f');
   });
 
-  it('se -- no pillar geometry -- still gets wall tint and trim (KTD3\'s documented exception)', () => {
+  it('maze -- no pillar geometry -- still gets wall tint and trim (KTD3\'s documented exception)', () => {
     const group = buildArenaMeshes(FAKE_ARENA);
-    const seWall = findWall(10, -15);
-    const seTrim = group.children.find((c) => c.name === 'trim' && c.position.x === 10 && c.position.z === -15);
-    const sePillar = group.children.find(
+    const mazeWall = findWall(10, -15);
+    const mazeTrim = group.children.find((c) => c.name === 'trim' && c.position.x === 10 && c.position.z === -15);
+    const mazePillar = group.children.find(
       (c) => c.name === 'pillar' && Math.abs(c.position.x - 10) <= 5 && Math.abs(c.position.z + 10) <= 5
     );
-    expect(`#${seWall.material.color.getHexString()}`).toBe('#cc79a7');
-    expect(seTrim).toBeDefined();
-    expect(sePillar).toBeUndefined();
+    expect(`#${mazeWall.material.color.getHexString()}`).toBe('#cc79a7');
+    expect(mazeTrim).toBeDefined();
+    expect(mazePillar).toBeUndefined();
+  });
+});
+
+// U4: a render smoke test against the real, shipped asymmetric-districts
+// dataset (not the synthetic FAKE_ARENA above) -- proves arenaMesh.js needs
+// no changes for the new topology's wall/pillar counts and orientations.
+describe('buildArenaMeshes: render smoke against the real arena dataset (U4)', () => {
+  it('builds without error, one mesh per real wall and pillar, with every accented district tinted', () => {
+    const arena = createArena();
+
+    expect(() => buildArenaMeshes(arena)).not.toThrow();
+    const group = buildArenaMeshes(arena);
+
+    const walls = group.children.filter((c) => c.name === 'wall');
+    const pillars = group.children.filter((c) => c.name === 'pillar');
+    expect(walls).toHaveLength(arena.walls.length);
+    expect(pillars).toHaveLength(arena.pillars.length);
+
+    const accentedWallCount = arena.walls.filter((w) => ROOM_ACCENTS[w.spaceId] !== undefined).length;
+    const trim = group.children.filter((c) => c.name === 'trim');
+    expect(trim).toHaveLength(accentedWallCount);
+  });
+
+  it('orients trim correctly on both an along-X and an along-Z real wall', () => {
+    const arena = createArena();
+    const group = buildArenaMeshes(arena);
+
+    const alongXWall = arena.walls.find((w) => w.spaceId === 'yard' && w.halfX > w.halfZ);
+    const alongZWall = arena.walls.find((w) => w.spaceId === 'yard' && w.halfZ > w.halfX);
+    expect(alongXWall).toBeDefined();
+    expect(alongZWall).toBeDefined();
+
+    const xTrim = group.children.find((c) => c.name === 'trim' && c.position.x === alongXWall.x && c.position.z === alongXWall.z);
+    const zTrim = group.children.find((c) => c.name === 'trim' && c.position.x === alongZWall.x && c.position.z === alongZWall.z);
+    // Long overhang follows the wall's own long axis in both cases (KTD3).
+    expect(xTrim.geometry.parameters.width).toBeGreaterThan(xTrim.geometry.parameters.depth);
+    expect(zTrim.geometry.parameters.depth).toBeGreaterThan(zTrim.geometry.parameters.width);
   });
 });

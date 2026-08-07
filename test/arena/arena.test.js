@@ -23,19 +23,20 @@ function measureStandingEyeHeight(arena, dropPosition) {
   return world.getEntity('probe').position.y + EYE_HEIGHT;
 }
 
-describe('createArena: rooms-and-corridors line of sight (R2)', () => {
-  it('blocks a ray between two rooms on opposite corners of the map', () => {
+describe('createArena: asymmetric-districts line of sight (R2)', () => {
+  it('blocks a ray between two districts on opposite sides of the map', () => {
     const arena = createArena();
-    // Real spawn points (already verified inside their room and clear of
-    // all geometry, including landmark pillars, by test/arena/layout.test.js)
+    // Real spawn points (already verified inside their district and clear
+    // of all geometry, including pillars/cover, by test/arena/layout.test.js)
     // rather than hand-picked coordinates: a ray cast from inside a
     // collider reports an immediate hit against that collider regardless
-    // of the real wall/corridor topology between the rooms, which would
-    // make this test pass even if that topology broke -- verified this
-    // specific pair's line actually crosses NW's solid east wall face, not
-    // a pillar or a doorway gap, before picking it.
-    const origin3d = arena.spawnPoints.find((p) => p.x === -21 && p.z === 23);
-    const target3d = arena.spawnPoints.find((p) => p.x === 22 && p.z === -22);
+    // of the real wall/corridor topology between the districts, which would
+    // make this test pass even if that topology broke -- Yard and Bazaar
+    // sit on opposite sides of the landmark with multiple walls and a bend
+    // between them, verified below to actually be occluded, not a lucky
+    // doorway-gap alignment.
+    const origin3d = arena.spawnPoints.find((p) => p.x === -50 && p.z === 5);
+    const target3d = arena.spawnPoints.find((p) => p.x === 40 && p.z === 47);
     expect(origin3d).toBeDefined();
     expect(target3d).toBeDefined();
     const eyeHeight = measureStandingEyeHeight(arena, { ...origin3d, y: 5 });

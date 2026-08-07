@@ -1,19 +1,28 @@
-// The single source of truth for the rooms-and-corridors map (KTD6): walls,
-// rooms, doorways, landmark pillars, and spawn points all live here, in one
-// dataset, so physics (arena.js) and render (arenaMesh.js) can never drift
-// out of sync the way the old arena's twice-derived boundary walls did.
+// The single source of truth for the asymmetric-districts map (KTD6): walls,
+// districts, doorways, pillars/cover, spawn points, pickups, and the
+// reserved flag site all live here, in one dataset, so physics (arena.js)
+// and render (arenaMesh.js) can never drift out of sync.
 //
-// Four corner rooms plus a central landmark room, joined by a corridor loop
-// with a spoke into the centre from each side (R1). Corner rooms share one
-// footprint so the outer perimeter closes without a mitred-corner case per
-// room pair; rooms are told apart by interior landmark geometry instead
-// (KD4) -- proportions stay identical, pillars differ.
-import { MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
+// Six districts -- five outlying plus the landmark room -- joined by a
+// corridor web of spokes (landmark to four of the five outlying districts),
+// a perimeter chain linking every outlying district to its neighbours, and
+// two straight cross-cuts, so no single ring circuit is the default way
+// around (R1, R3). Each outlying district gets its own spatial grammar
+// (R2): Yard (open, long sightlines), Hall (pillared), Maze (cover-block
+// zigzag), Warren (tight chamber partitions), Bazaar (scattered cover) --
+// distinguishable by structure alone, accent colour only a secondary cue.
 
-const GRID_OFFSET = 26; // corner room centre distance from the origin, each axis
-const CORNER_HALF = 8; // 16x16 corner rooms
-const CENTRAL_HALF = 10; // 20x20 landmark room, deliberately the biggest space
-const CORRIDOR_HALF_WIDTH = 1.5; // 3-unit corridors and doorways -- above KTD9's 2-unit floor
+const GRID_HALF = 1.5; // corridor/doorway half-width -- KTD5: uniform everywhere
+const BEND_CLEARANCE = 3; // how far short of a bend each segment's walls stop (see the perimeter chain below)
+// How far each spoke doorway sits off its room's centre-axis, on both the
+// landmark end and the outlying district's end of the same spoke (the two
+// must match -- a spoke is one straight corridor, so both of its doorways
+// share this spoke's fixed cross-axis coordinate). This is what keeps a
+// room's own doorway pair from lining up through its centre (see the
+// DOORWAYS comment below) -- a single named constant so every one of its
+// call sites can never drift out of sync with the others the way a
+// hand-typed literal at each site could.
+const SPOKE_OFFSET = 3;
 const WALL_THICKNESS = 0.5; // half-thickness, matches the retired arena's convention
 export const WALL_HEIGHT = 4;
 const PILLAR_HALF_HEIGHT = WALL_HEIGHT / 2; // full-height landmarks, not peek-over cover
@@ -59,34 +68,48 @@ function wallAlongZ(x, from, to, spaceId, gaps = []) {
   }));
 }
 
-const DOOR_HALF = CORRIDOR_HALF_WIDTH;
+// Two parallel side walls the full length of a straight corridor/spoke
+// segment -- both ends stay fully open (no gap needed, no end cap): the
+// segment's own width already equals a doorway's width, so an open end IS
+// the doorway (the existing spoke convention).
+function corridorAlongX(z, from, to, spaceId) {
+  return [wallAlongX(z + GRID_HALF, from, to, spaceId), wallAlongX(z - GRID_HALF, from, to, spaceId)].flat();
+}
+function corridorAlongZ(x, from, to, spaceId) {
+  return [wallAlongZ(x + GRID_HALF, from, to, spaceId), wallAlongZ(x - GRID_HALF, from, to, spaceId)].flat();
+}
 
-const CORNERS = [
-  { id: 'nw', sx: -1, sz: 1 },
-  { id: 'ne', sx: 1, sz: 1 },
-  { id: 'se', sx: 1, sz: -1 },
-  { id: 'sw', sx: -1, sz: -1 },
-];
+const DOOR_HALF = GRID_HALF;
 
-// Rooms whose landmark pillar sits exactly at the room's geometric centre
-// (PILLARS, below) need a navigation point offset away from it -- a bot can
-// never arrive at a point buried inside solid geometry. Reuses each room's
-// own spawn-point offset (already proven clear of its pillar) rather than
-// inventing a second number that could drift from it.
+// The gap a wall run must cut for a given doorway, expressed on the wall's
+// own axis (axisCenter is that wall's x or z coordinate at the doorway).
+// Reads the doorway's own width rather than the module-level constant, so
+// the room-side gap always matches whatever that doorway declares.
+function doorGap(doorwayId, axisCenter) {
+  const halfWidth = doorway(doorwayId).width / 2;
+  return [axisCenter - halfWidth, axisCenter + halfWidth];
+}
+
+// Rooms whose pillar/cover geometry sits exactly at the room's geometric
+// centre need a navigation point offset away from it -- a bot can never
+// arrive at a point buried inside solid geometry. Only the landmark room
+// needs this: every outlying district's doorways are deliberately offset
+// off-centre (see DOORWAYS below), so no other room's centre needs to double
+// as a through-sightline blocker.
 const NAV_POINT_OVERRIDES = {
-  nw: { x: -5, z: 3 },
-  central: { x: -6, z: 6 },
+  landmark: { x: 7, z: -7 },
 };
 
+// Axis-aligned footprints, each shaped for its own grammar (KTD4). Distances
+// and sizes are hand-picked, not derived from a formula, the same way the
+// original four-corner layout was.
 export const ROOMS = [
-  ...CORNERS.map((c) => ({
-    id: c.id,
-    x: c.sx * GRID_OFFSET,
-    z: c.sz * GRID_OFFSET,
-    halfX: CORNER_HALF,
-    halfZ: CORNER_HALF,
-  })),
-  { id: 'central', x: 0, z: 0, halfX: CENTRAL_HALF, halfZ: CENTRAL_HALF },
+  { id: 'landmark', x: 0, z: 0, halfX: 11, halfZ: 11 },
+  { id: 'yard', x: -40, z: 0, halfX: 12, halfZ: 10 },
+  { id: 'hall', x: 0, z: 42, halfX: 13, halfZ: 10 },
+  { id: 'maze', x: 38, z: 0, halfX: 12, halfZ: 11 },
+  { id: 'warren', x: 0, z: -36, halfX: 9, halfZ: 9 },
+  { id: 'bazaar', x: 38, z: 42, halfX: 10, halfZ: 8 },
 ].map((r) => {
   const offset = NAV_POINT_OVERRIDES[r.id];
   return offset ? { ...r, navPoint: { x: r.x + offset.x, z: r.z + offset.z } } : r;
@@ -110,27 +133,51 @@ export function findRoomAt(position, rooms) {
   );
 }
 
+const landmark = room('landmark');
+const yard = room('yard');
+const hall = room('hall');
+const maze = room('maze');
+const warren = room('warren');
+const bazaar = room('bazaar');
+
 // One entry per doorway threshold: its centre point, width, and the two
-// spaces (room or corridor) it joins. U3's waypoint graph reads positions
+// spaces (room or corridor) it joins. Every doorway is deliberately offset
+// off its room's geometric centre (never at x=0/z=0 relative to the room)
+// so that no pair of a room's doorways lines up through its centre into a
+// single uninterrupted sightline -- the mechanism that keeps every long
+// sightline ending inside its own district (R4) without needing a
+// centre-blocking pillar in every room. U3's waypoint graph reads positions
 // straight off this list.
 export const DOORWAYS = [
-  { id: 'nw-top', x: -GRID_OFFSET + CORNER_HALF, z: room('nw').z, width: DOOR_HALF * 2, connects: ['nw', 'corridor-top'] },
-  { id: 'nw-left', x: room('nw').x, z: -CORNER_HALF + GRID_OFFSET, width: DOOR_HALF * 2, connects: ['nw', 'corridor-left'] },
-  { id: 'ne-top', x: GRID_OFFSET - CORNER_HALF, z: room('ne').z, width: DOOR_HALF * 2, connects: ['ne', 'corridor-top'] },
-  { id: 'ne-right', x: room('ne').x, z: -CORNER_HALF + GRID_OFFSET, width: DOOR_HALF * 2, connects: ['ne', 'corridor-right'] },
-  { id: 'se-right', x: room('se').x, z: CORNER_HALF - GRID_OFFSET, width: DOOR_HALF * 2, connects: ['se', 'corridor-right'] },
-  { id: 'se-bottom', x: GRID_OFFSET - CORNER_HALF, z: room('se').z, width: DOOR_HALF * 2, connects: ['se', 'corridor-bottom'] },
-  { id: 'sw-bottom', x: -GRID_OFFSET + CORNER_HALF, z: room('sw').z, width: DOOR_HALF * 2, connects: ['sw', 'corridor-bottom'] },
-  { id: 'sw-left', x: room('sw').x, z: CORNER_HALF - GRID_OFFSET, width: DOOR_HALF * 2, connects: ['sw', 'corridor-left'] },
-  { id: 'central-north', x: 0, z: CENTRAL_HALF, width: DOOR_HALF * 2, connects: ['central', 'spoke-north'] },
-  { id: 'central-south', x: 0, z: -CENTRAL_HALF, width: DOOR_HALF * 2, connects: ['central', 'spoke-south'] },
-  { id: 'central-east', x: CENTRAL_HALF, z: 0, width: DOOR_HALF * 2, connects: ['central', 'spoke-east'] },
-  { id: 'central-west', x: -CENTRAL_HALF, z: 0, width: DOOR_HALF * 2, connects: ['central', 'spoke-west'] },
-  // Spoke <-> loop-corridor junctions: the other end of each spoke.
-  { id: 'spoke-north-top', x: 0, z: GRID_OFFSET - DOOR_HALF, width: DOOR_HALF * 2, connects: ['spoke-north', 'corridor-top'] },
-  { id: 'spoke-south-bottom', x: 0, z: -GRID_OFFSET + DOOR_HALF, width: DOOR_HALF * 2, connects: ['spoke-south', 'corridor-bottom'] },
-  { id: 'spoke-east-right', x: GRID_OFFSET - DOOR_HALF, z: 0, width: DOOR_HALF * 2, connects: ['spoke-east', 'corridor-right'] },
-  { id: 'spoke-west-left', x: -GRID_OFFSET + DOOR_HALF, z: 0, width: DOOR_HALF * 2, connects: ['spoke-west', 'corridor-left'] },
+  { id: 'landmark-north', x: SPOKE_OFFSET, z: landmark.z + landmark.halfZ, width: DOOR_HALF * 2, connects: ['landmark', 'spoke-north'] },
+  { id: 'landmark-south', x: -SPOKE_OFFSET, z: landmark.z - landmark.halfZ, width: DOOR_HALF * 2, connects: ['landmark', 'spoke-south'] },
+  { id: 'landmark-east', x: landmark.x + landmark.halfX, z: SPOKE_OFFSET, width: DOOR_HALF * 2, connects: ['landmark', 'spoke-east'] },
+  { id: 'landmark-west', x: landmark.x - landmark.halfX, z: -SPOKE_OFFSET, width: DOOR_HALF * 2, connects: ['landmark', 'spoke-west'] },
+
+  { id: 'yard-spoke', x: yard.x + yard.halfX, z: -SPOKE_OFFSET, width: DOOR_HALF * 2, connects: ['yard', 'spoke-west'] },
+  { id: 'yard-north', x: -46, z: yard.z + yard.halfZ, width: DOOR_HALF * 2, connects: ['yard', 'link-yard-hall-v'] },
+  { id: 'yard-south', x: -34, z: yard.z - yard.halfZ, width: DOOR_HALF * 2, connects: ['yard', 'link-warren-yard-v'] },
+
+  { id: 'hall-spoke', x: SPOKE_OFFSET, z: hall.z - hall.halfZ, width: DOOR_HALF * 2, connects: ['hall', 'spoke-north'] },
+  { id: 'hall-west', x: hall.x - hall.halfX, z: 35, width: DOOR_HALF * 2, connects: ['hall', 'link-yard-hall-h'] },
+  { id: 'hall-east', x: hall.x + hall.halfX, z: 44, width: DOOR_HALF * 2, connects: ['hall', 'link-hall-bazaar'] },
+
+  { id: 'maze-spoke', x: maze.x - maze.halfX, z: SPOKE_OFFSET, width: DOOR_HALF * 2, connects: ['maze', 'spoke-east'] },
+  { id: 'maze-north', x: 42, z: maze.z + maze.halfZ, width: DOOR_HALF * 2, connects: ['maze', 'link-bazaar-maze'] },
+  { id: 'maze-south', x: 32, z: maze.z - maze.halfZ, width: DOOR_HALF * 2, connects: ['maze', 'link-maze-warren-v'] },
+
+  { id: 'warren-spoke', x: -SPOKE_OFFSET, z: warren.z + warren.halfZ, width: DOOR_HALF * 2, connects: ['warren', 'spoke-south'] },
+  { id: 'warren-east', x: warren.x + warren.halfX, z: -30, width: DOOR_HALF * 2, connects: ['warren', 'link-maze-warren-h'] },
+  { id: 'warren-west', x: warren.x - warren.halfX, z: -40, width: DOOR_HALF * 2, connects: ['warren', 'link-warren-yard-h'] },
+
+  { id: 'bazaar-west', x: bazaar.x - bazaar.halfX, z: 44, width: DOOR_HALF * 2, connects: ['bazaar', 'link-hall-bazaar'] },
+  { id: 'bazaar-south', x: 42, z: bazaar.z - bazaar.halfZ, width: DOOR_HALF * 2, connects: ['bazaar', 'link-bazaar-maze'] },
+
+  // Bend junctions (KTD4's approach step 2): a corridor bend is two straight,
+  // convex segments meeting at a shared doorway, never one L-shaped space.
+  { id: 'link-yard-hall-bend', x: -46, z: 35, width: DOOR_HALF * 2, connects: ['link-yard-hall-v', 'link-yard-hall-h'] },
+  { id: 'link-maze-warren-bend', x: 32, z: -30, width: DOOR_HALF * 2, connects: ['link-maze-warren-v', 'link-maze-warren-h'] },
+  { id: 'link-warren-yard-bend', x: -34, z: -40, width: DOOR_HALF * 2, connects: ['link-warren-yard-h', 'link-warren-yard-v'] },
 ];
 
 function doorway(id) {
@@ -139,147 +186,170 @@ function doorway(id) {
   return found;
 }
 
-// The gap a wall run must cut for a given doorway, expressed on the wall's
-// own axis (axisCenter is that wall's x or z coordinate at the doorway).
-// Reads the doorway's own width rather than the module-level constant, so
-// the room-side gap always matches whatever that doorway declares.
-//
-// The corridor/spoke *channel* each doorway opens into is a separate,
-// currently-fixed-width system (every wallAlongX/Z(DOOR_HALF, ...) call for
-// a corridor or spoke wall below uses the module-level DOOR_HALF directly,
-// not any individual doorway's width) -- consistent today only because
-// every DOORWAYS entry happens to share the same width. Widening one
-// doorway's `width` field alone would open a gap wider or narrower than the
-// hallway behind it; the channel geometry would need the same per-doorway
-// treatment to actually support that.
-function doorGap(doorwayId, axisCenter) {
-  const halfWidth = doorway(doorwayId).width / 2;
-  return [axisCenter - halfWidth, axisCenter + halfWidth];
-}
-
-const nw = room('nw');
-const ne = room('ne');
-const se = room('se');
-const sw = room('sw');
-const central = room('central');
-
 const WALLS = [
-  // Corner rooms: two solid outward walls, two inward walls gapped for a doorway.
-  ...wallAlongX(nw.z + nw.halfZ, nw.x - nw.halfX, nw.x + nw.halfX, 'nw'), // nw north, solid
-  ...wallAlongZ(nw.x - nw.halfX, nw.z - nw.halfZ, nw.z + nw.halfZ, 'nw'), // nw west, solid
-  ...wallAlongZ(nw.x + nw.halfX, nw.z - nw.halfZ, nw.z + nw.halfZ, 'nw', [doorGap('nw-top', nw.z)]), // nw east -> top corridor
-  ...wallAlongX(nw.z - nw.halfZ, nw.x - nw.halfX, nw.x + nw.halfX, 'nw', [doorGap('nw-left', nw.x)]), // nw south -> left corridor
+  // Landmark: all four walls gapped, one doorway per spoke.
+  ...wallAlongX(landmark.z + landmark.halfZ, landmark.x - landmark.halfX, landmark.x + landmark.halfX, 'landmark', [doorGap('landmark-north', SPOKE_OFFSET)]),
+  ...wallAlongX(landmark.z - landmark.halfZ, landmark.x - landmark.halfX, landmark.x + landmark.halfX, 'landmark', [doorGap('landmark-south', -SPOKE_OFFSET)]),
+  ...wallAlongZ(landmark.x + landmark.halfX, landmark.z - landmark.halfZ, landmark.z + landmark.halfZ, 'landmark', [doorGap('landmark-east', SPOKE_OFFSET)]),
+  ...wallAlongZ(landmark.x - landmark.halfX, landmark.z - landmark.halfZ, landmark.z + landmark.halfZ, 'landmark', [doorGap('landmark-west', -SPOKE_OFFSET)]),
 
-  ...wallAlongX(ne.z + ne.halfZ, ne.x - ne.halfX, ne.x + ne.halfX, 'ne'), // ne north, solid
-  ...wallAlongZ(ne.x + ne.halfX, ne.z - ne.halfZ, ne.z + ne.halfZ, 'ne'), // ne east, solid
-  ...wallAlongZ(ne.x - ne.halfX, ne.z - ne.halfZ, ne.z + ne.halfZ, 'ne', [doorGap('ne-top', ne.z)]), // ne west -> top corridor
-  ...wallAlongX(ne.z - ne.halfZ, ne.x - ne.halfX, ne.x + ne.halfX, 'ne', [doorGap('ne-right', ne.x)]), // ne south -> right corridor
+  // Yard: north, south, and east gapped; west solid (the yard's own
+  // far wall, no route needs it).
+  ...wallAlongX(yard.z + yard.halfZ, yard.x - yard.halfX, yard.x + yard.halfX, 'yard', [doorGap('yard-north', -46)]),
+  ...wallAlongX(yard.z - yard.halfZ, yard.x - yard.halfX, yard.x + yard.halfX, 'yard', [doorGap('yard-south', -34)]),
+  ...wallAlongZ(yard.x + yard.halfX, yard.z - yard.halfZ, yard.z + yard.halfZ, 'yard', [doorGap('yard-spoke', -SPOKE_OFFSET)]),
+  ...wallAlongZ(yard.x - yard.halfX, yard.z - yard.halfZ, yard.z + yard.halfZ, 'yard'),
 
-  ...wallAlongX(se.z - se.halfZ, se.x - se.halfX, se.x + se.halfX, 'se'), // se south, solid
-  ...wallAlongZ(se.x + se.halfX, se.z - se.halfZ, se.z + se.halfZ, 'se'), // se east, solid
-  ...wallAlongX(se.z + se.halfZ, se.x - se.halfX, se.x + se.halfX, 'se', [doorGap('se-bottom', se.x)]), // se north -> right corridor
-  ...wallAlongZ(se.x - se.halfX, se.z - se.halfZ, se.z + se.halfZ, 'se', [doorGap('se-right', se.z)]), // se west -> bottom corridor
+  // Hall: south, west, east gapped; north solid.
+  ...wallAlongX(hall.z - hall.halfZ, hall.x - hall.halfX, hall.x + hall.halfX, 'hall', [doorGap('hall-spoke', SPOKE_OFFSET)]),
+  ...wallAlongZ(hall.x - hall.halfX, hall.z - hall.halfZ, hall.z + hall.halfZ, 'hall', [doorGap('hall-west', 35)]),
+  ...wallAlongZ(hall.x + hall.halfX, hall.z - hall.halfZ, hall.z + hall.halfZ, 'hall', [doorGap('hall-east', 44)]),
+  ...wallAlongX(hall.z + hall.halfZ, hall.x - hall.halfX, hall.x + hall.halfX, 'hall'),
 
-  ...wallAlongX(sw.z - sw.halfZ, sw.x - sw.halfX, sw.x + sw.halfX, 'sw'), // sw south, solid
-  ...wallAlongZ(sw.x - sw.halfX, sw.z - sw.halfZ, sw.z + sw.halfZ, 'sw'), // sw west, solid
-  ...wallAlongZ(sw.x + sw.halfX, sw.z - sw.halfZ, sw.z + sw.halfZ, 'sw', [doorGap('sw-bottom', sw.z)]), // sw east -> bottom corridor
-  ...wallAlongX(sw.z + sw.halfZ, sw.x - sw.halfX, sw.x + sw.halfX, 'sw', [doorGap('sw-left', sw.x)]), // sw north -> left corridor
+  // Maze: west, north, south gapped; east solid.
+  ...wallAlongZ(maze.x - maze.halfX, maze.z - maze.halfZ, maze.z + maze.halfZ, 'maze', [doorGap('maze-spoke', SPOKE_OFFSET)]),
+  ...wallAlongX(maze.z + maze.halfZ, maze.x - maze.halfX, maze.x + maze.halfX, 'maze', [doorGap('maze-north', 42)]),
+  ...wallAlongX(maze.z - maze.halfZ, maze.x - maze.halfX, maze.x + maze.halfX, 'maze', [doorGap('maze-south', 32)]),
+  ...wallAlongZ(maze.x + maze.halfX, maze.z - maze.halfZ, maze.z + maze.halfZ, 'maze'),
 
-  // Central landmark room: all four walls gapped, one doorway per spoke.
-  ...wallAlongX(central.z + central.halfZ, central.x - central.halfX, central.x + central.halfX, 'central', [doorGap('central-north', 0)]),
-  ...wallAlongX(central.z - central.halfZ, central.x - central.halfX, central.x + central.halfX, 'central', [doorGap('central-south', 0)]),
-  ...wallAlongZ(central.x + central.halfX, central.z - central.halfZ, central.z + central.halfZ, 'central', [doorGap('central-east', 0)]),
-  ...wallAlongZ(central.x - central.halfX, central.z - central.halfZ, central.z + central.halfZ, 'central', [doorGap('central-west', 0)]),
+  // Warren: north, east, west gapped; south solid.
+  ...wallAlongX(warren.z + warren.halfZ, warren.x - warren.halfX, warren.x + warren.halfX, 'warren', [doorGap('warren-spoke', -SPOKE_OFFSET)]),
+  ...wallAlongZ(warren.x + warren.halfX, warren.z - warren.halfZ, warren.z + warren.halfZ, 'warren', [doorGap('warren-east', -30)]),
+  ...wallAlongZ(warren.x - warren.halfX, warren.z - warren.halfZ, warren.z + warren.halfZ, 'warren', [doorGap('warren-west', -40)]),
+  ...wallAlongX(warren.z - warren.halfZ, warren.x - warren.halfX, warren.x + warren.halfX, 'warren'),
 
-  // Loop corridors: one solid outward wall, one inward wall gapped for the spoke into the centre.
-  ...wallAlongX(nw.z + DOOR_HALF, nw.x + nw.halfX, ne.x - ne.halfX, 'corridor-top'), // top corridor, outward (north)
-  ...wallAlongX(nw.z - DOOR_HALF, nw.x + nw.halfX, ne.x - ne.halfX, 'corridor-top', [doorGap('spoke-north-top', 0)]), // top corridor, inward (south) -> north spoke
+  // Bazaar: west and south gapped; north and east solid.
+  ...wallAlongZ(bazaar.x - bazaar.halfX, bazaar.z - bazaar.halfZ, bazaar.z + bazaar.halfZ, 'bazaar', [doorGap('bazaar-west', 44)]),
+  ...wallAlongX(bazaar.z - bazaar.halfZ, bazaar.x - bazaar.halfX, bazaar.x + bazaar.halfX, 'bazaar', [doorGap('bazaar-south', 42)]),
+  ...wallAlongX(bazaar.z + bazaar.halfZ, bazaar.x - bazaar.halfX, bazaar.x + bazaar.halfX, 'bazaar'),
+  ...wallAlongZ(bazaar.x + bazaar.halfX, bazaar.z - bazaar.halfZ, bazaar.z + bazaar.halfZ, 'bazaar'),
 
-  ...wallAlongZ(ne.x + DOOR_HALF, se.z + se.halfZ, ne.z - ne.halfZ, 'corridor-right'), // right corridor, outward (east)
-  ...wallAlongZ(ne.x - DOOR_HALF, se.z + se.halfZ, ne.z - ne.halfZ, 'corridor-right', [doorGap('spoke-east-right', 0)]), // right corridor, inward (west) -> east spoke
+  // Spokes: landmark to four of the five outlying districts (R1).
+  ...corridorAlongZ(SPOKE_OFFSET, landmark.z + landmark.halfZ, hall.z - hall.halfZ, 'spoke-north'),
+  ...corridorAlongZ(-SPOKE_OFFSET, warren.z + warren.halfZ, landmark.z - landmark.halfZ, 'spoke-south'),
+  ...corridorAlongX(SPOKE_OFFSET, landmark.x + landmark.halfX, maze.x - maze.halfX, 'spoke-east'),
+  ...corridorAlongX(-SPOKE_OFFSET, yard.x + yard.halfX, landmark.x - landmark.halfX, 'spoke-west'),
 
-  ...wallAlongX(se.z - DOOR_HALF, sw.x + sw.halfX, se.x - se.halfX, 'corridor-bottom'), // bottom corridor, outward (south)
-  ...wallAlongX(se.z + DOOR_HALF, sw.x + sw.halfX, se.x - se.halfX, 'corridor-bottom', [doorGap('spoke-south-bottom', 0)]), // bottom corridor, inward (north) -> south spoke
+  // Straight cross-cuts (R3): Hall-Bazaar-Maze bypasses the landmark
+  // entirely, giving real route choice at ground level, not just a
+  // theoretical detour through the hub.
+  ...corridorAlongX(44, hall.x + hall.halfX, bazaar.x - bazaar.halfX, 'link-hall-bazaar'),
+  ...corridorAlongZ(42, maze.z + maze.halfZ, bazaar.z - bazaar.halfZ, 'link-bazaar-maze'),
 
-  ...wallAlongZ(sw.x - DOOR_HALF, sw.z + sw.halfZ, nw.z - nw.halfZ, 'corridor-left'), // left corridor, outward (west)
-  ...wallAlongZ(sw.x + DOOR_HALF, sw.z + sw.halfZ, nw.z - nw.halfZ, 'corridor-left', [doorGap('spoke-west-left', 0)]), // left corridor, inward (east) -> west spoke
+  // Perimeter chain, each a bent two-segment link (KTD4): Yard-Hall,
+  // Maze-Warren, Warren-Yard. Each segment's wall pair stops BEND_CLEARANCE
+  // short of the bend itself (rather than running flush to it) -- two
+  // perpendicular corridor rectangles meeting exactly at a shared corner
+  // point would otherwise overlap right where they join, since each
+  // segment's own side walls extend across the full width the other
+  // segment needs open. Pulling both back leaves a clean, fully open
+  // junction square at the bend, at the cost of a slightly wider turn.
+  ...corridorAlongZ(-46, yard.z + yard.halfZ, 35 - BEND_CLEARANCE, 'link-yard-hall-v'),
+  ...corridorAlongX(35, -46 + BEND_CLEARANCE, hall.x - hall.halfX, 'link-yard-hall-h'),
 
-  // Spokes: two side walls each, open at both ends (room doorway <-> corridor gap).
-  ...wallAlongZ(DOOR_HALF, central.halfZ, nw.z - DOOR_HALF, 'spoke-north'), // north spoke, east side
-  ...wallAlongZ(-DOOR_HALF, central.halfZ, nw.z - DOOR_HALF, 'spoke-north'), // north spoke, west side
+  ...corridorAlongZ(32, -30 + BEND_CLEARANCE, maze.z - maze.halfZ, 'link-maze-warren-v'),
+  ...corridorAlongX(-30, warren.x + warren.halfX, 32 - BEND_CLEARANCE, 'link-maze-warren-h'),
 
-  ...wallAlongZ(DOOR_HALF, sw.z + DOOR_HALF, -central.halfZ, 'spoke-south'), // south spoke, east side
-  ...wallAlongZ(-DOOR_HALF, sw.z + DOOR_HALF, -central.halfZ, 'spoke-south'), // south spoke, west side
-
-  ...wallAlongX(DOOR_HALF, central.halfX, ne.x - DOOR_HALF, 'spoke-east'), // east spoke, north side
-  ...wallAlongX(-DOOR_HALF, central.halfX, ne.x - DOOR_HALF, 'spoke-east'), // east spoke, south side
-
-  ...wallAlongX(DOOR_HALF, sw.x + DOOR_HALF, -central.halfX, 'spoke-west'), // west spoke, north side
-  ...wallAlongX(-DOOR_HALF, sw.x + DOOR_HALF, -central.halfX, 'spoke-west'), // west spoke, south side
+  ...corridorAlongX(-40, -34 + BEND_CLEARANCE, warren.x - warren.halfX, 'link-warren-yard-h'),
+  ...corridorAlongZ(-34, -40 + BEND_CLEARANCE, yard.z - yard.halfZ, 'link-warren-yard-v'),
 ].map((w) => ({ ...w, halfY: WALL_HEIGHT / 2 }));
 
+// Interior cover/landmarks, one grammar-shaped cluster per district (KTD4).
+// Every block is free-standing and convex, and every one is kept clear of
+// each district's doorway-to-nav-point segments (validated in
+// layout.test.js) -- no closed chambers, no deep concave pockets.
 export const PILLARS = [
-  { id: 'nw-pillar', x: nw.x, z: nw.z, halfX: 2, halfZ: 2 },
-  { id: 'ne-pillar-a', x: ne.x - 3, z: ne.z, halfX: 1, halfZ: 1 },
-  { id: 'ne-pillar-b', x: ne.x + 3, z: ne.z, halfX: 1, halfZ: 1 },
-  { id: 'sw-pillar', x: sw.x + 3, z: sw.z + 3, halfX: 1.5, halfZ: 1.5 },
-  { id: 'central-pillar', x: 0, z: 0, halfX: 2.5, halfZ: 2.5 },
+  // Landmark: a single central pillar, doubling as flag-site cover and the
+  // reason this room needs a nav-point override.
+  { id: 'landmark-pillar', x: 0, z: 0, halfX: 3, halfZ: 3 },
+
+  // Hall: three pillars, off both the spoke-to-centre and the west/east
+  // doorway-to-centre lines -- a grand room, not an obstacle course.
+  { id: 'hall-pillar-a', x: -8, z: 33, halfX: 1.5, halfZ: 1.5 },
+  { id: 'hall-pillar-b', x: 8, z: 33, halfX: 1.5, halfZ: 1.5 },
+  { id: 'hall-pillar-c', x: 0, z: 50, halfX: 1.5, halfZ: 1.5 },
+
+  // Maze: four cover blocks in the four off-axis quadrants around the
+  // centre, forcing a zigzag path between any two doorways.
+  { id: 'maze-block-a', x: 32, z: 5, halfX: 2, halfZ: 1.5 },
+  { id: 'maze-block-b', x: 44, z: 5, halfX: 2, halfZ: 1.5 },
+  { id: 'maze-block-c', x: 32, z: -5, halfX: 2, halfZ: 1.5 },
+  { id: 'maze-block-d', x: 44, z: -5, halfX: 2, halfZ: 1.5 },
+
+  // Warren: four small partition blocks in a pinwheel, breaking the room
+  // into short zigzag chambers -- tightest sightlines of any district.
+  { id: 'warren-block-a', x: 7, z: -28, halfX: 1, halfZ: 1 },
+  { id: 'warren-block-b', x: -7, z: -28, halfX: 1, halfZ: 1 },
+  { id: 'warren-block-c', x: 7, z: -44, halfX: 1, halfZ: 1 },
+  { id: 'warren-block-d', x: -7, z: -44, halfX: 1, halfZ: 1 },
+
+  // Bazaar: four scattered stalls, denser and more irregular than Hall's
+  // pillars, more organic than Maze's structured zigzag.
+  { id: 'bazaar-stall-a', x: 32, z: 47, halfX: 1.5, halfZ: 1 },
+  { id: 'bazaar-stall-b', x: 44, z: 47, halfX: 1, halfZ: 1.5 },
+  { id: 'bazaar-stall-c', x: 44, z: 36, halfX: 1.5, halfZ: 1 },
+  { id: 'bazaar-stall-d', x: 32, z: 36, halfX: 1, halfZ: 1.5 },
 ].map((p) => ({ ...p, halfY: PILLAR_HALF_HEIGHT }));
 
-// Two per room, offset from both the room centre and its pillar(s).
+// Two spawn points per district (twelve total), each clear of that
+// district's own cover and doorway openings (R11).
 export const SPAWN_POINTS = [
-  { x: nw.x - 5, y: 1, z: nw.z + 3 },
-  { x: nw.x + 5, y: 1, z: nw.z - 3 },
-  { x: ne.x - 3, y: 1, z: ne.z + 5 },
-  { x: ne.x + 3, y: 1, z: ne.z - 5 },
-  { x: se.x - 4, y: 1, z: se.z + 4 },
-  { x: se.x + 4, y: 1, z: se.z - 4 },
-  { x: sw.x - 4, y: 1, z: sw.z + 4 },
-  { x: sw.x + 4, y: 1, z: sw.z - 4 },
-  { x: -6, y: 1, z: 6 },
-  { x: 6, y: 1, z: -6 },
+  { x: 8, y: 1, z: -8 },
+  { x: -8, y: 1, z: 8 },
+  { x: -50, y: 1, z: 5 },
+  { x: -50, y: 1, z: -5 },
+  { x: -6, y: 1, z: 46 },
+  { x: 6, y: 1, z: 34 },
+  { x: 30, y: 1, z: 8 },
+  { x: 46, y: 1, z: -8 },
+  { x: 0, y: 1, z: -30 },
+  { x: 0, y: 1, z: -42 },
+  { x: 40, y: 1, z: 47 },
+  { x: 32, y: 1, z: 38 },
 ];
 
-// One continuous floor: every corner room shares CORNER_HALF, so the outer
-// perimeter is a clean square and this bound is exact, not a computed
-// approximation (Dependencies/Assumptions: the map keeps one floor collider,
-// so U5's PARK_POSITION at y=-100 stays clear of it either way).
-export const FLOOR_HALF_SIZE = GRID_OFFSET + CORNER_HALF;
+// One grenade pickup per outlying district (R7), hand-placed clear of that
+// district's cover and doorway openings.
+export const PICKUPS = [
+  { id: 'pickup-grenade-yard', type: 'grenade', x: -50, y: 1, z: 0, roomId: 'yard' },
+  { id: 'pickup-grenade-hall', type: 'grenade', x: 0, y: 1, z: 46, roomId: 'hall' },
+  { id: 'pickup-grenade-maze', type: 'grenade', x: 38, y: 1, z: 0, roomId: 'maze' },
+  { id: 'pickup-grenade-warren', type: 'grenade', x: 0, y: 1, z: -36, roomId: 'warren' },
+  { id: 'pickup-grenade-bazaar', type: 'grenade', x: 38, y: 1, z: 42, roomId: 'bazaar' },
+];
 
-// U1 spike verdict (docs/plans/2026-08-06-001-feat-wayfinding-minimap-plan.md):
+// KTD3: a reserved coordinate only -- nothing renders and no minimap marker
+// exists yet. Clearance-validated the same way a pickup is (clear of the
+// landmark pillar and every landmark doorway opening); the flag pass adds
+// the visible objective on top of this same descriptor.
+export const FLAG_SITE = { id: 'flag-site-landmark', x: -7, y: 1, z: 7, roomId: 'landmark' };
+
+// KTD1: the outer footprint stays one bigger square -- a single scalar
+// computed as the bounding half-size over every wall segment, so districts
+// can grow or move without this ever drifting out of sync or needing a
+// hand-updated constant.
+const WALL_MARGIN = 4; // clearance beyond the outermost wall face before the boundary floor/skybox
+export const FLOOR_HALF_SIZE = Math.max(
+  ...WALLS.map((w) => Math.max(Math.abs(w.x) + w.halfX, Math.abs(w.z) + w.halfZ))
+) + WALL_MARGIN;
+
 // Okabe-Ito colorblind-safe subset, no blue member (the fog is pale blue --
-// R6). Lives here, not in arenaMesh.js or minimap.js individually, so world
-// accents (KTD3) and the map's room-cell tints (R4) can never disagree about
-// what a room's colour is (KTD6's one-dataset principle). Central stays
-// neutral (R5) and has no entry.
+// R6): the original four hues plus yellow, the palette ceiling (KTD4) that
+// caps this pass at five accented districts. Landmark and every corridor/
+// spoke stay neutral (R5) and have no entry.
 export const ROOM_ACCENTS = {
-  nw: 0xe69f00,
-  ne: 0xd55e00,
-  se: 0xcc79a7,
-  sw: 0x009e73,
+  yard: 0xe69f00,
+  hall: 0xd55e00,
+  maze: 0xcc79a7,
+  warren: 0x009e73,
+  bazaar: 0xf0e442,
 };
 
-// The neutral material/cell colour for corridors, spokes, and the central
+// The neutral material/cell colour for corridors, spokes, and the landmark
 // room -- shared for the same reason as ROOM_ACCENTS above (arenaMesh.js's
 // wall material and minimap.js's neutral cell tint must agree, not carry two
 // independently-hardcoded copies of the same value).
 export const NEUTRAL_ACCENT_COLOR = 0xa89f8a;
-
-// Map pickups (R5, KD4): the machine gun spawns in the central landmark
-// room; one grenade pickup sits in each corner room. Hand-placed the same
-// way SPAWN_POINTS above is -- clear of that room's own pillar(s) and clear
-// of its doorway openings (a diagonal offset from the room centre, away from
-// both of that room's doorway walls, keeps well clear of both at once) --
-// and validated the same way in layout.test.js. `type` decides what the
-// pickup grants (src/sim/pickups.js); `roomId` is for the render layer and
-// debugging, not gameplay logic.
-export const PICKUPS = [
-  { id: 'pickup-mg-central', type: MACHINEGUN_WEAPON_ID, x: 5, y: 1, z: 5, roomId: 'central' },
-  { id: 'pickup-grenade-nw', type: 'grenade', x: nw.x - 6, y: 1, z: nw.z + 6, roomId: 'nw' },
-  { id: 'pickup-grenade-ne', type: 'grenade', x: ne.x + 6, y: 1, z: ne.z + 6, roomId: 'ne' },
-  { id: 'pickup-grenade-se', type: 'grenade', x: se.x + 6, y: 1, z: se.z - 6, roomId: 'se' },
-  { id: 'pickup-grenade-sw', type: 'grenade', x: sw.x - 6, y: 1, z: sw.z - 6, roomId: 'sw' },
-];
 
 export const LAYOUT = {
   rooms: ROOMS,
@@ -288,6 +358,7 @@ export const LAYOUT = {
   pillars: PILLARS,
   spawnPoints: SPAWN_POINTS,
   pickups: PICKUPS,
+  flagSite: FLAG_SITE,
   floorHalfSize: FLOOR_HALF_SIZE,
   wallHeight: WALL_HEIGHT,
 };

@@ -39,7 +39,7 @@ describe('gatherCommands', () => {
     const inputSampler = { sample: () => ({ tick: 0 }) };
     const sim = fakeSim({
       [LOCAL_PLAYER_ID]: { position: { x: 0, y: 0, z: 0 }, dead: false },
-      bot0: { position: { x: 1, y: 0, z: 1 }, dead: false, health: 100, heldWeapon: 'pistol' },
+      bot0: { position: { x: 1, y: 0, z: 1 }, dead: false, health: 100, heldWeapon: 'machinegun' },
     });
 
     const commands = gatherCommands({ sim, bots: [botEntry], inputSampler });
@@ -53,7 +53,7 @@ describe('gatherCommands', () => {
     const inputSampler = { sample: () => ({ tick: 0 }) };
     const sim = fakeSim({
       [LOCAL_PLAYER_ID]: { position: { x: 0, y: 0, z: 0 }, dead: false },
-      bot0: { position: { x: 1, y: 0, z: 1 }, dead: false, health: 100, heldWeapon: 'pistol' },
+      bot0: { position: { x: 1, y: 0, z: 1 }, dead: false, health: 100, heldWeapon: 'machinegun' },
     });
 
     const commands = gatherCommands({ sim, bots: [botEntry], inputSampler });
@@ -67,7 +67,7 @@ describe('gatherCommands', () => {
     const inputSampler = { sample: () => ({ tick: 0 }) };
     const sim = fakeSim({
       [LOCAL_PLAYER_ID]: { position: { x: 0, y: 0, z: 0 }, dead: false },
-      bot0: { position: { x: 1, y: 0, z: 1 }, dead: true, health: 0, heldWeapon: 'pistol' },
+      bot0: { position: { x: 1, y: 0, z: 1 }, dead: true, health: 0, heldWeapon: 'machinegun' },
     });
 
     const commands = gatherCommands({ sim, bots: [botEntry], inputSampler });
@@ -98,11 +98,11 @@ describe('gatherCommands', () => {
     const botPosition = { x: 1, y: 0, z: 1 };
     const sim = fakeSim({
       [LOCAL_PLAYER_ID]: { position: playerPosition, dead: false },
-      bot0: { position: botPosition, dead: false, health: 42, heldWeapon: 'pistol' },
+      bot0: { position: botPosition, dead: false, health: 42, heldWeapon: 'machinegun' },
     });
 
     gatherCommands({ sim, bots: [botEntry], inputSampler });
 
-    expect(botEntry.bot.sample).toHaveBeenCalledWith(botPosition, playerPosition, 42, 'pistol', true);
+    expect(botEntry.bot.sample).toHaveBeenCalledWith(botPosition, playerPosition, 42, 'machinegun', true);
   });
 });

@@ -6,8 +6,7 @@ import {
   findRoomAt,
   roomTint,
 } from '../../src/ui/minimap.js';
-
-const FLOOR_HALF_SIZE = 34; // matches the real arena (layout.js's FLOOR_HALF_SIZE)
+import { FLOOR_HALF_SIZE } from '../../src/arena/layout.js';
 
 describe('minimap: projectToMap (R3, KTD2 -- built on the sim forward basis)', () => {
   // Mirrors movement.js's own convention (forward = sin(yaw), cos(yaw)) and
@@ -99,33 +98,33 @@ describe('minimap: computeMarkerPosition', () => {
 
 describe('minimap: findRoomAt / roomTint (R4, AE4)', () => {
   const ROOMS = [
-    { id: 'nw', x: -26, z: 26, halfX: 8, halfZ: 8 },
-    { id: 'central', x: 0, z: 0, halfX: 10, halfZ: 10 },
+    { id: 'yard', x: -40, z: 0, halfX: 12, halfZ: 10 },
+    { id: 'landmark', x: 0, z: 0, halfX: 11, halfZ: 11 },
   ];
 
-  it('covers AE4: returns the room containing the player, whose tint matches the palette', () => {
-    const room = findRoomAt({ x: -30, z: 22 }, ROOMS);
-    expect(room?.id).toBe('nw');
+  it('covers AE4: returns the district containing the player, whose tint matches the palette', () => {
+    const room = findRoomAt({ x: -44, z: 4 }, ROOMS);
+    expect(room?.id).toBe('yard');
     expect(roomTint(room)).toBe('#e69f00');
   });
 
-  // sw's accent (0x009e73) is the one ROOM_ACCENTS value whose hex string is
-  // shorter than 6 digits before padding ('9e73') -- every other accent
-  // already happens to produce 6 digits unpadded, so this is the only case
-  // that actually exercises padStart's zero-padding.
+  // warren's accent (0x009e73) is the one ROOM_ACCENTS value whose hex
+  // string is shorter than 6 digits before padding ('9e73') -- every other
+  // accent already happens to produce 6 digits unpadded, so this is the
+  // only case that actually exercises padStart's zero-padding.
   it('pads a leading-zero-byte accent to a full 6-digit hex color', () => {
-    expect(roomTint({ id: 'sw' })).toBe('#009e73');
+    expect(roomTint({ id: 'warren' })).toBe('#009e73');
   });
 
-  it('returns null, and a neutral tint, for a position in a corridor (outside every room)', () => {
-    const room = findRoomAt({ x: 0, z: 26 }, ROOMS); // top corridor midpoint -- not inside any listed room
+  it('returns null, and a neutral tint, for a position in a corridor (outside every district)', () => {
+    const room = findRoomAt({ x: 0, z: 20 }, ROOMS); // between yard and landmark -- not inside either listed room
     expect(room).toBeNull();
     expect(roomTint(room)).toBe('#a89f8a');
   });
 
-  it('returns a neutral tint for the central room -- no accent (R5)', () => {
+  it('returns a neutral tint for the landmark room -- no accent (R5)', () => {
     const room = findRoomAt({ x: 0, z: 0 }, ROOMS);
-    expect(room?.id).toBe('central');
+    expect(room?.id).toBe('landmark');
     expect(roomTint(room)).toBe('#a89f8a');
   });
 });

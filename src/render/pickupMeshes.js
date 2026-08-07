@@ -4,9 +4,8 @@
 // main.js already uses for bot meshes -- deliberately not effect-pooling
 // (KTD7): a pickup mesh exists for the whole match, it just hides.
 import * as THREE from 'three';
-import { MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
 import { loadPropModel, disposeObject3D } from './models.js';
-import { GRENADE_MODEL, MACHINEGUN_PICKUP_MODEL } from './modelAssets.js';
+import { GRENADE_MODEL } from './modelAssets.js';
 
 const PICKUP_HALF_SIZE = 0.4;
 // Lifts the box above the pickup's ground-level descriptor position so it
@@ -19,7 +18,6 @@ const PICKUP_Y_OFFSET = 0.5;
 // instantly so a slow or failed model load (R18) never leaves a pickup
 // invisible; the real model swaps this out once it arrives.
 const PICKUP_COLOR_BY_TYPE = {
-  [MACHINEGUN_WEAPON_ID]: 0xd55e00,
   grenade: 0x2f8f5a,
 };
 const DEFAULT_PICKUP_COLOR = 0xffffff;
@@ -27,7 +25,6 @@ const DEFAULT_PICKUP_COLOR = 0xffffff;
 // Which real-asset descriptor (modelAssets.js) replaces a given pickup
 // type's placeholder box, once loaded.
 const PICKUP_MODEL_BY_TYPE = {
-  [MACHINEGUN_WEAPON_ID]: MACHINEGUN_PICKUP_MODEL,
   grenade: GRENADE_MODEL,
 };
 

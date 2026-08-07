@@ -76,14 +76,13 @@ THREE.AudioContext.setContext({
 // decoded AudioBuffer.
 THREE.AudioLoader.prototype.load = (url, onLoad) => onLoad({ url });
 
-// U5: the default/pistol pool, the machine gun's own pool, and the
-// explosion's own pool are three disjoint URL lists by default -- every test
-// using this helper can tell which pool a played buffer came from by its
-// URL, the same way the real per-set buffer pools in gunshots.js do. Callers
-// that want to exercise the "a set's own pool hasn't loaded" fallback path
-// pass e.g. `{ machinegunUrls: [] }` to blank out just that set.
+// The machine gun's own pool and the explosion's own pool are two disjoint
+// URL lists by default -- every test using this helper can tell which pool a
+// played buffer came from by its URL, the same way the real per-set buffer
+// pools in gunshots.js do. Callers that want to exercise the "a set's own
+// pool hasn't loaded" fallback path pass e.g. `{ machinegunUrls: [] }` to
+// blank out just that set.
 async function createLoadedGunshotAudio({
-  pistolUrls = ['a.ogg', 'b.ogg', 'c.ogg'],
   machinegunUrls = ['mg-a.ogg', 'mg-b.ogg', 'mg-c.ogg'],
   explosionUrls = ['boom-000.ogg'],
 } = {}) {
@@ -92,7 +91,7 @@ async function createLoadedGunshotAudio({
   const gunshots = createGunshotAudio({
     camera,
     scene,
-    soundSetUrls: { pistol: pistolUrls, machinegun: machinegunUrls, explosion: explosionUrls },
+    soundSetUrls: { machinegun: machinegunUrls, explosion: explosionUrls },
   });
   // Flushes the Promise.all(...).then(...) chain createGunshotAudio kicks off
   // to load buffers and build its voices -- two microtask turns covers it,
@@ -154,14 +153,12 @@ describe('resolveSoundSet (KTD8: named per-weapon sound sets)', () => {
     expect(resolveSoundSet('machinegun')).toBe('machinegun');
   });
 
-  it('falls back to the pistol set for the pistol id, an unknown id, or no id at all', () => {
-    expect(resolveSoundSet('pistol')).toBe('pistol');
-    expect(resolveSoundSet('unknown-weapon')).toBe('pistol');
-    expect(resolveSoundSet(undefined)).toBe('pistol');
+  it('falls back to the default set for an unknown id or no id at all', () => {
+    expect(resolveSoundSet('unknown-weapon')).toBe('machinegun');
+    expect(resolveSoundSet(undefined)).toBe('machinegun');
   });
 
-  it('U5: plays every weapon set at its own natural rate -- both are real, distinct samples now, not one pitched to fake the other', () => {
-    expect(WEAPON_SOUND_SETS.pistol.playbackRate).toBe(1);
+  it('plays the machine gun at its own sample\'s natural rate', () => {
     expect(WEAPON_SOUND_SETS.machinegun.playbackRate).toBe(1);
   });
 });
@@ -169,16 +166,16 @@ describe('resolveSoundSet (KTD8: named per-weapon sound sets)', () => {
 describe('pickVariantForSet', () => {
   it('tracks an independent cursor per set id, never repeating within the same set even when calls interleave', () => {
     const cursors = new Map();
-    let lastPistol = null;
     let lastMg = null;
+    let lastExplosion = null;
     for (let i = 0; i < 20; i++) {
-      const pistolIndex = pickVariantForSet(cursors, 'pistol', 3, Math.random());
-      if (lastPistol !== null) expect(pistolIndex).not.toBe(lastPistol);
-      lastPistol = pistolIndex;
-
       const mgIndex = pickVariantForSet(cursors, 'machinegun', 3, Math.random());
       if (lastMg !== null) expect(mgIndex).not.toBe(lastMg);
       lastMg = mgIndex;
+
+      const explosionIndex = pickVariantForSet(cursors, 'explosion', 3, Math.random());
+      if (lastExplosion !== null) expect(explosionIndex).not.toBe(lastExplosion);
+      lastExplosion = explosionIndex;
     }
   });
 });
@@ -198,7 +195,7 @@ describe('audioContextAction', () => {
   });
 });
 
-describe('EXPLOSION_SOUND (U5: real sample, natural playback rate)', () => {
+describe('EXPLOSION_SOUND (real sample, natural playback rate)', () => {
   it('plays at its own sample\'s natural rate -- the 0.45x pitched-placeholder trick is gone', () => {
     expect(EXPLOSION_SOUND.playbackRate).toBe(1);
   });
@@ -223,7 +220,7 @@ describe('createGunshotAudio: setRunning stops retrying a failing resume() (#11)
     try {
       const camera = new THREE.PerspectiveCamera();
       const scene = new THREE.Scene();
-      const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { pistol: ['a.ogg'] }, onError });
+      const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { machinegun: ['a.ogg'] }, onError });
 
       gunshots.unlock();
       await Promise.resolve(); // let unlock's own resume() rejection settle
@@ -266,7 +263,7 @@ describe('createGunshotAudio: unlock() reports its own resume() failure (U23)', 
     try {
       const camera = new THREE.PerspectiveCamera();
       const scene = new THREE.Scene();
-      const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { pistol: ['a.ogg'] }, onError });
+      const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { machinegun: ['a.ogg'] }, onError });
 
       gunshots.unlock();
       await Promise.resolve(); // let unlock's own resume() rejection settle
@@ -303,7 +300,7 @@ describe('createGunshotAudio: a stalled buffer load times out instead of hanging
       createGunshotAudio({
         camera,
         scene,
-        soundSetUrls: { pistol: ['a.ogg', 'stuck.ogg', 'b.ogg'] },
+        soundSetUrls: { machinegun: ['a.ogg', 'stuck.ogg', 'b.ogg'] },
         onError,
       });
 
@@ -331,15 +328,15 @@ describe('createGunshotAudio: sound sets settle and build voices independently, 
 
   // A code-review regression: voice construction used to run inside one
   // Promise.all over every set, gated on DEFAULT_SOUND_SET_ID's own pool
-  // specifically -- so a failed pistol load silenced a machine gun or
-  // explosion sample that loaded fine right alongside it.
-  it('still builds voices and plays a healthy set when the default (pistol) set comes up empty', async () => {
+  // specifically -- so a failed load in one set silenced a sibling set that
+  // loaded fine right alongside it.
+  it('still builds voices and plays a healthy machine-gun set when the explosion set comes up empty', async () => {
     const camera = new THREE.PerspectiveCamera();
     const scene = new THREE.Scene();
     const gunshots = createGunshotAudio({
       camera,
       scene,
-      soundSetUrls: { pistol: [], machinegun: ['mg-a.ogg'] },
+      soundSetUrls: { machinegun: ['mg-a.ogg'], explosion: [] },
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -352,13 +349,13 @@ describe('createGunshotAudio: sound sets settle and build voices independently, 
 
   // The other half of the same regression: one Promise.all spanning every
   // set meant a slow/stalled URL in a non-default set held up voice
-  // construction -- and therefore playback -- for the pistol pool too, even
-  // though the pistol's own files had already loaded.
+  // construction -- and therefore playback -- for a set that had already
+  // loaded fine.
   it('does not wait on a stalled sibling set before playing an already-loaded set', async () => {
     vi.useFakeTimers();
     const originalLoad = THREE.AudioLoader.prototype.load;
     THREE.AudioLoader.prototype.load = (url, onLoad) => {
-      if (url === 'mg-stuck.ogg') return; // never settles within this test
+      if (url === 'boom-stuck.ogg') return; // never settles within this test
       onLoad({ url });
     };
 
@@ -368,17 +365,17 @@ describe('createGunshotAudio: sound sets settle and build voices independently, 
       const gunshots = createGunshotAudio({
         camera,
         scene,
-        soundSetUrls: { pistol: ['a.ogg'], machinegun: ['mg-stuck.ogg'] },
+        soundSetUrls: { machinegun: ['mg-a.ogg'], explosion: ['boom-stuck.ogg'] },
       });
-      // Flushes only the already-resolved pistol load's microtask chain --
-      // well short of BUFFER_LOAD_TIMEOUT_MS, so the machine gun's set is
-      // still pending when this assertion runs.
+      // Flushes only the already-resolved machine-gun load's microtask
+      // chain -- well short of BUFFER_LOAD_TIMEOUT_MS, so the explosion set
+      // is still pending when this assertion runs.
       await vi.advanceTimersByTimeAsync(0);
 
-      gunshots.playAt({ x: 0, y: 0, z: 0 }, 'pistol');
+      gunshots.playAt({ x: 0, y: 0, z: 0 }, 'machinegun');
       const [voice] = positionalAudioChildren(scene).filter((v) => v.isPlaying);
       expect(voice).toBeDefined();
-      expect(voice.buffer.url).toBe('a.ogg');
+      expect(voice.buffer.url).toBe('mg-a.ogg');
     } finally {
       THREE.AudioLoader.prototype.load = originalLoad;
     }
@@ -389,13 +386,13 @@ describe('createGunshotAudio: playExplosion', () => {
   it('does nothing before buffers have loaded (no explosion voice exists yet)', () => {
     const camera = new THREE.PerspectiveCamera();
     const scene = new THREE.Scene();
-    const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { pistol: ['a.ogg'] } });
+    const gunshots = createGunshotAudio({ camera, scene, soundSetUrls: { machinegun: ['a.ogg'] } });
 
     expect(() => gunshots.playExplosion({ x: 0, y: 0, z: 0 })).not.toThrow();
     expect(positionalAudioChildren(scene)).toHaveLength(0);
   });
 
-  it('U5: plays a positional voice at the blast center, picked from the explosion\'s own real buffer pool -- not the gunshot pool', async () => {
+  it('plays a positional voice at the blast center, picked from the explosion\'s own real buffer pool -- not the gunshot pool', async () => {
     const { gunshots, scene } = await createLoadedGunshotAudio();
 
     gunshots.playExplosion({ x: 5, y: 1, z: -2 });
@@ -405,9 +402,9 @@ describe('createGunshotAudio: playExplosion', () => {
     const [voice] = playing;
     expect(voice.position).toEqual(new THREE.Vector3(5, 1, -2));
     // Its own pool (`explosionUrls` in the helper above), disjoint from the
-    // gunshot pool -- U5 replaced "the gunshot buffers, pitched down" with a
-    // real, separate sample, so a buffer picked from the gunshot list here
-    // would itself be a regression.
+    // gunshot pool -- a real, separate sample, not the gunshot buffers
+    // pitched down, so a buffer picked from the gunshot list here would
+    // itself be a regression.
     expect(voice.buffer.url).toBe('boom-000.ogg');
     expect(voice.getPlaybackRate()).toBe(EXPLOSION_SOUND.playbackRate);
   });
@@ -415,11 +412,11 @@ describe('createGunshotAudio: playExplosion', () => {
   it('is louder and farther-reaching than a regular gunshot voice (R11)', async () => {
     const { gunshots, scene } = await createLoadedGunshotAudio();
 
-    gunshots.playAt({ x: 0, y: 0, z: 0 }, 'pistol');
+    gunshots.playAt({ x: 0, y: 0, z: 0 }, 'machinegun');
     // Untouched pooled voices still have buffer === null (never played) --
     // guard with ?. rather than assuming every voice has one by this point.
     const [gunshotVoice] = positionalAudioChildren(scene).filter((voice) =>
-      ['a.ogg', 'b.ogg', 'c.ogg'].includes(voice.buffer?.url)
+      ['mg-a.ogg', 'mg-b.ogg', 'mg-c.ogg'].includes(voice.buffer?.url)
     );
 
     gunshots.playExplosion({ x: 0, y: 0, z: 0 });
@@ -441,7 +438,7 @@ describe('createGunshotAudio: playExplosion', () => {
     // wrap the cursor back around, plays every pooled voice once and no more.
     const allVoices = positionalAudioChildren(scene);
     const poolSize = allVoices.length - 1; // the pool, plus the one dedicated explosion voice
-    for (let i = 0; i < poolSize; i++) gunshots.playAt({ x: i, y: 0, z: 0 }, 'pistol');
+    for (let i = 0; i < poolSize; i++) gunshots.playAt({ x: i, y: 0, z: 0 }, 'machinegun');
 
     const untouchedByGunfire = allVoices.filter((voice) => !voice.isPlaying);
     expect(untouchedByGunfire).toHaveLength(1); // exactly the explosion voice -- playAt's cursor never reached it
@@ -460,37 +457,46 @@ describe('createGunshotAudio: playExplosion', () => {
   });
 });
 
-describe('createGunshotAudio: per-weapon-set buffer pools (U5, R3/R4)', () => {
-  it('plays the machine gun through its own real buffer pool, not the pistol\'s', async () => {
-    const { gunshots, scene } = await createLoadedGunshotAudio();
-
-    gunshots.playAt({ x: 0, y: 0, z: 0 }, 'machinegun');
-
-    const [voice] = positionalAudioChildren(scene).filter((v) => v.isPlaying);
-    expect(['mg-a.ogg', 'mg-b.ogg', 'mg-c.ogg']).toContain(voice.buffer.url);
-  });
-
-  it('loader fallback holds: falls back to the pistol pool when the machine gun\'s own sample has not loaded', async () => {
-    // No entry for 'machinegun' in soundSetUrls at all -- the shape a caller
-    // gets before main.js is wired to pass real MG sample URLs, or if that
-    // load fails/times out. playAt('machinegun') must still produce sound
-    // (R18: a load failure leaves the game silent but playable, never
-    // silently dropping fire the player pressed the trigger for) rather than
+describe('createGunshotAudio: per-weapon-set buffer pools (R3/R4)', () => {
+  it('falls back to the default (machine-gun) pool for the explosion when its own sample has not loaded', async () => {
+    // No entry for 'explosion' in soundSetUrls at all -- the shape a caller
+    // gets before main.js is wired to pass real explosion sample URLs, or if
+    // that load fails/times out. playExplosion must still produce sound
+    // (R18: a load failure leaves the game silent but playable) rather than
     // picking from an empty pool.
-    const { gunshots, scene } = await createLoadedGunshotAudio({ machinegunUrls: [] });
-
-    gunshots.playAt({ x: 0, y: 0, z: 0 }, 'machinegun');
-
-    const [voice] = positionalAudioChildren(scene).filter((v) => v.isPlaying);
-    expect(['a.ogg', 'b.ogg', 'c.ogg']).toContain(voice.buffer.url);
-  });
-
-  it('loader fallback holds: falls back to the pistol pool for the explosion when its own sample has not loaded', async () => {
     const { gunshots, scene } = await createLoadedGunshotAudio({ explosionUrls: [] });
 
     gunshots.playExplosion({ x: 0, y: 0, z: 0 });
 
     const [voice] = positionalAudioChildren(scene).filter((v) => v.isPlaying);
-    expect(['a.ogg', 'b.ogg', 'c.ogg']).toContain(voice.buffer.url);
+    expect(['mg-a.ogg', 'mg-b.ogg', 'mg-c.ogg']).toContain(voice.buffer.url);
+  });
+
+  // Regression: DEFAULT_SOUND_SET_ID now resolves to the machine gun itself
+  // (today's only weapon), so a failed MG load has no sibling weapon pool
+  // left to fall back to the way a failed pistol load once did. This must
+  // degrade to R18's baseline -- silent, never a crash -- not throw when
+  // the player or a bot fires while the MG's own samples never arrived.
+  it("degrades to silence without throwing when the machine gun's own samples fail to load, even with a healthy sibling set", async () => {
+    const originalLoad = THREE.AudioLoader.prototype.load;
+    THREE.AudioLoader.prototype.load = (url, onLoad, onProgress, onLoadError) => {
+      if (url.startsWith('mg-')) return onLoadError(new Error('mg sample failed'));
+      onLoad({ url });
+    };
+
+    try {
+      const { gunshots, scene } = await createLoadedGunshotAudio();
+
+      expect(() => gunshots.playAt({ x: 0, y: 0, z: 0 }, 'machinegun')).not.toThrow();
+      expect(() => gunshots.playLocal('machinegun')).not.toThrow();
+      // No MG sample ever loaded, so nothing plays a real MG buffer.
+      expect(positionalAudioChildren(scene).every((v) => v.buffer?.url !== 'mg-a.ogg')).toBe(true);
+      // The explosion set -- a real sibling pool, unaffected by the MG's
+      // own failure -- still works.
+      gunshots.playExplosion({ x: 1, y: 1, z: 1 });
+      expect(positionalAudioChildren(scene).some((v) => v.isPlaying && v.buffer?.url === 'boom-000.ogg')).toBe(true);
+    } finally {
+      THREE.AudioLoader.prototype.load = originalLoad;
+    }
   });
 });

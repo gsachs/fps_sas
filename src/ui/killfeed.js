@@ -15,9 +15,9 @@ const ENTRY_DIM_AFTER_SECONDS = 2; // remaining time at which an entry starts di
 // R7: killer <weapon glyph> victim -- the glyph stands in for a worded
 // sentence (KD2), so it carries the weapon identity by itself. Exact
 // characters are tunable (U3); an id with no entry here (or none supplied
-// yet, pre-armory) falls back to the pistol's.
+// yet) falls back to the default weapon's (KTD2: a minimal seam for the
+// deferred weapon-archetypes pass).
 const WEAPON_GLYPHS = {
-  [DEFAULT_WEAPON_ID]: '▸',
   [MACHINEGUN_WEAPON_ID]: '≫',
   grenade: '💥',
 };

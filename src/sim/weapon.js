@@ -12,41 +12,26 @@ const HITSCAN_MAX_DISTANCE = 100;
 // Per-weapon behavior (KTD1): every weapon resolves from this registry by
 // the shooting entity's `heldWeapon`, so one weapon system serves every
 // weapon instead of branching per type. `heldFire` picks which Command field
-// gates the trigger (KTD2): the pistol stays on the edge latch (`fire`), the
-// machine gun reads the continuous level (`fireHeld`) so it keeps firing
-// every cooldown window the trigger stays down. `spread` jitters the fire
-// angle per shot (see resolveFire); `maxAmmo` is what an eventual pickup
-// grants (U3) -- only the machine gun carries one, since the pistol is
-// infinite.
-const PISTOL_COOLDOWN_TICKS = 6; // ~10 shots/sec at a 60Hz tick rate
-const PISTOL_DAMAGE = 20;
-const PISTOL_SPREAD_RADIANS = 0;
-
-const MACHINEGUN_COOLDOWN_TICKS = 2; // ~30 shots/sec: faster than the pistol
-const MACHINEGUN_DAMAGE = 12; // less per shot than the pistol; DPS wins on rate
+// gates the trigger (KTD2): a held-fire weapon reads the continuous level
+// (`fireHeld`) so it keeps firing every cooldown window the trigger stays
+// down; an edge-fire weapon would gate on the discrete press (`fire`)
+// instead -- no weapon currently uses that shape, but the branch stays live
+// as a registry seam for the deferred weapon-archetypes pass (R6/R7's
+// "arena now, flag next" plan: KTD2). `spread` jitters the fire angle per
+// shot (see resolveFire).
+const MACHINEGUN_COOLDOWN_TICKS = 2; // ~30 shots/sec
+const MACHINEGUN_DAMAGE = 12;
 export const MACHINEGUN_SPREAD_RADIANS = 0.03;
-// Placeholder magazine size (U2): finite enough to force the auto-revert
-// loop within a short spray so the loop is playable today; real balance is
-// U6's job once the pickup economy (U3) exists to make "how often can I
-// refill" part of the tuning question.
-export const MACHINEGUN_MAX_AMMO = 48;
 
 const WEAPON_CONFIGS = {
-  pistol: {
-    cooldownTicks: PISTOL_COOLDOWN_TICKS,
-    damage: PISTOL_DAMAGE,
-    spread: PISTOL_SPREAD_RADIANS,
-    heldFire: false,
-  },
   machinegun: {
     cooldownTicks: MACHINEGUN_COOLDOWN_TICKS,
     damage: MACHINEGUN_DAMAGE,
     spread: MACHINEGUN_SPREAD_RADIANS,
     heldFire: true,
-    maxAmmo: MACHINEGUN_MAX_AMMO,
   },
 };
-export const DEFAULT_WEAPON_ID = 'pistol'; // entities with no heldWeapon field fire as today's pistol
+export const DEFAULT_WEAPON_ID = 'machinegun'; // R6: every entity's default, infinite weapon
 export const MACHINEGUN_WEAPON_ID = 'machinegun'; // sibling id constant (U12): every other module imports this instead of re-typing the literal
 
 // Whether `weaponId` fires on the Command's held-fire level rather than its
@@ -59,14 +44,13 @@ export function isHeldFireWeapon(weaponId) {
 export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks, random = Math.random }) {
   const remainingCooldown = new Map(); // entityId -> ticks left before next shot allowed
 
-  // A ctor-level cooldown override forces only the pistol's cooldown (fast
-  // test iteration, e.g. cooldownTicks: 0) -- the machine gun keeps its own
-  // registry entry regardless, so overriding one weapon never masks the
-  // other's config.
+  // A ctor-level cooldown override forces the machine gun's cooldown (fast
+  // test iteration, e.g. cooldownTicks: 0) without touching its other
+  // config fields.
   const weaponConfigs =
     cooldownTicks === undefined
       ? WEAPON_CONFIGS
-      : { ...WEAPON_CONFIGS, pistol: { ...WEAPON_CONFIGS.pistol, cooldownTicks } };
+      : { ...WEAPON_CONFIGS, machinegun: { ...WEAPON_CONFIGS.machinegun, cooldownTicks } };
 
   // Resolves a hitscan shot for `entity` if its command requests fire (edge
   // or held level, per the weapon's config) and its cooldown allows it.
@@ -82,20 +66,16 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks,
   // same config to apply a hit. `weapon` (R7) is the weapon id that fired
   // this shot, for the same callers to stamp onto the resulting kill event.
   function resolveFire(entity, command) {
-    // Captured before any mutation below (the auto-revert reassigns
-    // entity.heldWeapon later in this same function) -- R7's kill event
-    // needs the weapon that actually fired the shot, not whatever the
-    // entity holds by the time this returns.
     const weaponId = weaponConfigs[entity.heldWeapon] ? entity.heldWeapon : DEFAULT_WEAPON_ID;
     const config = weaponConfigs[weaponId];
 
     const cooldown = remainingCooldown.get(entity.id) ?? 0;
     if (cooldown > 0) remainingCooldown.set(entity.id, cooldown - 1);
 
-    // KTD2: the pistol keeps its edge-triggered latch (one press, one
-    // shot); a held-fire weapon (the machine gun) gates on the continuous
-    // level instead, so it keeps firing every cooldown window the trigger
-    // stays down -- no per-weapon branching beyond this one lookup.
+    // KTD2: a held-fire weapon (the machine gun) gates on the continuous
+    // level instead of the edge latch, so it keeps firing every cooldown
+    // window the trigger stays down -- no per-weapon branching beyond this
+    // one lookup.
     const triggerActive = config.heldFire ? command.buttons.fireHeld : command.buttons.fire;
     if (!triggerActive) return { fired: false, hitEntityId: null };
     if ((remainingCooldown.get(entity.id) ?? 0) > 0) return { fired: false, hitEntityId: null };
@@ -135,18 +115,6 @@ export function createWeaponSystem({ rapierWorld, movementSystem, cooldownTicks,
       y: origin.y + direction.y * distance,
       z: origin.z + direction.z * distance,
     };
-
-    // R1's auto-revert: a finite-ammo weapon (the machine gun) that just
-    // spent its last round returns the entity to the infinite pistol this
-    // same tick, no separate input needed -- entity.ammo returns to null so
-    // it still reads as "infinite" once heldWeapon is back to the pistol.
-    if (Number.isFinite(entity.ammo)) {
-      entity.ammo -= 1;
-      if (entity.ammo <= 0) {
-        entity.ammo = null;
-        entity.heldWeapon = DEFAULT_WEAPON_ID;
-      }
-    }
 
     return { fired: true, hitEntityId, origin, endPoint, damage: config.damage, weapon: weaponId };
   }

@@ -24,7 +24,6 @@ function makeArmedEntity(id, overrides = {}) {
     position: { x: 1, y: 1, z: 1 },
     animHint: 'idle',
     heldWeapon: 'machinegun',
-    ammo: 12,
     grenadeCount: 2,
     ...overrides,
   };
@@ -98,12 +97,12 @@ describe('resetMatch', () => {
     expect(teleportCalls[0].pos).not.toEqual(teleportCalls[1].pos);
   });
 
-  // AE4/R8 (U3's slice): every entity reverts to the pistol with an empty
-  // grenade pocket, and every pickup is restored -- asserted through
+  // AE4/R8 (U3's slice): every entity reverts to the default weapon with an
+  // empty grenade pocket, and every pickup is restored -- asserted through
   // resetMatch directly, extended with a fake pickupSystem the same way the
   // existing tests fake movementSystem/healthSystem.
-  it('reverts every entity to the pistol, empties the grenade pocket, and restores all pickups (AE4)', () => {
-    const entities = [makeArmedEntity('a'), makeArmedEntity('b', { heldWeapon: 'pistol', ammo: null, grenadeCount: 3 })];
+  it('reverts every entity to the default weapon, empties the grenade pocket, and restores all pickups (AE4)', () => {
+    const entities = [makeArmedEntity('a'), makeArmedEntity('b', { grenadeCount: 3 })];
     const accessor = createFakeEntityAccessor(entities);
     const rapierWorld = buildFlatRapierWorld();
     const spawnPoints = [
@@ -119,8 +118,7 @@ describe('resetMatch', () => {
 
     expect(resetAllCalls).toBe(1); // called once, not per-entity
     for (const entity of entities) {
-      expect(entity.heldWeapon).toBe('pistol');
-      expect(entity.ammo).toBeNull();
+      expect(entity.heldWeapon).toBe('machinegun');
       expect(entity.grenadeCount).toBe(0);
     }
   });

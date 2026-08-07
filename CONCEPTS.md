@@ -25,26 +25,27 @@ The map's rooms and doorways treated as nodes a Bot can plan a route across, wit
 ## Map
 
 ### Room
-A distinct, walled space in the arena — four corner rooms and one central landmark room, connected by a corridor loop so no reachable position sees the whole map. Rooms are told apart by interior landmark geometry (a pillar's presence, count, or placement) rather than differing footprints, so the outer wall perimeter stays a simple closed shape. Walls, rooms, doorways, pillars, and spawn points are all authored as one descriptor dataset (`src/arena/layout.js`) that both physics and rendering consume, so the two can never derive the map's shape differently.
+A distinct, walled space in the arena — the fixed central landmark room, or one of the five outlying Districts. Joined by a corridor web of spokes (landmark to district), a perimeter chain linking district to district, and cross-cuts that bypass the landmark entirely, so no single circuit is the default way around and no reachable position sees the whole map. Walls, rooms, doorways, pillars, and spawn points are all authored as one descriptor dataset (`src/arena/layout.js`) that both physics and rendering consume, so the two can never derive the map's shape differently.
+
+### District
+One of the five outlying Rooms, each naming itself by its own structural grammar — a tight chamber warren, an open long-sightline yard, a pillared hall, a cover-block maze, or a scattered-cover bazaar — rather than a shared footprint told apart by landmark placement. Identifiable at a glance by structure alone; its Room Accent is a secondary, color-layer cue, never the primary one. The landmark room is deliberately not a District: it keeps a neutral, fixed-reference identity as the arena's one retained landmark.
 
 ### Doorway
-A gap cut into a room or corridor wall where two spaces connect — the only points where a Bot or player can cross between them. Every doorway is wide enough to pass through without the character controller snagging, and every room has at least two, so no space is a dead end a Bot or player can get trapped in.
+A gap cut into a room or corridor wall where two spaces connect — the only points where a Bot or player can cross between them. Every doorway is wide enough to pass through without the character controller snagging, and every space has at least two, so no space is a dead end a Bot or player can get trapped in.
 
 ### Minimap
 The player-only, always-on corner overlay showing the whole arena's layout and the player's own position and facing — never any other entity, in any state. It rotates player-up (the player's facing always points to the top) rather than staying fixed-north, so reading it never costs a mental rotation. The rotation pivots on the arena's own fixed center, not the player — the whole layout spins in place rather than panning to re-center on them, which is what lets a single circular frame keep the entire map visible at every rotation angle. The player's own marker is the one piece that doesn't spin with the layout: its position moves to track them, but its shape always points up.
 
 ### Room Accent
-The single accent color a corner Room owns, carried in the world through tinted wall/pillar surfaces plus trim strips at doorway thresholds — never a light, since a real per-room light would bleed through this arena's open-topped walls — and by the matching cell tint on the minimap. World and map share this one color language so naming your location is a glance, not a read. The central Room stays neutral and reads as the landmark reference. Accents live within the existing clean style: each room's color multiplies over the shared panel/composite surface texture rather than replacing it, so a room still names itself by hue at a glance with real material underneath it; no geometry or collider change. Enemy information never rides on wayfinding surfaces.
+The single accent color a District owns, carried in the world through tinted wall/pillar surfaces plus trim strips at doorway thresholds — never a light, since a real per-room light would bleed through this arena's open-topped walls — and by the matching cell tint on the minimap. World and map share this one color language so naming your location is a glance, not a read. The landmark room, and every corridor/spoke/link between districts, stays neutral. Accents live within the existing clean style: each district's color multiplies over the shared panel/composite surface texture rather than replacing it, so a district still names itself by hue at a glance with real material underneath it; no geometry or collider change. Enemy information never rides on wayfinding surfaces. Five hues is the palette ceiling — colorblind-safe and non-blue — which is why the arena caps at five accented districts.
 
 ## Combat & Items
 
 ### Armory Loop
-The room-control incentive created by weapons living on the map as respawning pickups: the machine gun spawns in the central landmark room, grenade pickups in corner rooms, and taken pickups return after a delay — so knowing and holding spawn rooms stays valuable all match. Bots join the loop only opportunistically (a bot takes the machine gun when its path crosses it); grenades are player-only.
+The room-control incentive created by grenades living on the map as a respawning pickup: one per outlying District, player-only, with a taken pickup returning after a delay — so knowing and holding a district's grenade spawn stays worth something all match. The machine gun carries no pickup of its own; every entity already holds it from the moment it spawns, so the loop today is scoped to grenades alone. The pickup/respawn system itself stays general-purpose, ready for whatever item a future pass adds to it.
 
 ### Gun Slot & Grenade Pocket
-The loadout model: one gun slot (infinite pistol by default; a picked-up machine gun auto-equips and auto-reverts to the pistol when its ammo runs dry — no switch input exists) plus a separate grenade pocket thrown with its own key. The two never share a slot, so a player can hold the machine gun and grenades simultaneously.
-
-Death empties the gun slot back to the pistol — the carrier's machine gun and its ammo are stripped the instant the carrier dies, regardless of what killed them, though the taken pickup's own respawn timer is unaffected by the death (it keeps counting down from when it was taken, independent of the carrier's fate). The grenade pocket is untouched by death and empties only on a full match reset.
+The loadout model: one gun slot, permanently the infinite machine gun — there is no other weapon to switch to, and no downgrade of any kind, ever — plus a separate grenade pocket thrown with its own key. The two never share a slot, so a player can hold the machine gun and grenades simultaneously. Death leaves the gun slot exactly as it was; only the grenade pocket is tracked per-life state, and even that survives death, emptying only on a full match reset.
 
 ## Match & Pacing
 
@@ -60,7 +61,7 @@ The automatic recovery of a single dead Entity after a short delay — restored 
 ## Presentation & Feedback
 
 ### Killfeed
-The under-score feed narrating every kill as killer ▸ victim with a weapon glyph — the player's kills gold, their death red, blast multi-kills stacking as one burst. It carries kill events only, never positions or health: the match becomes readable without the hunt-and-ambush partial-information pillar giving anything away. Entries dim, fade, and cap; the feed observes scoring and never affects it. A Match Reset clears every entry, so a restarted match always opens with an empty feed.
+The under-score feed narrating every kill as killer ≫ victim with a weapon glyph — the player's kills gold, their death red, blast multi-kills stacking as one burst. It carries kill events only, never positions or health: the match becomes readable without the hunt-and-ambush partial-information pillar giving anything away. Entries dim, fade, and cap; the feed observes scoring and never affects it. A Match Reset clears every entry, so a restarted match always opens with an empty feed.
 
 ### Impact Decal
 The bullet mark a hit leaves on a world surface, placed at the visible hit point and oriented to the surface's normal. Decals persist through the match under a cap (~200): below the cap nothing fades, and hits landing within a tight cluster on nearly the same spot dedupe into a single mark rather than stacking one per round; past the cap, the oldest fades out as a new one lands, keeping battle history bounded instead of growing forever. A Match Reset clears every decal, the same way it clears the killfeed. Purely presentational: they never affect physics, sensing, or gameplay.

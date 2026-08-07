@@ -18,15 +18,9 @@ export function formatRespawnCountdown(secondsRemaining) {
   return `Respawning in ${Math.max(0, Math.ceil(secondsRemaining))}s`;
 }
 
-// R9: MG ammo only shows while it is actually held -- the pistol's `ammo`
-// is null (infinite), which is exactly when there is nothing worth reading.
-// Empty string is this module's "hide me" signal (see update()'s toggle).
-export function formatAmmo(ammo) {
-  return Number.isFinite(ammo) ? `MG ${ammo}` : '';
-}
-
 // R9: the grenade count only shows above zero -- a player with none carried
-// has nothing to read either, same hide signal as formatAmmo.
+// has nothing to read either. Empty string is this module's "hide me"
+// signal (see update()'s toggle).
 export function formatGrenadeCount(grenadeCount) {
   return grenadeCount > 0 ? `Nades ${grenadeCount}` : '';
 }
@@ -43,12 +37,8 @@ export function createHud(container) {
 
   // R9: joins the bottom-left cluster, stacked above health -- the minimap
   // (src/ui/minimap.js) owns the bottom-right corner, so this side is free.
-  const ammoEl = document.createElement('div');
-  ammoEl.style.cssText = 'position:absolute;left:16px;bottom:48px;font-size:1.1rem;text-shadow:0 1px 3px #000;';
-  root.appendChild(ammoEl);
-
   const grenadeEl = document.createElement('div');
-  grenadeEl.style.cssText = 'position:absolute;left:16px;bottom:80px;font-size:1.1rem;text-shadow:0 1px 3px #000;';
+  grenadeEl.style.cssText = 'position:absolute;left:16px;bottom:48px;font-size:1.1rem;text-shadow:0 1px 3px #000;';
   root.appendChild(grenadeEl);
 
   const scoreEl = document.createElement('div');
@@ -85,17 +75,13 @@ export function createHud(container) {
     );
   }
 
-  function update({ health, score, dead, respawnSecondsRemaining, ammo, grenadeCount }) {
+  function update({ health, score, dead, respawnSecondsRemaining, grenadeCount }) {
     healthEl.textContent = formatHealth(health);
     scoreEl.textContent = formatScore(score);
     deathEl.style.display = dead ? 'flex' : 'none';
     if (dead) {
       deathEl.textContent = formatRespawnCountdown(respawnSecondsRemaining);
     }
-
-    const ammoText = formatAmmo(ammo);
-    ammoEl.style.display = ammoText ? 'block' : 'none';
-    ammoEl.textContent = ammoText;
 
     const grenadeText = formatGrenadeCount(grenadeCount);
     grenadeEl.style.display = grenadeText ? 'block' : 'none';

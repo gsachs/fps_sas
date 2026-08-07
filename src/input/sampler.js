@@ -20,8 +20,8 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
   const throwLatch = createFireLatch();
   // The held-fire level (KTD2): true for every tick between a fire-button
   // press and its release, read only by weapons whose config marks them
-  // held-fire. Distinct from fireLatch, which stays edge-triggered for the
-  // pistol regardless of how long the button stays down.
+  // held-fire. Distinct from fireLatch, which stays edge-triggered
+  // regardless of how long the button stays down.
   let fireHeld = false;
 
   function onMouseMove(event) {
@@ -47,18 +47,18 @@ export function createInputSampler({ lookSpeed = 0.0022 } = {}) {
   }
 
   // One discrete fire-button press (e.g. a mouse going down): queues the
-  // pistol's next edge-triggered shot (see createFireLatch) and starts the
-  // held-fire level for any weapon that reads it -- the trigger going down
-  // is both events at once, so both fire immediately with no extra
-  // cooldown-window gap.
+  // next edge-triggered shot (see createFireLatch) and starts the held-fire
+  // level for any weapon that reads it -- the trigger going down is both
+  // events at once, so both fire immediately with no extra cooldown-window
+  // gap.
   function onFirePressed() {
     fireLatch.press();
     fireHeld = true;
   }
 
   // The fire button coming back up: ends the held-fire level. Never touches
-  // fireLatch -- a pistol click's queued edge shot is unaffected by however
-  // quickly the button comes back up.
+  // fireLatch -- a queued edge shot is unaffected by however quickly the
+  // button comes back up.
   function onFireReleased() {
     fireHeld = false;
   }

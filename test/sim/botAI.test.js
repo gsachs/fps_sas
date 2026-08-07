@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { createCommand } from '../../src/sim/command.js';
 import { createArena } from '../../src/arena/arena.js';
-import { ROOMS, DOORWAYS } from '../../src/arena/layout.js';
+import { ROOMS, DOORWAYS, LAYOUT } from '../../src/arena/layout.js';
 import { createMovementSystem } from '../../src/sim/movement.js';
 import {
   transitionBotState,
@@ -340,7 +340,9 @@ describe('createBotAI: moves toward the player and fires once in range', () => {
     for (let i = 0; i < 120; i++) {
       const botPosition = rig.world.getEntity('bot').position;
       const command = bot.sample(botPosition, player, 100);
-      if (command.buttons.fire) firedAtLeastOnce = true;
+      // The machine gun is held-fire (KTD6): an attacking bot holds
+      // fireHeld, it never presses the edge latch.
+      if (command.buttons.fireHeld) firedAtLeastOnce = true;
       rig.world.step(new Map([['bot', command]]), 1 / 60);
     }
 
@@ -366,7 +368,7 @@ describe('createBotAI: line of sight gates firing', () => {
     let firedAtLeastOnce = false;
     for (let i = 0; i < 60; i++) {
       const command = bot.sample({ x: 0, y: 1, z: 0 }, player, 100);
-      if (command.buttons.fire) firedAtLeastOnce = true;
+      if (command.buttons.fireHeld) firedAtLeastOnce = true;
     }
 
     expect(firedAtLeastOnce).toBe(false);
@@ -424,7 +426,9 @@ describe('createBotAI: difficulty is tunable', () => {
 
       for (let tick = 1; tick <= 150; tick++) {
         const command = bot.sample({ x: 0, y: 1, z: 0 }, player, 100);
-        if (command.buttons.fire) return tick;
+        // The machine gun is held-fire (KTD6): reaction delay gates when
+        // fireHeld first goes true, not an edge-latched press.
+        if (command.buttons.fireHeld) return tick;
       }
       return Infinity;
     }
@@ -470,44 +474,42 @@ describe('createBotAI: difficulty is tunable', () => {
 });
 
 describe('createBotAI: weapon-aware fire cadence (KTD6)', () => {
-  it('an MG-holding bot fires far more often than a pistol-holding bot over the same window, tracking each weapon\'s real cooldown', () => {
+  it('an attacking bot fires at the machine gun\'s real cooldown rate, not gated by this module\'s own fire-interval constant', () => {
     // Counts real 'fire' events off world.step() (not landed hits) -- MG
     // spread jitters direction with real randomness, which would make a
     // hit-count assertion flaky; the fire rate itself is deterministic given
     // a fixed AI random source, so that's what this proves (KTD6 is about
-    // cadence, not accuracy).
-    function shotsFiredOverWindow(heldWeapon, ticks) {
-      const rig = buildBotRig({ cooldownTicks: 6 }); // the pistol's real cadence, not the rig's fast-test default
-      addEntity(rig, 'bot', { x: 0, y: 1, z: 0 });
-      addEntity(rig, 'target', { x: 0, y: 1, z: ATTACK_RANGE - 2 });
-      rig.world.getEntity('bot').heldWeapon = heldWeapon;
-      if (heldWeapon === 'machinegun') rig.world.getEntity('bot').ammo = 1000; // isolates cadence from the revert
-      rig.movementSystem.commit();
+    // cadence, not accuracy). isHeldFireWeapon(heldWeapon) is true for the
+    // machine gun, so fsm.js's FIRE_INTERVAL_TICKS (45) never gates it --
+    // weapon.js's own per-tick cooldown is the only rate limiter.
+    const rig = buildBotRig({ cooldownTicks: 2 }); // the machine gun's real cadence
+    addEntity(rig, 'bot', { x: 0, y: 1, z: 0 });
+    addEntity(rig, 'target', { x: 0, y: 1, z: ATTACK_RANGE - 2 });
+    rig.movementSystem.commit();
 
-      const bot = createBotAI({
-        rapierWorld: rig.rapierWorld,
-        movementSystem: rig.movementSystem,
-        botId: 'bot',
-        difficulty: { aimSpread: 0, reactionDelayTicks: 0 },
-        random: () => 0.5,
-      });
-
-      let shotsFired = 0;
-      for (let tick = 0; tick < ticks; tick++) {
-        const botPosition = rig.world.getEntity('bot').position;
-        const targetPosition = rig.world.getEntity('target').position;
-        const command = bot.sample(botPosition, targetPosition, 100, heldWeapon);
-        const events = rig.world.step(new Map([['bot', command], ['target', createCommand()]]), 1 / 60);
-        shotsFired += events.filter((event) => event.type === 'fire' && event.shooterId === 'bot').length;
-      }
-      return shotsFired;
-    }
+    const bot = createBotAI({
+      rapierWorld: rig.rapierWorld,
+      movementSystem: rig.movementSystem,
+      botId: 'bot',
+      difficulty: { aimSpread: 0, reactionDelayTicks: 0 },
+      random: () => 0.5,
+    });
 
     const WINDOW_TICKS = 120; // 2 sim-seconds
-    const pistolShots = shotsFiredOverWindow('pistol', WINDOW_TICKS);
-    const mgShots = shotsFiredOverWindow('machinegun', WINDOW_TICKS);
+    let shotsFired = 0;
+    for (let tick = 0; tick < WINDOW_TICKS; tick++) {
+      const botPosition = rig.world.getEntity('bot').position;
+      const targetPosition = rig.world.getEntity('target').position;
+      const command = bot.sample(botPosition, targetPosition, 100);
+      const events = rig.world.step(new Map([['bot', command], ['target', createCommand()]]), 1 / 60);
+      shotsFired += events.filter((event) => event.type === 'fire' && event.shooterId === 'bot').length;
+    }
 
-    expect(mgShots).toBeGreaterThan(pistolShots);
+    expect(shotsFired).toBe(60); // one shot every cooldownTicks (2), for the whole window
+    // Far more than FIRE_INTERVAL_TICKS (45) would allow if it gated this
+    // weapon (at most 3 shots in 120 ticks) -- proof the interval never
+    // applies to a held-fire weapon.
+    expect(shotsFired).toBeGreaterThan(Math.ceil(WINDOW_TICKS / 45) + 1);
   });
 });
 
@@ -515,12 +517,12 @@ describe('createBotAI: patrol crosses doorways without sticking (AE1, R7)', () =
   it('a bot with no target crosses at least one doorway within 20 sim-seconds, with no sustained stuck run', () => {
     const arena = createArena();
     const movementSystem = createMovementSystem(arena.rapierWorld);
-    const nw = ROOMS.find((r) => r.id === 'nw');
-    // A real spawn point, not the room's raw geometric centre -- nw's
-    // centre is where layout.js puts its landmark pillar, so starting a
-    // capsule exactly there would embed it in solid geometry, which no
-    // real spawn point ever does (test/arena/layout.test.js covers that).
-    const startPosition = arena.spawnPoints.find((p) => Math.abs(p.x - nw.x) <= nw.halfX && Math.abs(p.z - nw.z) <= nw.halfZ);
+    const maze = ROOMS.find((r) => r.id === 'maze');
+    // A real spawn point, not the district's raw geometric centre -- some
+    // districts (e.g. the landmark) have a pillar dead centre, so starting a
+    // capsule exactly there would embed it in solid geometry, which no real
+    // spawn point ever does (test/arena/layout.test.js covers that).
+    const startPosition = arena.spawnPoints.find((p) => Math.abs(p.x - maze.x) <= maze.halfX && Math.abs(p.z - maze.z) <= maze.halfZ);
     movementSystem.addCharacter('bot', startPosition);
     movementSystem.commit();
 
@@ -538,7 +540,7 @@ describe('createBotAI: patrol crosses doorways without sticking (AE1, R7)', () =
     let stuckTicks = 0;
     let maxConsecutiveStuck = 0;
     let everLeftPhaseIdle = false;
-    let leftStartingRoom = false;
+    let leftStartingDistrict = false;
     const TICKS = 20 * 60; // 20 sim-seconds at 60Hz
 
     for (let i = 0; i < TICKS; i++) {
@@ -552,13 +554,13 @@ describe('createBotAI: patrol crosses doorways without sticking (AE1, R7)', () =
       stuckTicks = displacement < 0.005 ? stuckTicks + 1 : 0;
       maxConsecutiveStuck = Math.max(maxConsecutiveStuck, stuckTicks);
 
-      if (Math.abs(entity.position.x - nw.x) > nw.halfX || Math.abs(entity.position.z - nw.z) > nw.halfZ) {
-        leftStartingRoom = true;
+      if (Math.abs(entity.position.x - maze.x) > maze.halfX || Math.abs(entity.position.z - maze.z) > maze.halfZ) {
+        leftStartingDistrict = true;
       }
     }
 
     expect(everLeftPhaseIdle).toBe(false);
-    expect(leftStartingRoom).toBe(true); // crossed at least one doorway
+    expect(leftStartingDistrict).toBe(true); // crossed at least one doorway
     expect(maxConsecutiveStuck).toBeLessThan(60); // never frozen for a full second
   });
 });
@@ -569,21 +571,21 @@ describe('createBotAI: search (AE2, KTD3)', () => {
     // the shipped waypoint graph's real room/doorway nodes regardless of
     // the physics world it's driving, so a synthetic rig whose geometry
     // doesn't correspond to that graph produces an unpredictable route.
-    // SE has no landmark pillar (layout.js), so standing at its exact
-    // centre is safe. SW is a different, wall-separated room (AE4 already
+    // Maze has no pillar at its exact centre (layout.js), so standing there
+    // is safe. Yard is a different, wall-separated district (AE4 already
     // covers this pair's occlusion) -- an unambiguous "vanished" spot.
     const arena = createArena();
     const movementSystem = createMovementSystem(arena.rapierWorld);
-    const se = ROOMS.find((r) => r.id === 'se');
-    const sw = ROOMS.find((r) => r.id === 'sw');
-    const startPosition = { x: se.x, y: 1, z: se.z };
+    const maze = ROOMS.find((r) => r.id === 'maze');
+    const yard = ROOMS.find((r) => r.id === 'yard');
+    const startPosition = { x: maze.x, y: 1, z: maze.z };
     movementSystem.addCharacter('bot', startPosition);
     movementSystem.commit();
     const bot = createBotAI({ rapierWorld: arena.rapierWorld, movementSystem, botId: 'bot' });
     const entity = { id: 'bot', position: { ...startPosition } };
 
-    const lastVisiblePosition = { x: se.x + 2, y: 1, z: se.z + 2 }; // a few units away, same room -- clear sight
-    const hiddenPosition = { x: sw.x, y: 1, z: sw.z }; // a different, wall-separated room
+    const lastVisiblePosition = { x: maze.x + 2, y: 1, z: maze.z + 2 }; // a few units away, same district -- clear sight
+    const hiddenPosition = { x: yard.x, y: 1, z: yard.z }; // a different, wall-separated district
 
     // Phase 1: player visible nearby in the same room.
     for (let i = 0; i < 5; i++) {
@@ -627,15 +629,15 @@ describe('createBotAI: search (AE2, KTD3)', () => {
     // occluded) hidden position keeps being fed in every tick.
     const arena = createArena();
     const movementSystem = createMovementSystem(arena.rapierWorld);
-    const se = ROOMS.find((r) => r.id === 'se');
-    const sw = ROOMS.find((r) => r.id === 'sw');
-    const startPosition = { x: se.x, y: 1, z: se.z };
+    const maze = ROOMS.find((r) => r.id === 'maze');
+    const yard = ROOMS.find((r) => r.id === 'yard');
+    const startPosition = { x: maze.x, y: 1, z: maze.z };
     movementSystem.addCharacter('bot', startPosition);
     movementSystem.commit();
     const bot = createBotAI({ rapierWorld: arena.rapierWorld, movementSystem, botId: 'bot' });
     const entity = { id: 'bot', position: { ...startPosition } };
-    const lastVisiblePosition = { x: se.x + 2, y: 1, z: se.z + 2 };
-    const hiddenPosition = { x: sw.x, y: 1, z: sw.z };
+    const lastVisiblePosition = { x: maze.x + 2, y: 1, z: maze.z + 2 };
+    const hiddenPosition = { x: yard.x, y: 1, z: yard.z };
 
     for (let i = 0; i < 5; i++) {
       const command = bot.sample(entity.position, lastVisiblePosition, 100);
@@ -660,19 +662,75 @@ describe('createBotAI: search (AE2, KTD3)', () => {
     const bearingToHiddenPosition = Math.atan2(hiddenPosition.x - entity.position.x, hiddenPosition.z - entity.position.z);
     expect(Math.abs(yawWhileDwelling - bearingToHiddenPosition)).toBeGreaterThan(1); // not facing the live hidden position
   });
+
+  // U3: search must route correctly across a straight cross-cut corridor
+  // (R3's new topology), not just through a spoke into the landmark --
+  // link-hall-bazaar bypasses the landmark entirely.
+  it('reaches a last-seen position across the Hall-Bazaar cross-cut corridor without wall-clipping', () => {
+    const arena = createArena();
+    const movementSystem = createMovementSystem(arena.rapierWorld);
+    const hall = ROOMS.find((r) => r.id === 'hall');
+    const startPosition = { x: hall.x, y: 1, z: hall.z };
+    movementSystem.addCharacter('bot', startPosition);
+    movementSystem.commit();
+    const bot = createBotAI({ rapierWorld: arena.rapierWorld, movementSystem, botId: 'bot' });
+    const entity = { id: 'bot', position: { ...startPosition } };
+
+    // Visible just inside the corridor, through Hall's open east doorway.
+    const lastVisiblePosition = { x: 20, y: 1, z: 44 };
+    // Vanished behind Bazaar's own cover -- a different district, reached
+    // only by continuing through the same corridor.
+    const hiddenPosition = { x: 44, y: 1, z: 47 };
+
+    for (let i = 0; i < 5; i++) {
+      const command = bot.sample(entity.position, lastVisiblePosition, 100);
+      movementSystem.resolveMovement(entity, command, 1 / 60);
+      movementSystem.commit();
+    }
+    expect(['attack', 'chase']).toContain(bot.getPhase());
+
+    function isInsideAnyWall(position) {
+      return LAYOUT.walls.some(
+        (wall) => Math.abs(position.x - wall.x) < wall.halfX && Math.abs(position.z - wall.z) < wall.halfZ
+      );
+    }
+
+    let reachedSearch = false;
+    let insideCorridor = false; // x > hall's east wall -- genuinely crossed through the cross-cut
+    const MAX_TICKS = 20 * 60;
+    for (let i = 0; i < MAX_TICKS; i++) {
+      const command = bot.sample(entity.position, hiddenPosition, 100);
+      if (bot.getPhase() === 'search') reachedSearch = true;
+      movementSystem.resolveMovement(entity, command, 1 / 60);
+      movementSystem.commit();
+      expect(isInsideAnyWall(entity.position)).toBe(false); // no wall-clipping, ever
+      if (entity.position.x > hall.x + hall.halfX) insideCorridor = true;
+      if (reachedSearch && bot.getPhase() === 'idle') break; // gave up -- done
+    }
+
+    expect(reachedSearch).toBe(true);
+    expect(insideCorridor).toBe(true);
+    // Arrived at (or very near) the frozen last-seen point inside the
+    // corridor, not stuck back in Hall.
+    const distanceToLastSeen = Math.hypot(
+      entity.position.x - lastVisiblePosition.x,
+      entity.position.z - lastVisiblePosition.z
+    );
+    expect(distanceToLastSeen).toBeLessThan(2);
+  });
 });
 
 describe('createBotAI: search timer counts sim ticks only', () => {
   it('the dwell window elapses strictly by counted sample() calls, never by wall-clock time', () => {
-    // Bot and "visible" player both at SE room's exact centre (no landmark
-    // pillar there, so this is a real, standable point) -- lastSeenPosition
+    // Bot and "visible" player both at Maze's exact centre (no pillar
+    // there, so this is a real, standable point) -- lastSeenPosition
     // becomes exactly that point, and the nearest graph node to it is the
-    // room itself, so search's path is trivially already "arrived" on the
-    // first tick. Isolates the dwell-count logic from travel time.
+    // district itself, so search's path is trivially already "arrived" on
+    // the first tick. Isolates the dwell-count logic from travel time.
     const arena = createArena();
     const movementSystem = createMovementSystem(arena.rapierWorld);
-    const se = ROOMS.find((r) => r.id === 'se');
-    const position = { x: se.x, y: 1, z: se.z };
+    const maze = ROOMS.find((r) => r.id === 'maze');
+    const position = { x: maze.x, y: 1, z: maze.z };
     movementSystem.addCharacter('bot', position);
     movementSystem.commit();
     const bot = createBotAI({ rapierWorld: arena.rapierWorld, movementSystem, botId: 'bot' });
@@ -681,7 +739,7 @@ describe('createBotAI: search timer counts sim ticks only', () => {
     expect(bot.getPhase()).toBe('attack');
     // Hidden far below the floor -- distance alone keeps it unacquired
     // (R13 also requires sight, which this trivially also lacks).
-    const hidden = { x: se.x, y: -500, z: se.z };
+    const hidden = { x: maze.x, y: -500, z: maze.z };
     bot.sample(position, hidden, 100); // attack -> chase (existing transition)
     bot.sample(position, hidden, 100); // chase -> search
     expect(bot.getPhase()).toBe('search');
@@ -753,23 +811,23 @@ describe('createBotAI: search survives death and match reset (KTD5)', () => {
 });
 
 describe('createBotAI: retreat routes through a doorway (R9)', () => {
-  it("targets the room's doorway farthest from the attacker, not a bare away-vector into a solid wall", () => {
+  it("targets the district's doorway farthest from the attacker, not a bare away-vector into a solid wall", () => {
     const arena = createArena();
     const movementSystem = createMovementSystem(arena.rapierWorld);
-    const nw = ROOMS.find((r) => r.id === 'nw');
-    const nwTop = DOORWAYS.find((d) => d.id === 'nw-top'); // NW's east doorway, (-18, 26)
-    const nwLeft = DOORWAYS.find((d) => d.id === 'nw-left'); // NW's south doorway, (-26, 18)
+    const warrenEast = DOORWAYS.find((d) => d.id === 'warren-east'); // Warren's east doorway, (9, -30)
+    const warrenWest = DOORWAYS.find((d) => d.id === 'warren-west'); // Warren's west doorway, (-9, -40)
 
-    // Bot inside NW, clear of the room's landmark pillar (centred at the
-    // room's own centre). Attacker due south -- a bare "flee straight away
-    // from the attacker" vector points due north, straight into NW's solid
-    // north wall (layout.js has no doorway there). The farther doorway by
-    // actual distance is nw-top (east), not nw-left (south, closer to the
-    // attacker) -- so a doorway-aware retreat must head east, not north.
-    const startPosition = { x: nw.x + 4, y: 1, z: nw.z };
-    const attacker = { x: nw.x + 4, y: 1, z: nw.z - 16 };
-    expect(Math.hypot(nwTop.x - attacker.x, nwTop.z - attacker.z)).toBeGreaterThan(
-      Math.hypot(nwLeft.x - attacker.x, nwLeft.z - attacker.z)
+    // Bot inside Warren, clear of its partition blocks. Attacker due north
+    // -- a bare "flee straight away from the attacker" vector points due
+    // south, straight into Warren's solid south wall (layout.js has no
+    // doorway there). The farther doorway by actual distance is
+    // warren-west, not warren-east (closer to the attacker) or
+    // warren-spoke (north wall, back toward the attacker's own side) -- so
+    // a doorway-aware retreat must head west, not south.
+    const startPosition = { x: 4, y: 1, z: -36 };
+    const attacker = { x: 4, y: 1, z: -20 };
+    expect(Math.hypot(warrenWest.x - attacker.x, warrenWest.z - attacker.z)).toBeGreaterThan(
+      Math.hypot(warrenEast.x - attacker.x, warrenEast.z - attacker.z)
     );
 
     movementSystem.addCharacter('bot', startPosition);
@@ -787,8 +845,8 @@ describe('createBotAI: retreat routes through a doorway (R9)', () => {
       movementSystem.commit();
     }
 
-    expect(entity.position.z).toBeLessThan(startPosition.z + 8); // nowhere near the solid north wall (z=34)
-    expect(entity.position.x).toBeGreaterThan(startPosition.x); // moved east, toward nw-top
+    expect(entity.position.z).toBeGreaterThan(-43); // nowhere near the solid south wall (z=-45)
+    expect(entity.position.x).toBeLessThan(startPosition.x); // moved west, toward warren-west
   });
 
   it('survives retreat -> timer expiry while still unacquired without crashing (regression)', () => {
@@ -799,8 +857,8 @@ describe('createBotAI: retreat routes through a doorway (R9)', () => {
     // a null last-seen point (that crashed navigateToPoint before the fix).
     const arena = createArena();
     const movementSystem = createMovementSystem(arena.rapierWorld);
-    const nw = ROOMS.find((r) => r.id === 'nw');
-    const startPosition = arena.spawnPoints.find((p) => Math.abs(p.x - nw.x) <= nw.halfX && Math.abs(p.z - nw.z) <= nw.halfZ);
+    const warren = ROOMS.find((r) => r.id === 'warren');
+    const startPosition = arena.spawnPoints.find((p) => Math.abs(p.x - warren.x) <= warren.halfX && Math.abs(p.z - warren.z) <= warren.halfZ);
     movementSystem.addCharacter('bot', startPosition);
     movementSystem.commit();
     const bot = createBotAI({ rapierWorld: arena.rapierWorld, movementSystem, botId: 'bot' });

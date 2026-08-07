@@ -6,7 +6,7 @@ import { creditKill } from './score.js';
 import { selectSpawnPoint } from '../arena/spawnPlacement.js';
 import { DEFAULT_WEAPON_ID } from './weapon.js';
 
-const DEFAULT_DAMAGE_PER_HIT = 20; // pistol's damage, kept only as applyHit's fallback for callers that omit it
+const DEFAULT_DAMAGE_PER_HIT = 20; // legacy fallback for callers that omit a damage value; no current caller does
 const RESPAWN_DELAY_TICKS = 180; // 3s at a 60Hz tick rate
 // Full health (U18): the one place this value is declared -- a new entity's
 // initial health, a respawn/match-reset heal, and bot AI's respawn-detection
@@ -31,10 +31,10 @@ export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem })
   // targetPosition, shooterPosition, damageOrigin }) for observers (HUD
   // feedback, damage indicator, killfeed), or null if the hit didn't apply
   // (target already dead). `damage` is the caller's resolved per-weapon
-  // amount (KTD1) -- callers that omit it get the pistol's default; `weapon`
-  // (R7, KTD4) is the weapon identifier the caller resolved it from, and
-  // callers that omit it get the same pistol default, so every hit event
-  // carries a weapon even before every call site is updated. `damageOrigin`
+  // amount (KTD1) -- callers that omit it get DEFAULT_DAMAGE_PER_HIT;
+  // `weapon` (R7, KTD4) is the weapon identifier the caller resolved it
+  // from, and callers that omit it get the default weapon id, so every hit
+  // event carries a weapon even before every call site is updated. `damageOrigin`
   // is where the damage indicator should point from; for this hitscan path
   // it's always the shooter's live position (same value as
   // `shooterPosition`), but it's a distinct field because a future

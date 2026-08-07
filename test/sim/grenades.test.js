@@ -428,8 +428,8 @@ describe('grenades: wired into world.step() -- a single step() call resolves a l
   });
 });
 
-describe('grenades: blast kill strips a carried machine gun, same as a gunshot kill (R13)', () => {
-  it('a blast-killed victim holding the machine gun has it stripped to the pistol', () => {
+describe('grenades: a blast kill processes through the shared kill-event pass, same as a gunshot kill (R6, R7)', () => {
+  it('a blast-killed victim produces a proper killed hit event and keeps holding the machine gun -- no downgrade exists', () => {
     const rig = buildStopperRig();
     primeBroadPhase(rig);
     const grenadeSystem = createGrenadeSystem({ rapierWorld: rig.rapierWorld, healthSystem: rig.healthSystem, movementSystem: rig.movementSystem });
@@ -456,21 +456,22 @@ describe('grenades: blast kill strips a carried machine gun, same as a gunshot k
     world.addEntity('victim', {
       position: { x: blastCenter.x + 1, y: blastCenter.y, z: blastCenter.z },
       heldWeapon: 'machinegun',
-      ammo: 30,
     });
     world.getEntity('victim').health = 20;
 
+    let killingEvents = [];
     for (let i = 0; i < GRENADE_FUSE_TICKS && !world.getEntity('victim').dead; i++) {
-      world.step(new Map([['thrower', IDLE_COMMAND]]), TICK_DT);
+      killingEvents = world.step(new Map([['thrower', IDLE_COMMAND]]), TICK_DT);
     }
 
     expect(world.getEntity('victim').dead).toBe(true);
-    // R13: death strips the carrier's machine gun and ammo regardless of
-    // damage source -- a gunshot kill already did this (see world.test.js /
-    // combat.test.js); a blast kill must not bypass it just because the
-    // killing hit event originates from grenades.js instead of weapon.js.
-    expect(world.getEntity('victim').heldWeapon).toBe('pistol');
-    expect(world.getEntity('victim').ammo).toBeNull();
+    // Regression guard for the death-strip bypass class: a blast kill must
+    // resolve through the same shared kill-event pass as a gunshot kill,
+    // not a separate path that could (re)introduce inconsistent handling.
+    expect(killingEvents.some((e) => e.type === 'hit' && e.targetId === 'victim' && e.killed)).toBe(true);
+    // AE3/R6: no weapon downgrade exists, blast kill or otherwise.
+    expect(world.getEntity('victim').heldWeapon).toBe('machinegun');
+    expect(world.getEntity('victim').ammo).toBeUndefined();
   });
 });
 

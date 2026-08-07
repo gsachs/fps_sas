@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { seek, flee, wander, avoidObstacles } from '../../../src/sim/bot/steering.js';
+import { createArena } from '../../../src/arena/arena.js';
 
 await RAPIER.init();
 
@@ -90,5 +91,50 @@ describe('avoidObstacles', () => {
     // correct deflection makes real forward progress (dot > 0). The old
     // normal-blend formula reversed this case too (measured dot ~= -0.22).
     expect(dot(result, desired)).toBeGreaterThan(0);
+  });
+
+  // U3: the same reversal class, checked directly against the new arena's
+  // real geometry (not just a synthetic wall) -- Warren's tightest sightlines
+  // and cover-block pinwheel make it the district most likely to expose a
+  // regression here, per the documented fix's own guardrail (never assert
+  // just "no error", always assert direction: dot(result, desired) >= 0).
+  describe('against the real arena (Warren walls and cover blocks, U3)', () => {
+    it('does not reverse a head-on approach into Warren\'s solid south wall', () => {
+      const arena = createArena();
+      arena.rapierWorld.step();
+      const desired = { x: 0, z: -1 }; // straight south, at the solid wall (z=-45)
+      const result = avoidObstacles(arena.rapierWorld, { x: 0, y: 1, z: -43 }, desired, undefined);
+
+      expect(dot(result, desired)).toBeGreaterThan(-0.5);
+    });
+
+    it('deflects an oblique approach to Warren\'s south wall with genuine forward progress', () => {
+      const arena = createArena();
+      arena.rapierWorld.step();
+      const fromPosition = { x: -2, y: 1, z: -43 };
+      const desired = seek(fromPosition, { x: 0, y: 1, z: -45 });
+      const result = avoidObstacles(arena.rapierWorld, fromPosition, desired, undefined);
+
+      expect(dot(result, desired)).toBeGreaterThan(0);
+    });
+
+    it('does not reverse a head-on approach into a Warren cover block', () => {
+      const arena = createArena();
+      arena.rapierWorld.step();
+      const desired = { x: 0, z: -1 }; // straight at warren-block-a (7, -28)
+      const result = avoidObstacles(arena.rapierWorld, { x: 7, y: 1, z: -26 }, desired, undefined);
+
+      expect(dot(result, desired)).toBeGreaterThan(-0.5);
+    });
+
+    it('deflects an oblique approach to a Warren cover block with genuine forward progress', () => {
+      const arena = createArena();
+      arena.rapierWorld.step();
+      const fromPosition = { x: 5, y: 1, z: -26 };
+      const desired = seek(fromPosition, { x: 7, y: 1, z: -28 }); // warren-block-a
+      const result = avoidObstacles(arena.rapierWorld, fromPosition, desired, undefined);
+
+      expect(dot(result, desired)).toBeGreaterThan(0);
+    });
   });
 });

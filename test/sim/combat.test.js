@@ -10,24 +10,15 @@ import { buildBotRig, addEntity, primeBroadPhase } from '../support/rig.js';
 
 await RAPIER.init();
 
-const FIRE = createCommand({ yaw: 0, pitch: 0, buttons: { fire: true, fireHeld: false, jump: false, throwGrenade: false } });
+// The machine gun is the only weapon and gates on the held-fire level, not
+// the edge latch (KTD2) -- every firing command in this file sets fireHeld.
+const FIRE = createCommand({ yaw: 0, pitch: 0, buttons: { fire: false, fireHeld: true, jump: false, throwGrenade: false } });
 const HOLD = createCommand({ yaw: 0, pitch: 0, buttons: { fire: false, fireHeld: false, jump: false, throwGrenade: false } });
-// The machine gun gates on the held-fire level, not the edge latch (KTD2) --
-// tests exercising it directly need this instead of FIRE.
-const HELD_FIRE = createCommand({ yaw: 0, pitch: 0, buttons: { fire: false, fireHeld: true, jump: false, throwGrenade: false } });
-
-// This file's rig used to be its own hand-rolled copy of test/support/rig.js
-// (same Rapier floor, same weapon/health wiring) -- folded into the shared
-// buildBotRig/addEntity/primeBroadPhase so there is one rig-construction
-// path for both bot-AI and combat tests. Every call below that omitted
-// cooldownTicks relied on the pistol's real 6-tick cooldown (this file's old
-// default), so it's passed explicitly here to keep that behavior identical
-// under the shared builder's own (bot-AI-oriented) default of 0.
 
 describe('combat: kill, score, and respawn (AE1)', () => {
   it('kills the target after enough hits, credits the shooter once, and respawns the target with full health', () => {
     const spawnPoints = [{ x: 0, y: 1, z: 0 }, { x: 20, y: 1, z: 20 }];
-    const rig = buildBotRig({ spawnPoints, cooldownTicks: 6 });
+    const rig = buildBotRig({ spawnPoints });
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
     primeBroadPhase(rig);
@@ -39,6 +30,9 @@ describe('combat: kill, score, and respawn (AE1)', () => {
     expect(rig.world.getEntity('target').dead).toBe(true);
     expect(rig.world.getEntity('target').health).toBe(0);
     expect(rig.world.getEntity('shooter').score).toBe(1);
+    // AE3: death leaves the held weapon unchanged -- no downgrade exists.
+    expect(rig.world.getEntity('target').heldWeapon).toBe('machinegun');
+    expect(rig.world.getEntity('target').ammo).toBeUndefined();
 
     for (let i = 0; i < 181; i++) {
       rig.world.step(new Map([['shooter', HOLD], ['target', HOLD]]), 1 / 60);
@@ -47,13 +41,14 @@ describe('combat: kill, score, and respawn (AE1)', () => {
     const target = rig.world.getEntity('target');
     expect(target.dead).toBe(false);
     expect(target.health).toBe(100);
+    expect(target.heldWeapon).toBe('machinegun'); // AE3: still holding the infinite MG post-respawn
   });
 });
 
 describe('combat: a corpse does not block bullets or line of sight', () => {
   it('lets a shot pass through a corpse to hit whoever is standing behind it', () => {
     const spawnPoints = [{ x: 0, y: 1, z: 0 }, { x: 20, y: 1, z: 20 }, { x: 40, y: 1, z: 40 }];
-    const rig = buildBotRig({ spawnPoints, cooldownTicks: 6 });
+    const rig = buildBotRig({ spawnPoints });
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'victim', { x: 0, y: 1, z: 5 });
     addEntity(rig, 'bystander', { x: 0, y: 1, z: 10 });
@@ -79,7 +74,7 @@ describe('combat: a corpse does not block bullets or line of sight', () => {
 describe('combat: respawn continues arena state (AE2)', () => {
   it('restores the respawned entity without resetting unrelated entities', () => {
     const spawnPoints = [{ x: 0, y: 1, z: 0 }, { x: 20, y: 1, z: 20 }];
-    const rig = buildBotRig({ spawnPoints, cooldownTicks: 6 });
+    const rig = buildBotRig({ spawnPoints });
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
     addEntity(rig, 'bystander', { x: 15, y: 1, z: 15 });
@@ -104,7 +99,7 @@ describe('combat: respawn continues arena state (AE2)', () => {
 
 describe('combat: miss', () => {
   it('does not change health when the shot does not hit anything', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
+    const rig = buildBotRig();
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 50, y: 1, z: 50 }); // well outside the ray's path
     primeBroadPhase(rig);
@@ -117,7 +112,7 @@ describe('combat: miss', () => {
 
 describe('combat: step() reports fire and hit events (U7 feedback source)', () => {
   it('reports a fire event even on a miss, with no accompanying hit event', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
+    const rig = buildBotRig();
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 50, y: 1, z: 50 });
     primeBroadPhase(rig);
@@ -132,7 +127,7 @@ describe('combat: step() reports fire and hit events (U7 feedback source)', () =
   });
 
   it('reports both a fire event and a hit event on a landed shot', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
+    const rig = buildBotRig();
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
     primeBroadPhase(rig);
@@ -149,11 +144,11 @@ describe('combat: step() reports fire and hit events (U7 feedback source)', () =
     expect(fireEvent.endPoint.z).toBeGreaterThan(0);
     expect(fireEvent.endPoint.z).toBeLessThan(6); // at or just past the target, not a mid-air NaN/miss-range value
     const hitEvent = events.find((e) => e.type === 'hit');
-    expect(hitEvent).toMatchObject({ shooterId: 'shooter', targetId: 'target', damage: 20, killed: false });
+    expect(hitEvent).toMatchObject({ shooterId: 'shooter', targetId: 'target', damage: 12, killed: false });
   });
 
   it('reports no events when nobody fires', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
+    const rig = buildBotRig();
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     primeBroadPhase(rig);
 
@@ -167,7 +162,6 @@ describe('combat: cover blocks hits', () => {
   it('does not hit an entity fully occluded by cover geometry', () => {
     const rig = buildBotRig({
       obstacles: [{ x: 0, y: 1, z: 5, hx: 2, hy: 2, hz: 0.5 }],
-      cooldownTicks: 6,
     });
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 0, y: 1, z: 10 });
@@ -190,7 +184,10 @@ describe('combat: hitbox width matches the capsule radius (regression)', () => {
     // future narrowing of CAPSULE_RADIUS fails this test instead of
     // silently reintroducing the "hits at the edges miss" bug.
     const edgeOffset = (CAPSULE_RADIUS + 0.3) / 2; // between the old and current radius
-    const rig = buildBotRig({ cooldownTicks: 6 });
+    // The machine gun's spread must not jitter this shot off-target -- a
+    // fixed random() of 0.5 zeroes the jitter (see weapon.js's formula),
+    // keeping the shot exactly on the geometric edge this test probes.
+    const rig = buildBotRig({ random: () => 0.5 });
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: edgeOffset, y: 1, z: 5 }); // shooter fires straight down x=0
     primeBroadPhase(rig);
@@ -203,48 +200,13 @@ describe('combat: hitbox width matches the capsule radius (regression)', () => {
 
 describe('combat: self-hit exclusion', () => {
   it('excludes the shooter from its own hitscan ray', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
+    const rig = buildBotRig();
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     primeBroadPhase(rig);
 
     const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), FIRE);
 
     expect(result.hitEntityId).not.toBe('shooter');
-  });
-});
-
-describe('combat: framerate-independent fire rate', () => {
-  it('resolves exactly one shot per fire press even when a frame runs multiple sim ticks', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
-    rig.movementSystem.addCharacter('shooter', { x: 0, y: 1, z: 0 });
-    rig.movementSystem.addCharacter('target', { x: 0, y: 1, z: 5 });
-    primeBroadPhase(rig);
-
-    const sampler = createInputSampler();
-    const combatSim = createSimulation({
-      physics: rig.movementSystem,
-      combat: {
-        resolveFire: rig.weaponSystem.resolveFire,
-        applyHit: rig.healthSystem.applyHit,
-        tickRespawns: rig.healthSystem.tickRespawns,
-      },
-      gatherCommands: () => {
-        const command = sampler.sample();
-        return new Map([
-          ['shooter', createCommand({ ...command, yaw: 0, pitch: 0 })],
-          ['target', HOLD],
-        ]);
-      },
-    });
-    combatSim.world.addEntity('shooter', { position: { x: 0, y: 1, z: 0 } });
-    combatSim.world.addEntity('target', { position: { x: 0, y: 1, z: 5 } });
-
-    sampler.onFirePressed(); // exactly one discrete press
-    // A long frame delta forces the fixed-step loop to run several ticks
-    // in this single tick() call -- the bug scenario the review flagged.
-    combatSim.tick(5 / 60);
-
-    expect(combatSim.world.getEntity('target').health).toBe(80); // exactly one 20-damage hit
   });
 });
 
@@ -255,11 +217,11 @@ describe('combat: simultaneous lethal hits credit exactly one killer', () => {
     addEntity(rig, 'shooterA', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'shooterB', { x: 0, y: 1, z: 10 });
     addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
-    rig.world.getEntity('target').health = 15; // one hit (20 dmg) is already lethal
+    rig.world.getEntity('target').health = 15; // one hit (12 dmg) is not lethal alone, but both landing this tick is
     primeBroadPhase(rig);
 
-    const fireAtTarget = createCommand({ yaw: 0, pitch: 0, buttons: { fire: true, jump: false } });
-    const fireAtTargetFromB = createCommand({ yaw: Math.PI, pitch: 0, buttons: { fire: true, jump: false } });
+    const fireAtTarget = createCommand({ yaw: 0, pitch: 0, buttons: { fireHeld: true, jump: false } });
+    const fireAtTargetFromB = createCommand({ yaw: Math.PI, pitch: 0, buttons: { fireHeld: true, jump: false } });
 
     rig.world.step(
       new Map([
@@ -276,15 +238,14 @@ describe('combat: simultaneous lethal hits credit exactly one killer', () => {
   });
 });
 
-describe('combat: pistol held-fire regression (U2 -- R2, click-per-shot unchanged)', () => {
-  it('fires exactly once while the mouse stays held down, never once per tick', () => {
-    // The single most important regression this unit can introduce: the MG
-    // needs a held-fire *level*, but the pistol must keep firing strictly on
-    // the edge latch. If held-fire ever leaked into the pistol's gate, this
-    // test would see many hits (one per cooldown window) instead of exactly
-    // one -- see this unit's report for the red-then-green verification that
-    // this test actually catches that failure mode.
-    const rig = buildBotRig({ cooldownTicks: 6 });
+describe('combat: shots resolve at the weapon\'s per-tick cooldown rate across a multi-tick frame (framerate independence)', () => {
+  it('fires exactly as many times as the cooldown allows within one long frame delta, not once per frame', () => {
+    // gatherCommands is called fresh every fixed sub-step (sim/index.js), so
+    // the held-fire level is re-read each tick -- a long frame delta that
+    // spans several sim ticks must fire once per cooldown window elapsed,
+    // never more (a per-frame bug) and never just once regardless of how
+    // many ticks ran (which would be the edge-latch shape, not held-fire).
+    const rig = buildBotRig({ cooldownTicks: 2 }); // the machine gun's real cadence
     rig.movementSystem.addCharacter('shooter', { x: 0, y: 1, z: 0 });
     rig.movementSystem.addCharacter('target', { x: 0, y: 1, z: 5 });
     primeBroadPhase(rig);
@@ -308,40 +269,31 @@ describe('combat: pistol held-fire regression (U2 -- R2, click-per-shot unchange
     combatSim.world.addEntity('shooter', { position: { x: 0, y: 1, z: 0 } });
     combatSim.world.addEntity('target', { position: { x: 0, y: 1, z: 5 } });
 
-    sampler.onFirePressed(); // mousedown: queues the edge shot and, once fireHeld exists, starts the level
-    // The mouse never comes up (no onFireReleased call) for many ticks and
-    // several cooldown windows -- exactly the shape a real held click makes.
-    for (let i = 0; i < 30; i++) combatSim.tick(1 / 60);
+    sampler.onFirePressed(); // starts the held-fire level; never released
+    // A long frame delta forces the fixed-step loop to run several ticks in
+    // this single tick() call -- at cooldownTicks: 2, ticks 0/2/4 fire.
+    combatSim.tick(5 / 60);
 
-    expect(combatSim.world.getEntity('target').health).toBe(80); // exactly one 20-damage hit, not several
+    expect(combatSim.world.getEntity('target').health).toBe(64); // exactly 3 shots x 12 damage
   });
 });
 
-describe('combat: machine gun sprays while held, drains ammo, and auto-reverts (AE1, R1)', () => {
-  it('fires every cooldown window while fireHeld stays true, decrements ammo, and reverts to the pistol with no new input once dry', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
+describe('combat: machine gun sprays every cooldown window while held, with no ammo or revert (AE3, R6)', () => {
+  it('keeps firing indefinitely at the configured cooldown rate, never reverting or tracking ammo', () => {
+    const rig = buildBotRig({ cooldownTicks: 4 });
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
-    const shooter = rig.world.getEntity('shooter');
-    shooter.heldWeapon = 'machinegun';
-    shooter.ammo = 3; // small magazine so the revert is reachable within a short loop
     primeBroadPhase(rig);
 
     let shotsFired = 0;
     for (let tick = 0; tick < 20; tick++) {
-      const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), HELD_FIRE);
+      const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), FIRE);
       if (result.fired) shotsFired += 1;
     }
 
-    expect(shotsFired).toBe(3); // exactly the magazine size, not more
-    expect(rig.world.getEntity('shooter').heldWeapon).toBe('pistol'); // R1's auto-revert
-    expect(rig.world.getEntity('shooter').ammo).toBeNull(); // reads as infinite again, like any pistol
-
-    // The mouse is still held (fireHeld never goes false), but the entity is
-    // the pistol now -- KTD2's whole point is that a stale level alone,
-    // with the edge queue empty, must not fire it.
-    const afterRevert = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), HELD_FIRE);
-    expect(afterRevert.fired).toBe(false);
+    expect(shotsFired).toBe(5); // fires at ticks 0, 4, 8, 12, 16 -- period matches cooldownTicks, never stops
+    expect(rig.world.getEntity('shooter').heldWeapon).toBe('machinegun'); // no revert -- no other weapon exists
+    expect(rig.world.getEntity('shooter').ammo).toBeUndefined(); // no ammo field exists at all
   });
 });
 
@@ -349,14 +301,11 @@ describe('combat: machine-gun spread (R1, KTD2)', () => {
   it('consecutive shots from a fixed pose vary in direction but stay within the configured spread bound', () => {
     const rig = buildBotRig();
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    const shooter = rig.world.getEntity('shooter');
-    shooter.heldWeapon = 'machinegun';
-    shooter.ammo = 1000; // plenty -- this test is about direction, not the revert
     primeBroadPhase(rig);
 
     const yawAngles = [];
     for (let tick = 0; tick < 100 && yawAngles.length < 20; tick++) {
-      const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), HELD_FIRE);
+      const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), FIRE);
       if (!result.fired) continue;
       const dx = result.endPoint.x - result.origin.x;
       const dz = result.endPoint.z - result.origin.z;
@@ -376,53 +325,22 @@ describe('combat: machine-gun spread (R1, KTD2)', () => {
   });
 });
 
-describe('combat: per-weapon config resolves from heldWeapon (U1 foundation)', () => {
-  it('an entity holding the machine gun fires with different damage than the pistol default', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
-    addEntity(rig, 'pistolShooter', { x: 0, y: 1, z: 0 });
-    addEntity(rig, 'mgShooter', { x: 20, y: 1, z: 0 });
-    rig.world.getEntity('mgShooter').heldWeapon = 'machinegun';
+describe('combat: an unknown or unset heldWeapon resolves to the default machine gun (U1 foundation)', () => {
+  it('fires with the default config when heldWeapon is unset', () => {
+    const rig = buildBotRig();
+    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     primeBroadPhase(rig);
 
-    const pistolResult = rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
-    const mgResult = rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), HELD_FIRE);
+    const result = rig.weaponSystem.resolveFire(rig.world.getEntity('shooter'), FIRE);
 
-    // The pistol's shipped damage must stay exactly 20 (R2: zero behavior
-    // change) -- the machine gun's own value only needs to differ from it.
-    expect(pistolResult.damage).toBe(20);
-    expect(mgResult.damage).not.toBe(pistolResult.damage);
-    expect(mgResult.damage).toBeGreaterThan(0);
-  });
-
-  it('the machine gun becomes ready to fire again sooner than the pistol does', () => {
-    // cooldownTicks: 6 forces the pistol's real (non-test-shortcut) cadence
-    // so this comparison is meaningful -- the shared rig's own default (0)
-    // would make the pistol always-ready and hide the difference.
-    const rig = buildBotRig({ cooldownTicks: 6 });
-    addEntity(rig, 'pistolShooter', { x: 0, y: 1, z: 0 });
-    addEntity(rig, 'mgShooter', { x: 20, y: 1, z: 0 });
-    rig.world.getEntity('mgShooter').heldWeapon = 'machinegun';
-    primeBroadPhase(rig);
-
-    rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
-    rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), HELD_FIRE);
-
-    let pistolReadyTick = null;
-    let mgReadyTick = null;
-    for (let tick = 1; tick <= 10 && (pistolReadyTick === null || mgReadyTick === null); tick++) {
-      const pistolAgain = rig.weaponSystem.resolveFire(rig.world.getEntity('pistolShooter'), FIRE);
-      const mgAgain = rig.weaponSystem.resolveFire(rig.world.getEntity('mgShooter'), HELD_FIRE);
-      if (pistolAgain.fired && pistolReadyTick === null) pistolReadyTick = tick;
-      if (mgAgain.fired && mgReadyTick === null) mgReadyTick = tick;
-    }
-
-    expect(mgReadyTick).toBeLessThan(pistolReadyTick);
+    expect(result.weapon).toBe('machinegun');
+    expect(result.damage).toBe(12);
   });
 });
 
 describe('combat: hit event carries damage and a damage-origin position (U1 foundation)', () => {
-  it('carries the pistol damage and a damageOrigin equal to the shooter position for a hitscan hit', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
+  it('carries the machine-gun damage and a damageOrigin equal to the shooter position for a hitscan hit', () => {
+    const rig = buildBotRig();
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
     primeBroadPhase(rig);
@@ -430,11 +348,11 @@ describe('combat: hit event carries damage and a damage-origin position (U1 foun
     const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
     const hitEvent = events.find((e) => e.type === 'hit');
 
-    expect(hitEvent.damage).toBe(20);
+    expect(hitEvent.damage).toBe(12);
     expect(hitEvent.damageOrigin).toEqual(hitEvent.shooterPosition);
     expect(hitEvent.damageOrigin).toEqual(rig.world.getEntity('shooter').position);
 
-    // Main.js's damage indicator now reads event.damageOrigin instead of
+    // Main.js's damage indicator reads event.damageOrigin instead of
     // event.shooterPosition -- since the two are the same value for a
     // hitscan hit, the indicator's computed bearing is unchanged.
     const angleFromShooterPosition = computeAngleFromPlayer(
@@ -452,8 +370,8 @@ describe('combat: hit event carries damage and a damage-origin position (U1 foun
 });
 
 describe('combat: hit event carries the weapon used (R7, U1 foundation)', () => {
-  it('reads pistol with only pistols in play', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
+  it('reads machinegun for every shot, the only weapon in the game', () => {
+    const rig = buildBotRig();
     addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
     addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
     primeBroadPhase(rig);
@@ -461,44 +379,6 @@ describe('combat: hit event carries the weapon used (R7, U1 foundation)', () => 
     const events = rig.world.step(new Map([['shooter', FIRE], ['target', HOLD]]), 1 / 60);
     const hitEvent = events.find((e) => e.type === 'hit');
 
-    expect(hitEvent.weapon).toBe('pistol');
-  });
-
-  it('reads machinegun for a shot fired while the machine gun is held', () => {
-    const rig = buildBotRig({ cooldownTicks: 6 });
-    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
-    rig.world.getEntity('shooter').heldWeapon = 'machinegun';
-    rig.world.getEntity('shooter').ammo = 30;
-    primeBroadPhase(rig);
-
-    const events = rig.world.step(new Map([['shooter', HELD_FIRE], ['target', HOLD]]), 1 / 60);
-    const hitEvent = events.find((e) => e.type === 'hit');
-
     expect(hitEvent.weapon).toBe('machinegun');
-  });
-
-  it('reads machinegun even on the last-round shot that empties the mag and auto-reverts the shooter', () => {
-    // Regression coverage for the timing-sensitive capture in weapon.js's
-    // resolveFire: weaponId is read from entity.heldWeapon before the
-    // auto-revert mutation later in that same call, so a killing shot fired
-    // with the very last round still reports 'machinegun' even though
-    // shooter.heldWeapon has already flipped back to 'pistol' by the time
-    // this event is read.
-    const rig = buildBotRig({ cooldownTicks: 6 });
-    addEntity(rig, 'shooter', { x: 0, y: 1, z: 0 });
-    addEntity(rig, 'target', { x: 0, y: 1, z: 5 });
-    rig.world.getEntity('shooter').heldWeapon = 'machinegun';
-    rig.world.getEntity('shooter').ammo = 1; // last round
-    rig.world.getEntity('target').health = 10; // less than the MG's per-shot damage -- one shot kills
-    primeBroadPhase(rig);
-
-    const events = rig.world.step(new Map([['shooter', HELD_FIRE], ['target', HOLD]]), 1 / 60);
-    const hitEvent = events.find((e) => e.type === 'hit');
-
-    expect(hitEvent.killed).toBe(true);
-    expect(hitEvent.weapon).toBe('machinegun');
-    expect(rig.world.getEntity('shooter').heldWeapon).toBe('pistol'); // R1's auto-revert, same tick
-    expect(rig.world.getEntity('shooter').ammo).toBeNull();
   });
 });

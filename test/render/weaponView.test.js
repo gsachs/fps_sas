@@ -118,22 +118,27 @@ describe('createWeaponView', () => {
     expect(realModel.position.z).toBeCloseTo(3, 5); // settles back to rest, not to 0
   });
 
-  it('setHeldWeapon swaps to a visually distinct machine-gun placeholder and back to the pistol', () => {
+  // Only the machine gun ships today, but registerVisual/setHeldWeapon stay
+  // generic (KTD2's registry seam for the deferred weapon-archetypes pass)
+  // -- these tests register a second, made-up weapon id purely to exercise
+  // that seam, not because a second weapon exists yet.
+  it('setHeldWeapon swaps to a visually distinct registered placeholder and back to the default', () => {
     const camera = new THREE.PerspectiveCamera();
     const weaponView = createWeaponView(camera);
-    const { group, gun: pistolPlaceholder } = parts(camera);
+    const { group, gun: defaultPlaceholder } = parts(camera);
+    const otherModel = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+    weaponView.setModel(otherModel, {}, 'other-weapon');
+
+    weaponView.setHeldWeapon('other-weapon');
+
+    expect(group.getObjectByName('weaponVisual')).toBe(otherModel);
+    expect(group.children).toContain(otherModel);
+    expect(group.children).not.toContain(defaultPlaceholder);
 
     weaponView.setHeldWeapon('machinegun');
-    const mgVisual = group.getObjectByName('weaponVisual');
-
-    expect(mgVisual).not.toBe(pistolPlaceholder);
-    expect(group.children).toContain(mgVisual);
-    expect(group.children).not.toContain(pistolPlaceholder);
-
-    weaponView.setHeldWeapon('pistol');
-    expect(group.getObjectByName('weaponVisual')).toBe(pistolPlaceholder);
-    expect(group.children).toContain(pistolPlaceholder);
-    expect(group.children).not.toContain(mgVisual);
+    expect(group.getObjectByName('weaponVisual')).toBe(defaultPlaceholder);
+    expect(group.children).toContain(defaultPlaceholder);
+    expect(group.children).not.toContain(otherModel);
   });
 
   it('setHeldWeapon is a no-op when the requested weapon is already active', () => {
@@ -142,19 +147,19 @@ describe('createWeaponView', () => {
     const { group } = parts(camera);
     const childrenBefore = [...group.children];
 
-    weaponView.setHeldWeapon('pistol'); // already active by default
+    weaponView.setHeldWeapon('machinegun'); // already active by default
 
     expect(group.children).toEqual(childrenBefore);
   });
 
-  it('switching back to the pistol after setModel shows the loaded model, not the original placeholder (U5 seam)', () => {
+  it('switching back to the default weapon after setModel shows the loaded model, not the original placeholder', () => {
     const camera = new THREE.PerspectiveCamera();
     const weaponView = createWeaponView(camera);
     const realModel = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
 
     weaponView.setModel(realModel, { position: new THREE.Vector3(0, 0, 0.1) });
+    weaponView.setHeldWeapon('other-weapon'); // unregistered -- no-op, stays on the default
     weaponView.setHeldWeapon('machinegun');
-    weaponView.setHeldWeapon('pistol');
 
     const { group } = parts(camera);
     expect(group.getObjectByName('weaponVisual')).toBe(realModel);
@@ -163,16 +168,16 @@ describe('createWeaponView', () => {
   it('setModel on an inactive weapon id does not disturb the currently displayed visual', () => {
     const camera = new THREE.PerspectiveCamera();
     const weaponView = createWeaponView(camera);
-    const { group, gun: pistolPlaceholder } = parts(camera);
+    const { group, gun: defaultPlaceholder } = parts(camera);
 
-    const mgModel = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
-    weaponView.setModel(mgModel, {}, 'machinegun'); // pistol is still active
+    const otherModel = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial());
+    weaponView.setModel(otherModel, {}, 'other-weapon'); // the default weapon is still active
 
-    expect(group.getObjectByName('weaponVisual')).toBe(pistolPlaceholder);
-    expect(group.children).not.toContain(mgModel);
+    expect(group.getObjectByName('weaponVisual')).toBe(defaultPlaceholder);
+    expect(group.children).not.toContain(otherModel);
 
-    weaponView.setHeldWeapon('machinegun');
-    expect(group.getObjectByName('weaponVisual')).toBe(mgModel);
+    weaponView.setHeldWeapon('other-weapon');
+    expect(group.getObjectByName('weaponVisual')).toBe(otherModel);
   });
 
   // KTD4/AE2: the viewmodel is only ever drawn through its own depth-cleared

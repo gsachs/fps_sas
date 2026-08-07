@@ -71,27 +71,23 @@ describe('world.step dead-entity guard', () => {
 });
 
 describe('world entity defaults: armory fields (U1 foundation)', () => {
-  it('creates entities holding the pistol, with no finite ammo and no grenades', () => {
+  it('creates entities holding the infinite machine gun, with no grenades', () => {
     const world = createWorld();
     const entity = world.addEntity('player');
 
-    expect(entity.heldWeapon).toBe('pistol');
-    expect(entity.ammo).toBeNull();
+    expect(entity.heldWeapon).toBe('machinegun');
     expect(entity.grenadeCount).toBe(0);
   });
 
-  it('passes heldWeapon, ammo, and grenadeCount through getRenderState uninterpolated', () => {
+  it('passes heldWeapon and grenadeCount through getRenderState uninterpolated', () => {
     const world = createWorld();
     world.addEntity('player');
     const entity = world.getEntity('player');
-    entity.heldWeapon = 'machinegun';
-    entity.ammo = 30;
     entity.grenadeCount = 2;
 
     const [state] = world.getRenderState(0.5);
 
     expect(state.heldWeapon).toBe('machinegun');
-    expect(state.ammo).toBe(30);
     expect(state.grenadeCount).toBe(2);
   });
 });

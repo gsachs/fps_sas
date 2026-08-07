@@ -18,22 +18,21 @@ import { MAX_HEALTH } from '../health.js';
 import { createNavigator, createPatrolPicker, nearestNodeId, GRAPH, ROOM_IDS } from './navigation.js';
 import { ROOMS, DOORWAYS } from '../../arena/layout.js';
 
-// Sized against the old open-box arena's scale (a ~60x60 floor with spawn
-// points up to ~55 units apart) -- these were first written smaller, before
-// that resize, and left bots unable to ever notice or engage the player
-// across a realistic spawn separation (caught by live play, not by unit
-// tests using close-together synthetic positions). The rooms-and-corridors
-// map (src/arena/layout.js) is a different scale and shape entirely, and
-// this is a U6 retuning surface: live play, not a computed guess, decides
-// the new values (this codebase has miscalibrated ranges against synthetic
-// assumptions before -- see the paragraph above). Verified reference
-// geometry for that session: corner rooms are 16x16 (diagonal ~22.6),
-// the central room is 20x20 (diagonal ~28.3), a loop corridor run is ~36
-// units end to end, and a spoke into the centre is ~14.5 units -- so most
-// occluded-free sightlines top out well under AWARENESS_RANGE's current 50,
-// and ATTACK_RANGE's current 25 already exceeds most single-room diagonals.
-export const ATTACK_RANGE = 25;
-export const AWARENESS_RANGE = 50;
+// Live-play retuning surface, not a computed guess (this codebase has
+// miscalibrated ranges against synthetic-only assumptions before). A first
+// pass here scaled these off the map's own diagonals (ATTACK_RANGE 30,
+// AWARENESS_RANGE 58) -- live play with the full 6-bot roster found that
+// too generous: awareness wide enough to span most of a district plus its
+// connecting corridor let multiple bots converge on the same target at
+// once (read as "too frantic"/"ganging up"), and with several bots
+// clustered near a death spot, R11's hidden-spawn search had fewer
+// genuinely unobserved points left to choose from, reading as an
+// instant-redeath respawn. Pulled back to roughly the old map's absolute
+// values (unchanged district-to-district scale was never the actual
+// problem -- roster size and range together were) as a second pass;
+// confirm against how engagement reads now, not a final answer either.
+export const ATTACK_RANGE = 22;
+export const AWARENESS_RANGE = 40;
 export const RETREAT_HEALTH_THRESHOLD = 30;
 export const RETREAT_DURATION_TICKS = 180; // ~3s at 60Hz
 // How long a bot holds at a last-seen point before giving up (GameAI Pro's
@@ -317,12 +316,13 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     ticksSinceFire += 1;
     const attackReady = state.phase === 'attack' && ticksSinceEnteredAttack >= difficulty.reactionDelayTicks;
     // KTD6: cadence is weapon-aware, not just a swapped-in interval number.
-    // A held-fire weapon (the machine gun) sprays exactly like a player
-    // holding the trigger -- the level stays up for the whole attack phase
-    // and weapon.js's real per-tick cooldown is the only rate limiter, so
-    // this module's own FIRE_INTERVAL_TICKS never applies to it. An
-    // edge-fire weapon (the pistol) keeps today's intent-to-fire interval
-    // exactly as before.
+    // A held-fire weapon (the machine gun, today's only weapon) sprays
+    // exactly like a player holding the trigger -- the level stays up for
+    // the whole attack phase and weapon.js's real per-tick cooldown is the
+    // only rate limiter, so this module's own FIRE_INTERVAL_TICKS never
+    // applies to it. An edge-fire weapon (a deferred weapon-archetypes
+    // seam, per KTD2 -- none ships yet) would instead keep this module's
+    // intent-to-fire interval.
     const fireHeld = attackReady && isHeldFireWeapon(heldWeapon);
     if (attackReady && !fireHeld && ticksSinceFire >= FIRE_INTERVAL_TICKS) {
       ticksSinceFire = 0;

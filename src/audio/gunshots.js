@@ -18,13 +18,11 @@ const VOICE_POOL_SIZE = 12;
 const REFERENCE_DISTANCE = 5;
 const MAX_DISTANCE = 70;
 
-// KTD8: the gunshot pool has a per-weapon set. U5: both the pistol and the
-// machine gun now play through their own real, distinct recordings (see
-// modelAssets.js's GUNSHOT_PATHS / MACHINEGUN_GUNSHOT_PATHS and CREDITS.md)
-// instead of one set of buffers replayed at a different pitch to fake a
-// second weapon -- so every set plays at its own sample's natural rate.
+// KTD8: the gunshot pool has a per-weapon set, keyed by weapon id -- a
+// minimal seam (KTD2) for the deferred weapon-archetypes pass. The machine
+// gun plays through its own real recording (modelAssets.js's
+// MACHINEGUN_GUNSHOT_PATHS, see CREDITS.md) at its sample's natural rate.
 export const WEAPON_SOUND_SETS = {
-  [DEFAULT_WEAPON_ID]: { playbackRate: 1 },
   [MACHINEGUN_WEAPON_ID]: { playbackRate: 1 },
 };
 const DEFAULT_SOUND_SET_ID = DEFAULT_WEAPON_ID; // unheld/unknown weapon ids fall back here
@@ -62,7 +60,7 @@ const EXPLOSION_MAX_DISTANCE = 140;
 export const BUFFER_LOAD_TIMEOUT_MS = 8_000;
 
 // Which named set a weapon id's shot plays through -- unknown ids (or none,
-// e.g. a caller that hasn't resolved a shooter yet) fall back to the pistol
+// e.g. a caller that hasn't resolved a shooter yet) fall back to the default
 // set rather than throwing, matching the "never pass null, degrade
 // gracefully" shape the rest of this module already follows.
 export function resolveSoundSet(weaponId) {
@@ -86,8 +84,9 @@ export function nextVariantIndex(previousIndex, variantCount, roll) {
 // Advances and reads back `setId`'s own "don't repeat" cursor inside the
 // shared `cursorsBySetId` map -- pulled out of the stateful factory below so
 // that the per-set independence (the MG cycling its own samples never
-// perturbs the pistol's cursor, or vice versa, even when calls interleave)
-// is testable without the real browser audio APIs the factory needs.
+// perturbs the explosion set's cursor, or vice versa, even when calls
+// interleave) is testable without the real browser audio APIs the factory
+// needs.
 export function pickVariantForSet(cursorsBySetId, setId, variantCount, roll) {
   const previous = cursorsBySetId.get(setId) ?? -1;
   const index = nextVariantIndex(previous, variantCount, roll);
@@ -105,10 +104,9 @@ export function audioContextAction(contextState, shouldPlay) {
   return null;
 }
 
-// U5: each named sound set (the pistol's DEFAULT_SOUND_SET_ID entry, the
-// machine gun's own MACHINEGUN_WEAPON_ID entry, the explosion's own
-// EXPLOSION_SOUND_SET_ID entry) now loads its own buffer pool instead of
-// every set replaying the pistol's -- this is the seam a real sample drops
+// Each named sound set (the machine gun's own MACHINEGUN_WEAPON_ID/
+// DEFAULT_SOUND_SET_ID entry, the explosion's own EXPLOSION_SOUND_SET_ID
+// entry) loads its own buffer pool -- this is the seam a real sample drops
 // into. `soundSetUrls` is keyed by set id and every entry is optional: a set
 // with no entry here (or whose own load comes back empty -- absent files, a
 // network failure, U28's stall timeout) falls back to playing through
@@ -193,9 +191,9 @@ export function createGunshotAudio({ camera, scene, soundSetUrls = {}, onError }
   // so a slow or stalled URL in one set (U28's timeout race) can never hold
   // up a healthy sibling set's own buffers or the voice graph they need.
   // Voices are built off whichever set is ready FIRST, not gated on
-  // DEFAULT_SOUND_SET_ID specifically: a failed pistol load must not
-  // silence a machine gun or explosion sample that loaded fine, and pickBuffer
-  // below already falls back to the default pool for a set that came up empty.
+  // DEFAULT_SOUND_SET_ID specifically: a failed machine-gun load must not
+  // silence an explosion sample that loaded fine, and pickBuffer below
+  // already falls back to the default pool for a set that came up empty.
   for (const [setId, setUrls] of Object.entries(soundSetUrls)) {
     loadBufferPool(setUrls).then((pool) => {
       buffersBySetId.set(setId, pool);
@@ -203,11 +201,16 @@ export function createGunshotAudio({ camera, scene, soundSetUrls = {}, onError }
     });
   }
 
-  // `setId`'s own pool if it loaded anything, otherwise the default/pistol
-  // pool -- a weapon whose own sample hasn't landed (no URLs passed yet, a
-  // failed fetch) plays the default set's sample rather than nothing, the
-  // same "unknown falls back to pistol" shape resolveSoundSet already uses
-  // one layer up.
+  // `setId`'s own pool if it loaded anything, otherwise the default pool --
+  // for the explosion set (a distinct pool from the machine gun's), this is
+  // a real fallback: a failed explosion load still plays the machine gun's
+  // samples rather than nothing. For the machine gun itself -- today's only
+  // weapon, so DEFAULT_SOUND_SET_ID resolves to the same set -- there is no
+  // second pool left to fall back to; a failed MG load degrades to R18's
+  // baseline (silent but playable, reported once via loadBufferPool's
+  // onError) rather than the pre-U1 pistol-pool rescue. A second weapon
+  // reintroduces a genuine fallback target here automatically, with no
+  // further change needed.
   function pickBuffer(setId) {
     const ownPool = buffersBySetId.get(setId);
     const pool = ownPool && ownPool.length > 0 ? ownPool : (buffersBySetId.get(DEFAULT_SOUND_SET_ID) ?? []);

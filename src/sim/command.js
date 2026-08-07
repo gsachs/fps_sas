@@ -4,8 +4,8 @@
 // createFireLatch) so their counts stay framerate-independent regardless of
 // how many sim ticks a render frame runs; `fireHeld` is the one *level*
 // field -- true for every tick the trigger is physically down, read only by
-// weapons whose config marks them held-fire (KTD2). The pistol never reads
-// it, which is what keeps its click-per-shot feel unchanged.
+// weapons whose config marks them held-fire (KTD2). An edge-fire weapon
+// would never read it, keeping a click-per-shot feel unchanged.
 export function createCommand(overrides = {}) {
   return {
     tick: 0,

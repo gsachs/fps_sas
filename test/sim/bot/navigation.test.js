@@ -10,6 +10,7 @@ import {
   ROOM_IDS,
   edgeKey,
 } from '../../../src/sim/bot/navigation.js';
+import { PILLARS } from '../../../src/arena/layout.js';
 
 describe('buildGraph', () => {
   it('connects a room only to its own doorways and doorways on the same corridor to each other', () => {
@@ -31,11 +32,12 @@ describe('buildGraph', () => {
 
 describe('findPath', () => {
   it('returns the shortest room sequence between any two rooms in the shipped graph', () => {
-    const path = findPath(GRAPH, 'nw', 'se');
-    expect(path[0].id).toBe('nw');
-    expect(path[path.length - 1].id).toBe('se');
-    // nw and se are diagonally opposite: the shortest route must pass
-    // through the graph, never teleport directly between unconnected rooms.
+    const path = findPath(GRAPH, 'yard', 'maze');
+    expect(path[0].id).toBe('yard');
+    expect(path[path.length - 1].id).toBe('maze');
+    // Yard and Maze sit on opposite sides of the landmark: the shortest
+    // route must pass through the graph, never teleport directly between
+    // unconnected rooms.
     expect(path.length).toBeGreaterThan(2);
   });
 
@@ -81,15 +83,15 @@ describe('findPath', () => {
   });
 
   it('throws on an unknown start or goal id', () => {
-    expect(() => findPath(GRAPH, 'not-a-node', 'nw')).toThrow();
-    expect(() => findPath(GRAPH, 'nw', 'not-a-node')).toThrow();
+    expect(() => findPath(GRAPH, 'not-a-node', 'yard')).toThrow();
+    expect(() => findPath(GRAPH, 'yard', 'not-a-node')).toThrow();
   });
 });
 
 describe('nearestNodeId', () => {
   it('finds the closest node to an arbitrary position', () => {
-    const nwRoomCenter = GRAPH.nodes.get('nw');
-    expect(nearestNodeId(GRAPH, { x: nwRoomCenter.x + 0.1, z: nwRoomCenter.z - 0.1 })).toBe('nw');
+    const yardRoomCenter = GRAPH.nodes.get('yard');
+    expect(nearestNodeId(GRAPH, { x: yardRoomCenter.x + 0.1, z: yardRoomCenter.z - 0.1 })).toBe('yard');
   });
 });
 
@@ -147,79 +149,81 @@ describe('createPatrolPicker', () => {
 describe('createNavigator', () => {
   it('produces subgoal positions leading toward the goal', () => {
     const navigator = createNavigator();
-    const start = GRAPH.nodes.get('nw');
-    navigator.navigateTo('ne', { x: start.x, z: start.z });
+    const start = GRAPH.nodes.get('yard');
+    navigator.navigateTo('hall', { x: start.x, z: start.z });
     const { subgoalPosition } = navigator.tick({ x: start.x, z: start.z });
     expect(subgoalPosition).not.toEqual({ x: start.x, z: start.z }); // moved off the start node already
   });
 
   it('is done immediately when the goal is the room already stood in', () => {
     const navigator = createNavigator();
-    const start = GRAPH.nodes.get('nw');
-    navigator.navigateTo('nw', { x: start.x, z: start.z });
+    const start = GRAPH.nodes.get('yard');
+    navigator.navigateTo('yard', { x: start.x, z: start.z });
     navigator.tick({ x: start.x, z: start.z });
     expect(navigator.isDone()).toBe(true);
   });
 
   // KTD9: a doorway that stays blocked long enough reads as "blocked", not
   // "slow" -- the navigator repaths via the loop's alternate route instead
-  // of waiting forever at the same doorway.
+  // of waiting forever at the same doorway. Rehomed onto Bazaar (U2, U3):
+  // the district guaranteed to have exactly two doorways, so this test
+  // exhausts every edge out of it deterministically.
   it('repaths via an alternate route once stuck at a doorway past the threshold', () => {
     const navigator = createNavigator();
-    const nw = GRAPH.nodes.get('nw');
-    const nwTop = GRAPH.nodes.get('nw-top');
-    const nwLeft = GRAPH.nodes.get('nw-left');
-    navigator.navigateTo('ne', { x: nw.x, z: nw.z });
+    const bazaar = GRAPH.nodes.get('bazaar');
+    const bazaarWest = GRAPH.nodes.get('bazaar-west');
+    const bazaarSouth = GRAPH.nodes.get('bazaar-south');
+    navigator.navigateTo('yard', { x: bazaar.x, z: bazaar.z });
 
-    // First subgoal off the room centre is the direct route's first doorway.
-    let result = navigator.tick({ x: nw.x, z: nw.z });
-    expect(result.subgoalPosition.x).toBeCloseTo(nwTop.x);
-    expect(result.subgoalPosition.z).toBeCloseTo(nwTop.z);
+    // First subgoal off the district centre is the direct route's first doorway.
+    let result = navigator.tick({ x: bazaar.x, z: bazaar.z });
+    expect(result.subgoalPosition.x).toBeCloseTo(bazaarWest.x);
+    expect(result.subgoalPosition.z).toBeCloseTo(bazaarWest.z);
 
     // Stand still well past the stuck threshold -- same doorway, no progress.
     for (let i = 0; i < 60; i++) {
-      result = navigator.tick({ x: nw.x, z: nw.z });
+      result = navigator.tick({ x: bazaar.x, z: bazaar.z });
     }
 
     // The repath must not send the bot back at the same blocked doorway.
-    expect(result.subgoalPosition.x).toBeCloseTo(nwLeft.x);
-    expect(result.subgoalPosition.z).toBeCloseTo(nwLeft.z);
+    expect(result.subgoalPosition.x).toBeCloseTo(bazaarSouth.x);
+    expect(result.subgoalPosition.z).toBeCloseTo(bazaarSouth.z);
   });
 
   it('does not carry a blocked edge over into a later, unrelated journey (regression)', () => {
-    // A doorway jammed on one trip through a room must not stay excluded
-    // forever -- blockedEdges is scoped per journey (KTD9's "resolve THIS
-    // contention", not a permanent map edit), or a bot whose lifetime hits
-    // stuck-repaths at both of a room's doorways on two separate later
-    // trips would exclude every edge out of that room and crash the next
-    // path search through it (found by adversarial code review).
+    // A doorway jammed on one trip through a district must not stay
+    // excluded forever -- blockedEdges is scoped per journey (KTD9's
+    // "resolve THIS contention", not a permanent map edit), or a bot whose
+    // lifetime hits stuck-repaths at both of a district's doorways on two
+    // separate later trips would exclude every edge out of it and crash
+    // the next path search through it (found by adversarial code review).
     const navigator = createNavigator();
-    const nw = GRAPH.nodes.get('nw');
-    const nwTop = GRAPH.nodes.get('nw-top');
+    const bazaar = GRAPH.nodes.get('bazaar');
+    const bazaarWest = GRAPH.nodes.get('bazaar-west');
 
-    navigator.navigateTo('ne', { x: nw.x, z: nw.z });
-    for (let i = 0; i < 60; i++) navigator.tick({ x: nw.x, z: nw.z }); // blocks nw|nw-top this journey
+    navigator.navigateTo('yard', { x: bazaar.x, z: bazaar.z });
+    for (let i = 0; i < 60; i++) navigator.tick({ x: bazaar.x, z: bazaar.z }); // blocks bazaar|bazaar-west this journey
 
-    // A brand new journey starting fresh from the same room.
-    navigator.navigateTo('ne', { x: nw.x, z: nw.z });
-    const result = navigator.tick({ x: nw.x, z: nw.z });
-    expect(result.subgoalPosition.x).toBeCloseTo(nwTop.x); // nw-top is viable again
-    expect(result.subgoalPosition.z).toBeCloseTo(nwTop.z);
+    // A brand new journey starting fresh from the same district.
+    navigator.navigateTo('yard', { x: bazaar.x, z: bazaar.z });
+    const result = navigator.tick({ x: bazaar.x, z: bazaar.z });
+    expect(result.subgoalPosition.x).toBeCloseTo(bazaarWest.x); // bazaar-west is viable again
+    expect(result.subgoalPosition.z).toBeCloseTo(bazaarWest.z);
   });
 
-  it('recovers instead of throwing when one journey blocks every exit from the current room (regression)', () => {
+  it('recovers instead of throwing when one journey blocks every exit from the current district (regression)', () => {
     // Standing still long enough at successive subgoals can trip the
-    // stuck-repath threshold twice in the same journey; nw has exactly two
-    // doorways, so this exhausts every edge out of it. Before the fallback,
-    // the next repath's findPath call threw uncaught (found by adversarial
-    // code review) -- an unrecoverable freeze, since nothing in the call
-    // chain up to the render loop catches it.
+    // stuck-repath threshold twice in the same journey; Bazaar has exactly
+    // two doorways, so this exhausts every edge out of it. Before the
+    // fallback, the next repath's findPath call threw uncaught (found by
+    // adversarial code review) -- an unrecoverable freeze, since nothing in
+    // the call chain up to the render loop catches it.
     const navigator = createNavigator();
-    const nw = GRAPH.nodes.get('nw');
-    navigator.navigateTo('ne', { x: nw.x, z: nw.z });
+    const bazaar = GRAPH.nodes.get('bazaar');
+    navigator.navigateTo('yard', { x: bazaar.x, z: bazaar.z });
 
     expect(() => {
-      for (let i = 0; i < 120; i++) navigator.tick({ x: nw.x, z: nw.z });
+      for (let i = 0; i < 120; i++) navigator.tick({ x: bazaar.x, z: bazaar.z });
     }).not.toThrow();
   });
 });
@@ -234,6 +238,19 @@ describe('shipped graph', () => {
   it('has a node for every room in the map', () => {
     for (const roomId of ROOM_IDS) {
       expect(GRAPH.nodes.has(roomId)).toBe(true);
+    }
+  });
+
+  // U3: a bot can never arrive at a point buried inside solid geometry --
+  // every district's nav point (its centre, or layout.js's override for the
+  // landmark) must sit outside every pillar/cover block.
+  it("every district's nav point is outside all pillar/cover geometry", () => {
+    for (const roomId of ROOM_IDS) {
+      const node = GRAPH.nodes.get(roomId);
+      for (const pillar of PILLARS) {
+        const inside = Math.abs(node.x - pillar.x) <= pillar.halfX && Math.abs(node.z - pillar.z) <= pillar.halfZ;
+        expect(inside, `district "${roomId}"'s nav point sits inside pillar "${pillar.id}"`).toBe(false);
+      }
     }
   });
 });

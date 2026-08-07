@@ -5,7 +5,9 @@ import { selectSpawnPoint } from '../arena/spawnPlacement.js';
 import { DEFAULT_WEAPON_ID } from '../sim/weapon.js';
 import { MAX_HEALTH } from '../sim/health.js';
 
-export const KILLS_TO_WIN = 10; // tuned during playtest (Outstanding Questions)
+// KTD6: raised alongside the bigger roster and faster MG kills, so a match
+// doesn't run shorter than before despite both of those speeding up scoring.
+export const KILLS_TO_WIN = 15;
 
 export function checkMatchEnd(entityAccessor) {
   const leaderboard = getLeaderboard(entityAccessor);
@@ -25,7 +27,7 @@ export function checkMatchEnd(entityAccessor) {
 //
 // R8: also restores the armory economy -- every pickup returns (via
 // pickupSystem, optional so callers that predate U3 keep working) and every
-// entity reverts to the pistol with an empty grenade pocket. grenadeSystem
+// entity reverts to the default weapon with an empty grenade pocket. grenadeSystem
 // (also optional, U4) clears every in-flight grenade and pending blast --
 // distinct from grenadeCount below, which is per-entity pocket state the
 // per-entity loop already zeroes; a mid-air grenade is a projectile, not a
@@ -57,7 +59,6 @@ export function resetMatch(
     entity.animHint = 'idle';
     entity.score = 0;
     entity.heldWeapon = DEFAULT_WEAPON_ID;
-    entity.ammo = null;
     entity.grenadeCount = 0;
 
     movementSystem.teleport(entity.id, spawn);

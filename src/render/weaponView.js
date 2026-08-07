@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { disposeObject3D } from './models.js';
-import { DEFAULT_WEAPON_ID, MACHINEGUN_WEAPON_ID } from '../sim/weapon.js';
+import { DEFAULT_WEAPON_ID } from '../sim/weapon.js';
 
 // First-person weapon: a model parented to the camera (so it always renders
 // at a fixed screen position), with a recoil kick and muzzle flash on fire.
@@ -40,11 +40,12 @@ const CAMERA_KICK_RATIO = 0.55;
 
 // R10: the viewmodel shows the held weapon. `weaponVisuals` maps a weapon id
 // to its own { visual, restPositionZ, restRotationX } -- pre-seeded with a
-// placeholder box per weapon (visually distinct so a swap is legible even
-// before any real model loads), and `setModel` (existing pistol GLB load) or
-// U5's eventual MG-model load replace one entry's visual in place without
-// disturbing the others. Only the active entry's visual is ever a child of
-// `group`; `setHeldWeapon` is what moves that membership.
+// placeholder box (visually distinct from anything registered later so a
+// swap stays legible), and `setModel` (the MG GLB load in main.js) replaces
+// an entry's visual in place without disturbing others registered alongside
+// it by a future weapon-archetypes pass (KTD2). Only the active entry's
+// visual is ever a child of `group`; `setHeldWeapon` is what moves that
+// membership.
 // KTD4: every viewmodel mesh -- placeholder, a loaded model, and any nested
 // child a GLTF brings with it -- must land on WEAPON_LAYER exclusively and
 // cast/receive no shadows. Layers and shadow flags don't cascade from a
@@ -92,11 +93,7 @@ export function createWeaponView(camera) {
     });
   }
 
-  registerVisual(DEFAULT_WEAPON_ID, createPlaceholderVisual(0x2b2b2b, { x: 0.08, y: 0.08, z: 0.35 }));
-  // Deliberately different size/color from the pistol placeholder (not just
-  // a recolor of the same box) so the swap reads as a different weapon at a
-  // glance even before U5's real MG model lands through setModel's same seam.
-  registerVisual(MACHINEGUN_WEAPON_ID, createPlaceholderVisual(0x3f6f9f, { x: 0.09, y: 0.1, z: 0.55 }));
+  registerVisual(DEFAULT_WEAPON_ID, createPlaceholderVisual(0x3f6f9f, { x: 0.09, y: 0.1, z: 0.55 }));
 
   let activeWeaponId = DEFAULT_WEAPON_ID;
   let visual = weaponVisuals.get(activeWeaponId).visual;
@@ -192,14 +189,13 @@ export function createWeaponView(camera) {
   }
 
   // Replaces `weaponId`'s visual (placeholder or a prior model) with
-  // `model`, disposing the old one -- `weaponId` defaults to 'pistol', the
-  // only caller today (the pistol GLB load in main.js), so that existing
-  // call site keeps compiling and behaving identically. `localTransform`
+  // `model`, disposing the old one -- `weaponId` defaults to the default
+  // weapon (main.js's MG GLB load, the only caller today). `localTransform`
   // lets the caller correct for a source model's own scale/orientation/
   // offset conventions. If `weaponId` is the currently active weapon the
   // change is visible immediately; otherwise it takes effect the next time
-  // setHeldWeapon switches to it -- the seam U5 uses to register a real MG
-  // model without changing this call's shape.
+  // setHeldWeapon switches to it -- the seam a future weapon-archetypes
+  // pass uses to register another model without changing this call's shape.
   function setModel(model, localTransform = {}, weaponId = DEFAULT_WEAPON_ID) {
     const previous = weaponVisuals.get(weaponId);
     const isActive = activeWeaponId === weaponId;

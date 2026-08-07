@@ -9,13 +9,13 @@ describe('formatEntry', () => {
   });
 
   it('produces no entry for a non-lethal hit', () => {
-    const event = { shooterId: 'bot0', targetId: 'bot1', weapon: 'pistol', killed: false };
+    const event = { shooterId: 'bot0', targetId: 'bot1', weapon: 'machinegun', killed: false };
 
     expect(formatEntry(event)).toBeNull();
   });
 
-  it('falls back to the pistol glyph for an unknown weapon id, rather than throwing', () => {
-    const pistolKill = formatEntry({ shooterId: 'bot0', targetId: 'bot1', weapon: 'pistol', killed: true });
+  it('falls back to the default weapon\'s glyph for an unknown weapon id, rather than throwing', () => {
+    const mgKill = formatEntry({ shooterId: 'bot0', targetId: 'bot1', weapon: 'machinegun', killed: true });
     const unknownWeaponKill = formatEntry({
       shooterId: 'bot0',
       targetId: 'bot1',
@@ -23,7 +23,7 @@ describe('formatEntry', () => {
       killed: true,
     });
 
-    expect(unknownWeaponKill.text).toBe(pistolKill.text);
+    expect(unknownWeaponKill.text).toBe(mgKill.text);
   });
 });
 
@@ -41,7 +41,7 @@ describe('addEntry (R2, AE2)', () => {
   });
 
   it("Covers AE2: the player's own death renders red", () => {
-    const entries = addEntry([], { shooterId: 'bot2', targetId: 'player', weapon: 'pistol', killed: true });
+    const entries = addEntry([], { shooterId: 'bot2', targetId: 'player', weapon: 'machinegun', killed: true });
 
     expect(entries[0].highlightClass).toBe('red');
   });
@@ -53,7 +53,7 @@ describe('addEntry (R2, AE2)', () => {
   });
 
   it('produces no entry for a non-lethal hit', () => {
-    const entries = addEntry([], { shooterId: 'bot0', targetId: 'bot1', weapon: 'pistol', killed: false });
+    const entries = addEntry([], { shooterId: 'bot0', targetId: 'bot1', weapon: 'machinegun', killed: false });
 
     expect(entries).toEqual([]);
   });
@@ -61,7 +61,7 @@ describe('addEntry (R2, AE2)', () => {
   it('Covers AE3: caps visible entries at 6, dropping the oldest first', () => {
     let entries = [];
     for (let i = 0; i < 10; i++) {
-      entries = addEntry(entries, { shooterId: 'shooter', targetId: `victim${i}`, weapon: 'pistol', killed: true });
+      entries = addEntry(entries, { shooterId: 'shooter', targetId: `victim${i}`, weapon: 'machinegun', killed: true });
     }
 
     expect(entries).toHaveLength(6);
@@ -74,7 +74,7 @@ describe('addEntry (R2, AE2)', () => {
 
 describe('ageEntries (R4, AE3)', () => {
   it('dims after the dim threshold and expires after the lifetime', () => {
-    let entries = addEntry([], { shooterId: 'bot0', targetId: 'bot1', weapon: 'pistol', killed: true });
+    let entries = addEntry([], { shooterId: 'bot0', targetId: 'bot1', weapon: 'machinegun', killed: true });
 
     entries = ageEntries(entries, 1); // still bright, well inside the ~5s lifetime
     expect(entries).toHaveLength(1);

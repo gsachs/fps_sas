@@ -3,8 +3,16 @@
 // overwhelming rather than a fair fight to learn. Match-level orchestration
 // (which/how-many bots to spawn), not per-bot AI, so this lives alongside
 // matchEnd.js rather than in sim/bot/difficulty.js.
+// KTD6's first pass raised INITIAL_ACTIVE_BOTS to 3 for the bigger 6-bot
+// roster; live play found 3 simultaneous bots (compounded with a wider
+// AWARENESS_RANGE, see fsm.js) read as bots ganging up rather than a fair
+// fight, echoing the original reason this ramp exists at all (see the
+// module comment above). Kept at the original 2, with the ramp still
+// unlocking one more bot every interval up to the new 6-bot max --
+// contact density scales through the larger max and the map itself, not a
+// more crowded opening.
 const INITIAL_ACTIVE_BOTS = 2;
-const RAMP_INTERVAL_SECONDS = 20;
+const RAMP_INTERVAL_SECONDS = 15;
 
 export function getActiveBotCount(elapsedSeconds, maxBots) {
   const unlocked = INITIAL_ACTIVE_BOTS + Math.floor(elapsedSeconds / RAMP_INTERVAL_SECONDS);

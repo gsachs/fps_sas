@@ -29,14 +29,14 @@ function buildCollaborators(overrides = {}) {
 describe('applyFrameEvents', () => {
   it("a 'fire' event from the local player calls weaponView.fire() and gunshots.playLocal()", () => {
     const collaborators = buildCollaborators({
-      sim: { world: { getEntity: () => ({ heldWeapon: 'pistol' }) } },
+      sim: { world: { getEntity: () => ({ heldWeapon: 'machinegun' }) } },
     });
     const events = [{ type: 'fire', shooterId: LOCAL_PLAYER_ID, origin: { x: 0, y: 0, z: 0 }, endPoint: { x: 1, y: 0, z: 1 } }];
 
     applyFrameEvents(events, collaborators);
 
     expect(collaborators.weaponView.fire).toHaveBeenCalledTimes(1);
-    expect(collaborators.gunshots.playLocal).toHaveBeenCalledWith('pistol');
+    expect(collaborators.gunshots.playLocal).toHaveBeenCalledWith('machinegun');
     expect(collaborators.gunshots.playAt).not.toHaveBeenCalled();
   });
 

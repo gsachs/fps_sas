@@ -32,12 +32,9 @@ export function applyFrameEvents(
   for (const event of events) {
     if (event.type === 'fire' && event.shooterId === LOCAL_PLAYER_ID) {
       weaponView.fire();
-      // R10: MG shots sound distinct from pistol shots -- resolved from
-      // the shooter's *current* heldWeapon, which is accurate for every
-      // shot except the one that empties the last round (weapon.js's
-      // auto-revert already flipped it back to 'pistol' by the time this
-      // event is read); a one-shot cosmetic edge case, not a correctness
-      // one.
+      // R10: each weapon's shot sounds distinct, resolved from the
+      // shooter's current heldWeapon (KTD2's registry seam for the deferred
+      // weapon-archetypes pass).
       gunshots.playLocal(sim.world.getEntity(event.shooterId)?.heldWeapon);
       if (debugMode) debugCounters.fires += 1;
     }

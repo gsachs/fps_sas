@@ -73,7 +73,7 @@ describe('installDebugHooks', () => {
     matchElapsedSeconds = 25;
 
     expect(window.__debugBotRamp().matchElapsedSeconds).toBe(25);
-    // getActiveBotCount(25, 4) == min(2 + floor(25/20), 4) == 3.
+    // getActiveBotCount(25, 4) == min(2 + floor(25/15), 4) == 3.
     expect(window.__debugBotRamp().targetCount).toBe(3);
   });
 });

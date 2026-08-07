@@ -33,8 +33,7 @@ function createEntity(id, overrides = {}) {
     dead: false,
     score: 0,
     animHint: 'idle',
-    heldWeapon: DEFAULT_WEAPON_ID, // per-weapon foundation (KTD1): every entity starts on the infinite pistol
-    ammo: null, // null means infinite (the pistol); a finite weapon (the machine gun) sets a count
+    heldWeapon: DEFAULT_WEAPON_ID, // per-weapon foundation (KTD1): every entity starts on the infinite machine gun
     grenadeCount: 0,
     ...overrides,
   };
@@ -98,13 +97,14 @@ export function createWorld({ physics, combat, pickups, grenades } = {}) {
 
       entity.animHint = command.moveX !== 0 || command.moveZ !== 0 ? 'moving' : 'idle';
 
-      // Collection reads this tick's actual (post-movement) position, and
-      // runs before combat so an entity that just picked up the MG this
-      // tick can fire it the same tick. Dead/parked entities never reach
-      // here at all -- they have no command in commandsByEntityId, or were
-      // skipped by the dead-entity guard above -- which is what excludes
-      // them from collection "by construction" (KTD7), not a liveness
-      // check inside pickups.js itself.
+      // Collection reads this tick's actual (post-movement) position, before
+      // combat resolves -- ordering that matters once a pickup grants
+      // something combat-relevant again (grenades read a separate command
+      // field, so it's dormant today, KTD2's registry-seam shape). Dead/
+      // parked entities never reach here at all -- they have no command in
+      // commandsByEntityId, or were skipped by the dead-entity guard above
+      // -- which is what excludes them from collection "by construction"
+      // (KTD7), not a liveness check inside pickups.js itself.
       if (pickups) pickups.tryCollect(entity);
 
       // Throw reads a different command field (throwGrenade) than combat's
@@ -152,26 +152,6 @@ export function createWorld({ physics, combat, pickups, grenades } = {}) {
     // callers (e.g. match-end) in the call that produced them.
     if (grenades) events.push(...grenades.tick(entityAccessor, dt));
 
-    // R13: death strips the carrier's machine gun and ammo -- bot or player,
-    // regardless of damage source. Applied once over every 'hit' event this
-    // step produced (hitscan, from the per-entity loop above, and blast,
-    // from grenades.tick() above) rather than inline per source, so a second
-    // damage path can never silently bypass it the way an inline-only
-    // version once did. The grenade pocket (grenadeCount) is untouched here,
-    // it survives death, and so does the taken pickup's own respawn
-    // countdown (KD6): that countdown started the instant the pickup was
-    // taken and runs independent of what later happens to the taker, so
-    // death must never reach into pickups.js at all, only reset the dying
-    // entity's own weapon fields.
-    for (const event of events) {
-      if (event.type !== 'hit' || !event.killed) continue;
-      const target = entityAccessor.getEntity(event.targetId);
-      if (target) {
-        target.heldWeapon = DEFAULT_WEAPON_ID;
-        target.ammo = null;
-      }
-    }
-
     return events;
   }
 
@@ -200,7 +180,6 @@ export function createWorld({ physics, combat, pickups, grenades } = {}) {
         // Armory fields (KTD1): discrete state, not continuous motion, so
         // they pass through as-is rather than lerping like position/yaw.
         heldWeapon: entity.heldWeapon,
-        ammo: entity.ammo,
         grenadeCount: entity.grenadeCount,
       });
     }

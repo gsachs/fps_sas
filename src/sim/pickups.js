@@ -2,8 +2,10 @@
 // inside either of them. Fixed positions come from layout.js's PICKUPS
 // descriptors; collection is a proximity check against entity.position, not
 // a Rapier query -- pickups have no collider. Three.js/Rapier-free, like the
-// rest of the sim layer (KTD7).
-import { MACHINEGUN_MAX_AMMO, MACHINEGUN_WEAPON_ID } from './weapon.js';
+// rest of the sim layer (KTD7). The machine gun is the default infinite
+// weapon (R6) and carries no pickup of its own (R7) -- grenades are the only
+// pickup type this pass, though the type-keyed shape below stays generic for
+// future items.
 
 // 3D distance an entity must be within to collect a pickup.
 export const PICKUP_COLLECTION_RADIUS = 1.5;
@@ -27,20 +29,16 @@ export function createPickupSystem({ pickups, isLocalPlayer }) {
   const takenPickupIds = new Set();
   const respawnTicksRemaining = new Map(); // pickupId -> ticks left until respawn
 
-  // R6: a pickup is takeable only by an entity that can actually use it --
-  // the machine gun always qualifies (even a re-pickup while already
-  // holding it just refills); a grenade pickup is player-only and only
-  // while the pocket has room.
+  // R7: a grenade pickup is player-only and only while the pocket has room.
+  // Type-gated, not just player+capacity -- a future pickup type sitting in
+  // LAYOUT.pickups must stay uncollectible until its own handling is added
+  // here, rather than silently being treated as a grenade.
   function isEligible(entity, pickup) {
-    if (pickup.type === MACHINEGUN_WEAPON_ID) return true;
-    return isLocalPlayer(entity) && entity.grenadeCount < GRENADE_POCKET_CAPACITY;
+    return pickup.type === 'grenade' && isLocalPlayer(entity) && entity.grenadeCount < GRENADE_POCKET_CAPACITY;
   }
 
   function collect(entity, pickup) {
-    if (pickup.type === MACHINEGUN_WEAPON_ID) {
-      entity.heldWeapon = MACHINEGUN_WEAPON_ID;
-      entity.ammo = MACHINEGUN_MAX_AMMO;
-    } else {
+    if (pickup.type === 'grenade') {
       entity.grenadeCount = Math.min(entity.grenadeCount + 1, GRENADE_POCKET_CAPACITY);
     }
   }
