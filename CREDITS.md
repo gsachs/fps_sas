@@ -38,6 +38,14 @@ By [Quaternius](https://poly.pizza/u/Quaternius), via [Poly Pizza](https://poly.
   removed once nothing referenced them. The links stay in this file's
   history rather than here.
 
+## Interface
+
+- **Start-screen key art** — `assets/ui/keyart.jpg`. Generated with Google
+  Gemini for this project, not sourced from a third party, so there is no
+  upstream licence to track. The prompt that produced it is kept in
+  `public/assets/ui/README.md` so it can be regenerated if the fiction or the
+  district palette changes.
+
 ## Environment
 
 - **Kloofendal 48d Partly Cloudy (Pure Sky)** by Greg Zaal and Jarod Guest,

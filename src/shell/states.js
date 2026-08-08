@@ -78,18 +78,19 @@ export function createGameShell({
   let state = STATES.START;
 
   const startScreen = createScreen(container, { visible: true });
-  // A gradient rather than the flat wash the other screens use: the arena is
-  // orbiting behind this one (render/attractCamera.js) and a key-art image
-  // may be layered over it, so the scrim has to darken enough for text to
-  // read at the middle without flattening the picture at the edges.
-  startScreen.style.background =
-    'linear-gradient(to bottom, rgba(6,8,12,0.55) 0%, rgba(6,8,12,0.86) 42%, rgba(6,8,12,0.86) 62%, rgba(6,8,12,0.55) 100%)';
+  startScreen.style.background = 'transparent';
   startScreen.style.gap = '0';
 
-  // Optional key art, behind the text and in front of the live view. Loaded
-  // the way every other asset here is (R18): absent or failed, the element
-  // simply stays transparent and the orbiting arena shows through, so the
-  // screen is complete either way and nothing has to ship to make it work.
+  // Three stacked layers, and the order is the whole trick: art, then scrim,
+  // then text. The scrim has to sit BETWEEN the picture and the words -- put
+  // it on the container instead and the art paints over the top of it, which
+  // is exactly what happened first time and left white text sitting on bright
+  // sand, unreadable.
+  //
+  // Optional key art. Loaded the way every other asset here is (R18): absent
+  // or failed, this layer stays transparent and the slowly orbiting arena
+  // behind the whole overlay shows through instead, so the screen is complete
+  // either way and nothing has to ship to make it work.
   const keyArt = document.createElement('div');
   keyArt.style.cssText =
     'position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;' +
@@ -102,11 +103,33 @@ export function createGameShell({
   };
   keyArtImage.src = KEY_ART_PATH;
 
+  // Darkest across the middle where the body text sits, easing off top and
+  // bottom so the sky and the foreground still read as a picture rather than
+  // as a dimmed one. Kept deliberately light over the top fifth: that band
+  // carries the drones lowering their cargo in, which is the story the brief
+  // is telling, and the title over it is large and bold enough to hold its
+  // own on a shadow alone.
+  const scrim = document.createElement('div');
+  scrim.style.cssText =
+    'position:absolute;inset:0;pointer-events:none;background:' +
+    'linear-gradient(to bottom,' +
+    ' rgba(8,10,14,0.30) 0%,' +
+    ' rgba(8,10,14,0.52) 18%,' +
+    ' rgba(8,10,14,0.78) 40%,' +
+    ' rgba(8,10,14,0.78) 66%,' +
+    ' rgba(8,10,14,0.42) 100%);';
+  startScreen.appendChild(scrim);
+
   // The brief quotes the real numbers by importing them, so a retune of the
   // kill target or the reinforcement interval cannot leave the story telling
   // the player something the match no longer does.
   const brief = document.createElement('div');
-  brief.style.cssText = 'position:relative;max-width:44rem;padding:0 2rem;';
+  brief.style.cssText =
+    'position:relative;max-width:44rem;padding:0 2rem;' +
+    // The fallback backdrop is a live view whose brightness nobody
+    // controls -- the sun can be in frame. A shadow costs nothing and
+    // keeps the text readable over whatever the orbit is pointing at.
+    'text-shadow:0 2px 12px rgba(0,0,0,0.85), 0 1px 3px rgba(0,0,0,0.9);';
   brief.innerHTML =
     `<h1 style="margin:0;font-size:4rem;letter-spacing:0.22em;font-weight:700;">FOOTHOLD</h1>` +
     `<p style="margin:0.35rem 0 1.6rem;font-size:1rem;letter-spacing:0.32em;opacity:0.65;` +
