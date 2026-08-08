@@ -13,6 +13,8 @@ import {
   RETREAT_HEALTH_THRESHOLD,
   RETREAT_DURATION_TICKS,
   SEARCH_DWELL_TICKS,
+  FIELD_OF_VIEW_RADIANS,
+  isWithinFieldOfView,
 } from '../../src/sim/bot/fsm.js';
 import { buildBotRig, addEntity } from '../support/rig.js';
 
@@ -588,8 +590,16 @@ describe('createBotAI: search (AE2, KTD3)', () => {
     const hiddenPosition = { x: yard.x, y: 1, z: yard.z }; // a different, wall-separated district
 
     // Phase 1: player visible nearby in the same room.
+    // Facing the target: bots acquire through a forward cone now (fsm.js's
+    // FIELD_OF_VIEW_RADIANS), so a bot has to actually be looking your way
+    // to pick you up. This test is about where a search *walks*, so it
+    // starts from a bot that has already seen the player.
+    const facingTarget = Math.atan2(
+      lastVisiblePosition.x - startPosition.x,
+      lastVisiblePosition.z - startPosition.z
+    );
     for (let i = 0; i < 5; i++) {
-      const command = bot.sample(entity.position, lastVisiblePosition, 100);
+      const command = bot.sample(entity.position, lastVisiblePosition, 100, undefined, true, facingTarget);
       movementSystem.resolveMovement(entity, command, 1 / 60);
       movementSystem.commit();
     }
@@ -682,8 +692,15 @@ describe('createBotAI: search (AE2, KTD3)', () => {
     // only by continuing through the same corridor.
     const hiddenPosition = { x: 44, y: 1, z: 47 };
 
+    // Facing the target: acquisition goes through a forward cone now
+    // (fsm.js's FIELD_OF_VIEW_RADIANS), and this test is about where a
+    // search *walks*, so it starts from a bot that has already seen you.
+    const facingTarget = Math.atan2(
+      lastVisiblePosition.x - startPosition.x,
+      lastVisiblePosition.z - startPosition.z
+    );
     for (let i = 0; i < 5; i++) {
-      const command = bot.sample(entity.position, lastVisiblePosition, 100);
+      const command = bot.sample(entity.position, lastVisiblePosition, 100, undefined, true, facingTarget);
       movementSystem.resolveMovement(entity, command, 1 / 60);
       movementSystem.commit();
     }
@@ -877,5 +894,109 @@ describe('createBotAI: retreat routes through a doorway (R9)', () => {
       }
     }).not.toThrow();
     expect(bot.getPhase()).toBe('idle'); // gives up to patrol -- nothing to search for
+  });
+});
+
+// R13's missing half: acquisition used to be line-of-sight and range only,
+// with no facing test anywhere, so a bot with its back turned opened fire on
+// you the instant you came within AWARENESS_RANGE.
+describe('createBotAI: bots only acquire what they are looking at', () => {
+  const AHEAD = { x: 0, y: 1, z: 6 };
+  const BEHIND = { x: 0, y: 1, z: -6 };
+
+  function openArenaBot() {
+    const rig = buildBotRig({ obstacles: [] });
+    addEntity(rig, 'bot', { x: 0, y: 1, z: 0 });
+    rig.movementSystem.commit();
+    return createBotAI({ rapierWorld: rig.rapierWorld, movementSystem: rig.movementSystem, botId: 'bot' });
+  }
+
+  it('acquires a target standing in front of it', () => {
+    const bot = openArenaBot();
+
+    bot.sample({ x: 0, y: 1, z: 0 }, AHEAD, 100, undefined, true, 0); // facing +z, target +z
+
+    expect(['attack', 'chase']).toContain(bot.getPhase());
+  });
+
+  it('ignores a target standing directly behind it, in plain sight and in range', () => {
+    const bot = openArenaBot();
+
+    // Nothing between them and well inside AWARENESS_RANGE -- the only
+    // reason not to acquire is that the bot is not looking that way.
+    for (let i = 0; i < 10; i += 1) bot.sample({ x: 0, y: 1, z: 0 }, BEHIND, 100, undefined, true, 0);
+
+    expect(bot.getPhase()).toBe('idle');
+  });
+
+  it('turns on an attacker behind it once shot, so a flank is not a free kill forever', () => {
+    const bot = openArenaBot();
+    bot.sample({ x: 0, y: 1, z: 0 }, BEHIND, 100, undefined, true, 0);
+    expect(bot.getPhase()).toBe('idle');
+
+    // Health falling is the damage signal; the bot has no other way to know.
+    bot.sample({ x: 0, y: 1, z: 0 }, BEHIND, 88, undefined, true, 0);
+
+    expect(['attack', 'chase']).toContain(bot.getPhase());
+  });
+
+  it('being shot does not grant sight through a wall', () => {
+    const rig = buildBotRig({ obstacles: [{ x: 0, y: 1, z: -3, hx: 20, hy: 2, hz: 0.5 }] });
+    addEntity(rig, 'bot', { x: 0, y: 1, z: 0 });
+    rig.movementSystem.commit();
+    const bot = createBotAI({ rapierWorld: rig.rapierWorld, movementSystem: rig.movementSystem, botId: 'bot' });
+
+    // Alerted by damage, but the attacker is now behind cover. The alert
+    // lifts the facing requirement only -- line of sight still gates.
+    bot.sample({ x: 0, y: 1, z: 0 }, BEHIND, 88, undefined, true, 0);
+
+    expect(bot.getPhase()).not.toBe('attack');
+  });
+
+  it('disengages once the alert lapses and the target is still behind it', () => {
+    const bot = openArenaBot();
+    bot.sample({ x: 0, y: 1, z: 0 }, BEHIND, 88, undefined, true, 0); // shot from behind
+    expect(['attack', 'chase']).toContain(bot.getPhase());
+
+    // Long enough to outlast ALERT_TICKS, with the target staying behind it
+    // and the bot's facing pinned so it never turns to look.
+    for (let i = 0; i < 400; i += 1) bot.sample({ x: 0, y: 1, z: 0 }, BEHIND, 88, undefined, true, 0);
+
+    // Not idle: a bot that was shot and then lost its attacker goes looking,
+    // which is the honest outcome. What matters is that the alert is
+    // temporary -- it is no longer engaging a target it cannot see.
+    expect(['attack', 'chase']).not.toContain(bot.getPhase());
+  });
+});
+
+describe('isWithinFieldOfView (pure)', () => {
+  const origin = { x: 0, z: 0 };
+
+  it('sees straight ahead and not straight behind', () => {
+    expect(isWithinFieldOfView(0, origin, { x: 0, z: 5 })).toBe(true);
+    expect(isWithinFieldOfView(0, origin, { x: 0, z: -5 })).toBe(false);
+  });
+
+  it('sees to the edge of the cone but not past it', () => {
+    const halfCone = FIELD_OF_VIEW_RADIANS / 2;
+    const justInside = { x: Math.sin(halfCone - 0.01) * 5, z: Math.cos(halfCone - 0.01) * 5 };
+    const justOutside = { x: Math.sin(halfCone + 0.01) * 5, z: Math.cos(halfCone + 0.01) * 5 };
+    expect(isWithinFieldOfView(0, origin, justInside)).toBe(true);
+    expect(isWithinFieldOfView(0, origin, justOutside)).toBe(false);
+  });
+
+  it('is symmetric left and right of the bot', () => {
+    const offset = FIELD_OF_VIEW_RADIANS / 2 - 0.05;
+    const left = { x: Math.sin(-offset) * 5, z: Math.cos(-offset) * 5 };
+    const right = { x: Math.sin(offset) * 5, z: Math.cos(offset) * 5 };
+    expect(isWithinFieldOfView(0, origin, left)).toBe(isWithinFieldOfView(0, origin, right));
+  });
+
+  it('follows the bot round rather than being pinned to world north', () => {
+    // A raw yaw subtraction reports ~350 degrees where the real turn is 10,
+    // which reads as "behind me" for something essentially straight ahead.
+    const behindInWorldTerms = { x: 0, z: -5 };
+    expect(isWithinFieldOfView(Math.PI, origin, behindInWorldTerms)).toBe(true);
+    expect(isWithinFieldOfView(-Math.PI, origin, behindInWorldTerms)).toBe(true);
   });
 });

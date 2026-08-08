@@ -22,6 +22,7 @@ export function applyFrameEvents(
     playerEntity,
     damageIndicator,
     grenadeFX,
+    corpses,
   }
 ) {
   // Resolved up front because the impact spark's colour depends on whether
@@ -64,6 +65,18 @@ export function applyFrameEvents(
     // they land as adjacent newest-first lines without any batching logic
     // here (AE2).
     if (event.type === 'hit') killfeed.addKill(event);
+    // A body where the bot fell, so a fight leaves something behind. Read
+    // off the live entity for its facing, which applyHit does not touch, so
+    // the body lands the way the bot was standing rather than facing north.
+    // The local player is skipped deliberately: their own corpse would spawn
+    // inside the first-person camera, which sits at the death spot for the
+    // respawn countdown.
+    if (event.type === 'hit' && event.killed && event.targetId !== LOCAL_PLAYER_ID) {
+      corpses?.spawn({
+        position: event.targetPosition,
+        yaw: sim.world.getEntity(event.targetId)?.yaw ?? 0,
+      });
+    }
     if (event.type === 'hit' && event.targetId === LOCAL_PLAYER_ID && event.damageOrigin) {
       const angle = computeAngleFromPlayer(
         playerEntity.latest.position,

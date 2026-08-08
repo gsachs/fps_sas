@@ -257,6 +257,7 @@ describe('combat: shots resolve at the weapon\'s per-tick cooldown rate across a
         resolveFire: rig.weaponSystem.resolveFire,
         applyHit: rig.healthSystem.applyHit,
         tickRespawns: rig.healthSystem.tickRespawns,
+      tickAirdrops: rig.healthSystem.tickAirdrops,
       },
       gatherCommands: () => {
         const command = sampler.sample();

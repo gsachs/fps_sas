@@ -359,6 +359,7 @@ describe('grenades: pocket survives in-match respawn, empties only on match rese
       resolveFire: rig.weaponSystem.resolveFire,
       applyHit: rig.healthSystem.applyHit,
       tickRespawns: rig.healthSystem.tickRespawns,
+      tickAirdrops: rig.healthSystem.tickAirdrops,
     };
     const world = createWorld({ physics: rig.movementSystem, combat, grenades: grenadeSystem });
     world.addEntity('player', { position: { x: 0, y: 1, z: 0 }, grenadeCount: 2 });
@@ -396,6 +397,7 @@ describe('grenades: wired into world.step() -- a single step() call resolves a l
       resolveFire: rig.weaponSystem.resolveFire,
       applyHit: rig.healthSystem.applyHit,
       tickRespawns: rig.healthSystem.tickRespawns,
+      tickAirdrops: rig.healthSystem.tickAirdrops,
     };
     const world = createWorld({ physics: rig.movementSystem, combat, grenades: grenadeSystem });
     world.addEntity('thrower', { position: { x: 0, y: 1, z: 0 }, grenadeCount: 1 });
@@ -437,6 +439,7 @@ describe('grenades: a blast kill processes through the shared kill-event pass, s
       resolveFire: rig.weaponSystem.resolveFire,
       applyHit: rig.healthSystem.applyHit,
       tickRespawns: rig.healthSystem.tickRespawns,
+      tickAirdrops: rig.healthSystem.tickAirdrops,
     };
     const world = createWorld({ physics: rig.movementSystem, combat, grenades: grenadeSystem });
     world.addEntity('thrower', { position: { x: 0, y: 1, z: 0 }, grenadeCount: 1 });

@@ -83,12 +83,15 @@ describe('gatherCommands', () => {
     const botPosition = { x: 1, y: 0, z: 1 };
     const sim = fakeSim({
       [LOCAL_PLAYER_ID]: { position: playerPosition, dead: true },
-      bot0: { position: botPosition, dead: false, health: 42, heldWeapon: 'machinegun' },
+      bot0: { position: botPosition, dead: false, health: 42, heldWeapon: 'machinegun', yaw: 0.75 },
     });
 
     gatherCommands({ sim, bots: [botEntry], inputSampler });
 
-    expect(botEntry.bot.sample).toHaveBeenCalledWith(botPosition, playerPosition, 42, 'machinegun', false);
+    // The trailing 0.75 is the bot's own facing, which the vision cone in
+    // fsm.js needs -- omitting it there would silently fall back to the
+    // FSM's own last commanded yaw instead of the entity's real one.
+    expect(botEntry.bot.sample).toHaveBeenCalledWith(botPosition, playerPosition, 42, 'machinegun', false, 0.75);
   });
 
   it('threads targetAlive=true into an active bot\'s sample() when the player is alive', () => {
@@ -98,11 +101,11 @@ describe('gatherCommands', () => {
     const botPosition = { x: 1, y: 0, z: 1 };
     const sim = fakeSim({
       [LOCAL_PLAYER_ID]: { position: playerPosition, dead: false },
-      bot0: { position: botPosition, dead: false, health: 42, heldWeapon: 'machinegun' },
+      bot0: { position: botPosition, dead: false, health: 42, heldWeapon: 'machinegun', yaw: 0.75 },
     });
 
     gatherCommands({ sim, bots: [botEntry], inputSampler });
 
-    expect(botEntry.bot.sample).toHaveBeenCalledWith(botPosition, playerPosition, 42, 'machinegun', true);
+    expect(botEntry.bot.sample).toHaveBeenCalledWith(botPosition, playerPosition, 42, 'machinegun', true, 0.75);
   });
 });

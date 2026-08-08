@@ -143,6 +143,10 @@ export function createWorld({ physics, combat, pickups, grenades } = {}) {
         .filter((entity) => !entity.dead)
         .map((entity) => entity.position);
       combat.tickRespawns(entityAccessor, occupiedPositions);
+      // Not optional-called: a combat stack wired without this would drop
+      // every arriving bot's descent on the floor silently, and the game
+      // would look exactly as it did before the drop existed.
+      combat.tickAirdrops(entityAccessor);
     }
     if (pickups) pickups.tick();
     // World-scope, unconditional, same as pickups.tick() above -- every

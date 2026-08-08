@@ -39,6 +39,7 @@ export function buildBotRig({
     resolveFire: weaponSystem.resolveFire,
     applyHit: healthSystem.applyHit,
     tickRespawns: healthSystem.tickRespawns,
+    tickAirdrops: healthSystem.tickAirdrops,
   };
   const world = createWorld({ physics: movementSystem, combat });
   return { world, movementSystem, weaponSystem, healthSystem, rapierWorld };

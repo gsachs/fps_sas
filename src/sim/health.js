@@ -24,8 +24,52 @@ export const MAX_HEALTH = 100;
 // only the physics body moves.
 const CORPSE_PARK_POSITION = { x: 0, y: -100, z: 0 };
 
+// Reinforcements arrive by drop rather than materialising on the floor. The
+// descent is real simulation, not a render flourish: entity.position is what
+// the collider is teleported to each tick, so a falling bot can be shot on
+// the way down and its hitbox is exactly where it looks. Driving this from
+// the render layer instead would put the visible bot and its hitbox in
+// different places -- the same decoupling that made recoil miss.
+export const AIRDROP_HEIGHT = 14; // above the spawn point; clears every wall in the arena (WALL_HEIGHT 4)
+const AIRDROP_DESCENT_PER_TICK = 0.3; // 18 units/sec at 60Hz, so a drop lands in ~0.8s
+
 export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem }) {
   const respawnTicksRemaining = new Map(); // entityId -> ticks left until respawn
+  const airdropGroundY = new Map(); // entityId -> the y it is descending to
+
+  // Puts `entity` in the air above `spawn` and starts its descent. Shared by
+  // respawns and by the ramp unlocking a reinforcement, so both arrivals
+  // look the same rather than one dropping in and the other appearing.
+  function beginAirdrop(entity, spawn) {
+    entity.position = { ...spawn, y: spawn.y + AIRDROP_HEIGHT };
+    // Read by gatherCommands to withhold this bot's command while it falls:
+    // it can be shot on the way down but cannot acquire or shoot back.
+    entity.airdropping = true;
+    airdropGroundY.set(entity.id, spawn.y);
+    movementSystem.teleport(entity.id, entity.position);
+  }
+
+  // Advances every descent by one tick. Kept in the sim beside the respawn
+  // timer, not in the render loop, for the reason beginAirdrop explains.
+  function tickAirdrops(entityAccessor) {
+    for (const [entityId, groundY] of airdropGroundY) {
+      const entity = entityAccessor.getEntity(entityId);
+      // Killed mid-drop, or cleared by a match reset: stop descending a
+      // body that is no longer arriving.
+      if (!entity || entity.dead) {
+        airdropGroundY.delete(entityId);
+        if (entity) entity.airdropping = false;
+        continue;
+      }
+      const nextY = Math.max(groundY, entity.position.y - AIRDROP_DESCENT_PER_TICK);
+      entity.position = { ...entity.position, y: nextY };
+      movementSystem.teleport(entityId, entity.position);
+      if (nextY <= groundY) {
+        airdropGroundY.delete(entityId);
+        entity.airdropping = false;
+      }
+    }
+  }
 
   // Returns a hit event ({ shooterId, targetId, damage, killed, weapon,
   // targetPosition, shooterPosition, damageOrigin }) for observers (HUD
@@ -90,11 +134,13 @@ export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem })
         enemyPositions: occupiedPositions,
         occupiedPositions,
       });
-      entity.position = { ...spawn };
       entity.health = MAX_HEALTH;
       entity.dead = false;
       entity.animHint = 'idle';
-      movementSystem.teleport(entityId, spawn); // also pulls the collider back out of CORPSE_PARK_POSITION
+      // Also pulls the collider back out of CORPSE_PARK_POSITION -- it just
+      // arrives above the spawn point rather than on it, and falls the rest
+      // of the way under tickAirdrops.
+      beginAirdrop(entity, spawn);
     }
   }
 
@@ -117,6 +163,8 @@ export function createHealthSystem({ rapierWorld, spawnPoints, movementSystem })
   return {
     applyHit,
     tickRespawns,
+    beginAirdrop,
+    tickAirdrops,
     isRespawning,
     getRespawnTicksRemaining,
     clearRespawnTimer,

@@ -20,13 +20,24 @@ export function gatherCommands({ sim, bots, inputSampler }) {
   for (const { id, bot, active } of bots) {
     if (!active) continue; // not yet unlocked by the ramp -- frozen in place, no command at all
     const botEntity = sim.world.getEntity(id);
-    if (botEntity && !botEntity.dead) {
+    // A bot still falling to its spawn point gets no command at all, the
+    // same treatment a not-yet-unlocked one gets: it is visible and can be
+    // shot on the way down (its collider tracks the descent), but it cannot
+    // acquire, turn, move or fire until it lands.
+    if (botEntity && !botEntity.dead && !botEntity.airdropping) {
       // !playerEntity.dead: a corpse is never a live target (U4) -- the
       // sim's own liveness gate, threaded in rather than the FSM guessing
       // it from position alone (Core Invariant: never pass null).
       commands.set(
         id,
-        bot.sample(botEntity.position, playerEntity.position, botEntity.health, botEntity.heldWeapon, !playerEntity.dead)
+        bot.sample(
+          botEntity.position,
+          playerEntity.position,
+          botEntity.health,
+          botEntity.heldWeapon,
+          !playerEntity.dead,
+          botEntity.yaw
+        )
       );
     }
   }

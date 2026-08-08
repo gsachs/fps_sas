@@ -33,6 +33,37 @@ import { ROOMS, DOORWAYS } from '../../arena/layout.js';
 // confirm against how engagement reads now, not a final answer either.
 export const ATTACK_RANGE = 22;
 export const AWARENESS_RANGE = 40;
+
+// R13's missing half. Acquisition was line-of-sight and range only, with no
+// facing test anywhere, so a bot with its back turned opened fire the
+// instant you came within AWARENESS_RANGE -- being shot from behind by
+// something that never looked at you. A cone makes flanking mean something.
+// 120 degrees is a little wider than a person's useful vision and much
+// narrower than the 360 this had: enough to still get caught crossing a
+// bot's front, not so tight that bots feel oblivious head-on.
+export const FIELD_OF_VIEW_RADIANS = (120 * Math.PI) / 180;
+// A cone alone would make bots exploitable punching bags -- you could empty
+// a magazine into one while it stared at a wall. Taking a hit alerts a bot
+// for this long, which lets it acquire (and therefore turn on) an attacker
+// outside its cone. Long enough to turn and fight back, short enough that a
+// bot that loses you settles back to patrolling rather than staying wired
+// for the rest of the match.
+const ALERT_TICKS = 180; // 3s at a 60Hz tick rate
+
+// Signed shortest angle from `from` to `to`, wrapped to [-PI, PI] -- a raw
+// subtraction reports ~350 degrees where the real turn is 10, which would
+// read as "behind me" for a target essentially straight ahead.
+export function shortestAngleBetween(from, to) {
+  const twoPi = Math.PI * 2;
+  return (((to - from) % twoPi) + Math.PI * 3) % twoPi - Math.PI;
+}
+
+// Whether `playerPosition` falls inside the cone a bot facing `botYaw` can
+// see. Pure and exported so the cone can be tested without a physics world.
+export function isWithinFieldOfView(botYaw, botPosition, playerPosition) {
+  const bearing = Math.atan2(playerPosition.x - botPosition.x, playerPosition.z - botPosition.z);
+  return Math.abs(shortestAngleBetween(botYaw, bearing)) <= FIELD_OF_VIEW_RADIANS / 2;
+}
 export const RETREAT_HEALTH_THRESHOLD = 30;
 export const RETREAT_DURATION_TICKS = 180; // ~3s at 60Hz
 // How long a bot holds at a last-seen point before giving up (GameAI Pro's
@@ -97,7 +128,18 @@ export function createInitialBotState() {
 // retreat expired, since health never recovers to clear the guard. Retreat
 // only re-arms once health rises again (i.e., after a respawn).
 export function transitionBotState(state, sensors, tick) {
-  const { distanceToPlayer, hasLineOfSight, health, playerPosition, searchExhausted, targetAlive = true } = sensors;
+  const {
+    distanceToPlayer,
+    hasLineOfSight,
+    health,
+    playerPosition,
+    searchExhausted,
+    targetAlive = true,
+    // Default to seeing: callers that predate the cone (and tests exercising
+    // range/sight semantics) keep their original meaning.
+    withinFieldOfView = true,
+    alerted = false,
+  } = sensors;
   const armed = health >= RETREAT_HEALTH_THRESHOLD ? true : state.retreatArmed;
 
   if (armed && health < RETREAT_HEALTH_THRESHOLD && state.phase !== 'retreat') {
@@ -126,7 +168,12 @@ export function transitionBotState(state, sensors, tick) {
   // (AE5) never starts or continues a chase. targetAlive similarly gates a
   // corpse out of acquisition entirely (the death-strip fix's sibling): a
   // dead target is never chased, attacked, or searched for.
-  const acquired = targetAlive && hasLineOfSight && distanceToPlayer <= AWARENESS_RANGE;
+  // ...and facing-gated too: a bot acquires what is in front of it, or
+  // anything at all once something has shot it (`alerted`). Sight and range
+  // still gate both paths -- being hit does not grant x-ray vision, it only
+  // lifts the requirement that the bot was already looking your way.
+  const acquired =
+    targetAlive && hasLineOfSight && distanceToPlayer <= AWARENESS_RANGE && (withinFieldOfView || alerted);
 
   if (acquired && distanceToPlayer <= ATTACK_RANGE) {
     return { ...state, phase: 'attack', retreatArmed: armed, retreatEndTick: 0, lastSeenPosition: { x: playerPosition.x, z: playerPosition.z } };
@@ -175,6 +222,12 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
   let ticksSinceEnteredAttack = 0;
   let ticksSinceFire = 0;
   let previousHealth = MAX_HEALTH;
+  // Ticks left on the "something shot me" alert, which lets a bot acquire an
+  // attacker outside its cone (see ALERT_TICKS).
+  let alertTicksRemaining = 0;
+  // The yaw this bot last commanded, which world.js turns into entity.yaw --
+  // i.e. where it is currently facing, for the cone test.
+  let commandedYaw = 0;
   let searchDwellStartTick = null;
   let retreatOriginRoomId = null;
   let retreatDoorwayId = null;
@@ -199,20 +252,46 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     ticksSinceEnteredAttack = 0;
     ticksSinceFire = 0;
     previousHealth = MAX_HEALTH;
+    alertTicksRemaining = 0;
+    // The cone's fallback facing, which would otherwise carry the last
+    // match's heading into this one and leave a fresh bot unable to acquire
+    // anything that is not behind where it was looking when the match ended.
+    commandedYaw = 0;
     retreatOriginRoomId = null;
     retreatDoorwayId = null;
     retreatContinued = false;
   }
 
-  function sample(botPosition, playerPosition, botHealth, heldWeapon = DEFAULT_WEAPON_ID, targetAlive = true) {
+  // `botYaw` is where this bot is currently facing, for the vision cone.
+  // world.js assigns entity.yaw straight from the command this returns, so
+  // the last yaw commanded is that same value -- which is why it can fall
+  // back to it rather than defaulting to something that would quietly
+  // disable the cone for a caller that forgot to pass one.
+  function sample(
+    botPosition,
+    playerPosition,
+    botHealth,
+    heldWeapon = DEFAULT_WEAPON_ID,
+    targetAlive = true,
+    botYaw = commandedYaw
+  ) {
+    // Health only ever falls from damage and rises on respawn, so its own
+    // direction of travel is the damage signal -- no new plumbing from the
+    // health system needed to know a bot has been shot.
+    const tookDamage = botHealth < previousHealth;
     if (botHealth > previousHealth) clearTargetMemory();
     previousHealth = botHealth;
+    if (tookDamage) alertTicksRemaining = ALERT_TICKS;
+    else if (alertTicksRemaining > 0) alertTicksRemaining -= 1;
     tick += 1;
     const dx = playerPosition.x - botPosition.x;
     const dz = playerPosition.z - botPosition.z;
     const distanceToPlayer = Math.hypot(dx, dz);
     const facingYaw = Math.atan2(dx, dz);
     const hasLineOfSight = checkLineOfSight(rapierWorld, botPosition, playerPosition, excludeCollider);
+    // Against where the bot is actually facing, not the bearing to the
+    // player -- that is the whole point of the cone.
+    const withinFieldOfView = isWithinFieldOfView(botYaw, botPosition, playerPosition);
 
     // Advances (but does not yet consume) last tick's search dwell status --
     // mirrors hasLineOfSight: computed before the pure reducer runs and fed
@@ -228,7 +307,16 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     const previousPhase = state.phase;
     state = transitionBotState(
       state,
-      { distanceToPlayer, hasLineOfSight, health: botHealth, playerPosition, searchExhausted, targetAlive },
+      {
+        distanceToPlayer,
+        hasLineOfSight,
+        health: botHealth,
+        playerPosition,
+        searchExhausted,
+        targetAlive,
+        withinFieldOfView,
+        alerted: alertTicksRemaining > 0,
+      },
       tick
     );
     if (state.phase === 'attack') {
@@ -340,6 +428,7 @@ export function createBotAI({ rapierWorld, movementSystem, botId, difficulty = D
     const moveZ = moveDirection.x * forward.x + moveDirection.z * forward.z;
     const moveX = moveDirection.x * right.x + moveDirection.z * right.z;
 
+    commandedYaw = yaw;
     return createCommand({
       moveX,
       moveZ,

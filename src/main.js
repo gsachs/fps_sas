@@ -34,6 +34,7 @@ import { createWeaponView, WEAPON_LAYER } from './render/weaponView.js';
 import { createTracerSystem } from './render/tracer.js';
 import { createImpactSystem } from './render/impacts.js';
 import { createDecalSystem } from './render/decals.js';
+import { createCorpseField } from './render/corpses.js';
 import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio, EXPLOSION_SOUND_SET_ID } from './audio/gunshots.js';
@@ -140,6 +141,22 @@ skyAmbient.layers.enable(WEAPON_LAYER);
 const tracers = createTracerSystem(scene);
 const impacts = createImpactSystem(scene);
 const decals = createDecalSystem(scene, arenaMeshes);
+// Bodies outlive the bot that left them, so they cannot be the bot's own
+// mesh; corpses.js explains why. Handed the same rig description the live
+// bots use, so a body is the same character at the same size and facing.
+const corpses = createCorpseField(scene, {
+  modelUrl: assetUrl(BOT_MODEL.path),
+  model: {
+    scale: BOT_MODEL.scale,
+    clips: BOT_MODEL.clips,
+    yawOffset: BOT_MODEL.yawOffset,
+    // Same feet-vs-centre origin correction the live bots apply, for the
+    // same reason: without it the body floats a capsule's height off the
+    // floor it is supposed to be lying on.
+    yOffset: -CAPSULE_GROUND_OFFSET,
+  },
+  onError: (error) => console.warn('Failed to load corpse model:', error),
+});
 const pickupMeshes = createPickupMeshes(scene, arena.pickups);
 const grenadeFX = createGrenadeFX(scene);
 const gunshots = createGunshotAudio({
@@ -171,6 +188,7 @@ const combat = {
   resolveFire: weaponSystem.resolveFire,
   applyHit: healthSystem.applyHit,
   tickRespawns: healthSystem.tickRespawns,
+  tickAirdrops: healthSystem.tickAirdrops,
 };
 
 // R7: grenade pickups are player-only -- pickups.js has no concept of a
@@ -318,14 +336,18 @@ function activateBot(botEntry) {
     enemyPositions: occupied,
     occupiedPositions: occupied,
   });
-  sim.world.getEntity(botEntry.id).position = { ...spawn };
-  movementSystem.teleport(botEntry.id, spawn);
+  // Dropped in, the same way a respawn arrives -- a reinforcement that
+  // simply appeared standing on the floor was the other half of what read as
+  // bots materialising out of nowhere.
+  healthSystem.beginAirdrop(sim.world.getEntity(botEntry.id), spawn);
   botEntry.mesh.visible = true;
   botEntry.active = true;
 }
 
 function deactivateBot(botEntry) {
-  sim.world.getEntity(botEntry.id).position = { ...PARK_POSITION };
+  const entity = sim.world.getEntity(botEntry.id);
+  entity.position = { ...PARK_POSITION };
+  entity.airdropping = false; // parking cancels an arrival in progress
   movementSystem.teleport(botEntry.id, PARK_POSITION);
   botEntry.mesh.visible = false;
   botEntry.active = false;
@@ -366,6 +388,7 @@ const gameShell = createGameShell({
       grenadeSystem,
       killfeed,
       decals,
+      corpses,
     });
     // resetMatch repositions every entity in the world, including bots the
     // ramp hadn't unlocked yet -- re-park those so the new match starts the
@@ -523,6 +546,7 @@ const loop = createRenderLoop({
       playerEntity,
       damageIndicator,
       grenadeFX,
+      corpses,
     });
 
     // A punch straight back along the view axis, applied after the camera has
@@ -542,6 +566,7 @@ const loop = createRenderLoop({
     tracers.update(delta);
     impacts.update(delta);
     decals.update(delta);
+    corpses.update(delta);
     pickupMeshes.update(pickupSystem.getPickupStates());
     grenadeFX.syncInFlight(grenadeSystem.getInFlightGrenades());
     grenadeFX.update(delta);

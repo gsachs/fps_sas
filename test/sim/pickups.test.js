@@ -157,6 +157,7 @@ describe('pickups: wired into world.step() (AE3, integration)', () => {
       resolveFire: rig.weaponSystem.resolveFire,
       applyHit: rig.healthSystem.applyHit,
       tickRespawns: rig.healthSystem.tickRespawns,
+      tickAirdrops: rig.healthSystem.tickAirdrops,
     };
     const world = createWorld({ physics: rig.movementSystem, combat, pickups: pickupSystem });
     // Mirrors combat.test.js's own-world-plus-shared-rig-movementSystem
