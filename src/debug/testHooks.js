@@ -91,11 +91,30 @@ export function installDebugHooks({
   // Counts live tracer lines in the scene graph, for verifying the tracer
   // effect actually spawns (and expires) without a human watching the screen.
   window.__debugTracerCount = () => scene.children.filter((child) => child.type === 'Line').length;
-  // Shadow state has now gone silently wrong twice on this project -- an
-  // extent hardcoded to a retired arena, then a sun standing too close for
-  // its own near plane -- and neither showed up as anything but "that wall
-  // looks like it is floating". This reports the numbers directly so a
-  // verification pass can read them instead of judging them by eye.
+  // Sweeps the shadow rig's tuning values on the live scene without a
+  // reload, so a candidate value can be compared against the current one in
+  // the actual renderer. Shadow defects here are all of the kind no unit
+  // test can see -- a shadow lifted off its caster, acne on a lit floor --
+  // so the only honest way to choose these numbers is to render them side by
+  // side, and doing that a value at a time through source edits is slow
+  // enough that it does not get done. Mirrors scene.js's own reallocation:
+  // a new mapSize or near/far is ignored until the old depth target goes.
+  window.__debugShadowTune = (opts) => {
+    const sun = scene.children.find((child) => child.isDirectionalLight);
+    if (opts.bias !== undefined) sun.shadow.bias = opts.bias;
+    if (opts.normalBias !== undefined) sun.shadow.normalBias = opts.normalBias;
+    if (opts.near !== undefined) sun.shadow.camera.near = opts.near;
+    if (opts.far !== undefined) sun.shadow.camera.far = opts.far;
+    sun.shadow.camera.updateProjectionMatrix();
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+  };
+  // Shadow state has now gone silently wrong three times here -- an extent
+  // hardcoded to a retired arena, a sun standing too close for its own near
+  // plane, and a depth bias that grew with the camera's span until it lifted
+  // every wall's shadow off its base. None of them looked like anything but
+  // "that wall seems to be floating". This reports the numbers directly so
+  // they can be read rather than judged by eye.
   window.__debugShadowCamera = () => {
     const sun = scene.children.find((child) => child.isDirectionalLight);
     const { near, far, right, top } = sun.shadow.camera;

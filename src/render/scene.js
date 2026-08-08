@@ -97,8 +97,25 @@ const SUN_POSITION = {
 const SHADOW_CAMERA_FAR = SUN_DISTANCE + FLOOR_HALF_SIZE * Math.SQRT2 + 20;
 // Depth-comparison offsets that keep a surface from shadowing itself. Without
 // them a lit floor is covered in acne; too much and shadows detach from the
-// object casting them (peter-panning).
-const SHADOW_BIAS = -0.0006;
+// object casting them (peter-panning) -- which reads as a lit strip along the
+// foot of every wall, the wall apparently hovering over its own shadow.
+//
+// `bias` is the trap: three.js scales it by the shadow camera's near/far
+// span, so the same literal buys a different distance in world units every
+// time that span moves. -0.0006 was tuned against an 89-unit span, which
+// made it 0.053 world units. The districts arena took the span to 133, and
+// standing the sun off far enough to clear its own near plane took it to
+// 183 -- the same literal now meaning 0.11 units, enough to lift every
+// wall's shadow visibly clear of its base throughout the arena. Rescaling
+// it back only halves the strip; it was faintly there at 0.053 too.
+//
+// So zero, and let `normalBias` do the work alone. That one offsets the
+// lookup along the receiving surface's normal in WORLD units, so it cannot
+// drift with the camera, and 0.03 holds acne off by itself -- checked on a
+// sunlit floor at 2048, where a bigger texel makes acne show first.
+// shadowCoverage.test.js bounds the world-space depth bias so this cannot
+// quietly grow back.
+const SHADOW_BIAS = 0;
 const SHADOW_NORMAL_BIAS = 0.03;
 
 // Changes the sun's shadow-map resolution on a live scene. three.js

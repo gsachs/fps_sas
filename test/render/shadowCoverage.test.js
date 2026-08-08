@@ -80,6 +80,25 @@ describe('shadow camera coverage', () => {
     }
   });
 
+  it('keeps the depth bias too small to lift a shadow off its own caster', () => {
+    const { scene } = createScene();
+    const sun = scene.children.find((child) => child.isDirectionalLight);
+    const { near, far } = sun.shadow.camera;
+
+    // three.js scales `shadow.bias` by the camera's depth span, so a fixed
+    // literal silently means a larger world distance every time the arena
+    // (and with it that span) grows. Past roughly 0.05 world units it lifts
+    // every wall's shadow clear of its base -- a lit strip along the foot of
+    // every wall. Bounding the world-space product, not the literal, is what
+    // survives the next resize.
+    expect(Math.abs(sun.shadow.bias) * (far - near)).toBeLessThan(0.02);
+
+    // The other direction: normalBias is what prevents acne once the depth
+    // bias is gone, so zeroing both is not a valid way to satisfy the bound
+    // above.
+    expect(sun.shadow.normalBias).toBeGreaterThan(0);
+  });
+
   it('sizes the shadow box from the live floor scalar, not a copied constant', () => {
     const { scene } = createScene();
     const sun = scene.children.find((child) => child.isDirectionalLight);
