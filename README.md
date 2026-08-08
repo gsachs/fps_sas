@@ -1,52 +1,53 @@
 # Foothold
 
-A browser-based 3D shooter, built with Three.js and Rapier physics. You are
-put down alone on a compound that has to be clear before the main landing can
-come down on it, and the machines holding it are being reinforced by drone
-while you work. Clear enough of them and the site is yours. Bots patrol, chase, search a last-seen position when they lose
-sight of you, and retreat toward a doorway when hurt. They only acquire
-what is inside a forward cone, so flanking is worth doing — though shooting
-one alerts it, and it will turn on you. Each district — a
-tight chamber warren, an open long-sightline yard, a pillared hall, a
-cover-block maze, a scattered-cover bazaar — is identifiable by its
-structure alone, with its own accent color as a secondary cue, echoed on a
-player-only rotating minimap, so you always know where you are without
-giving away anything about the bots. A killfeed under the score narrates
-every kill as it happens — yours in gold, your death in red — without
-ever revealing a position.
+A browser-based 3D shooter, built with Three.js and Rapier physics.
 
-The machine gun is everyone's default, infinite weapon from the moment
-they spawn — player and bots alike, no pickup required. Grenades spawn as
-a pickup in each outlying district and respawn on a timer, so holding
-those matters.
+You are put down alone on a compound that has to be clear before the main
+landing can come down on it, and the machines holding it are being reinforced
+by drone while you work. Clear fifteen of them and the site is yours.
 
-Nobody appears out of thin air and nobody vanishes. Arrivals are flown in:
-a drone releases them overhead and peels away, and the fall is real
-simulation, so a descending bot can be shot on the way down and cannot
-shoot back until it lands. The dead stay dead in place — a body is left
-where it fell, for the rest of the match, so a room tells you what happened
-in it. Bodies are scenery: shots and sightlines pass straight through
-them.
+The map is six districts joined by a web of corridors, and each one is
+identifiable by its structure alone — a tight chamber warren, an open
+long-sightline yard, a pillared hall, a cover-block maze, a scattered-cover
+bazaar — with its own accent colour as a secondary cue, echoed on a
+player-only rotating minimap. So you always know where you are without the
+map giving away anything about where the defenders are. A killfeed under the
+score narrates every kill as it happens, yours in gold and your death in red,
+without ever revealing a position.
+
+Defenders patrol, chase, search a last-seen position when they lose sight of
+you, and retreat toward a doorway when hurt. They only acquire what is inside
+a forward cone, so flanking is worth doing — though shooting one alerts it,
+and it will turn on you. The machine gun is everyone's default, infinite
+weapon from the moment they spawn, no pickup required. Grenades spawn as a
+pickup in each outlying district and respawn on a timer, so holding those
+matters.
+
+Nobody appears out of thin air and nobody vanishes. Arrivals are flown in: a
+drone releases them overhead and peels away, and the fall is real simulation,
+so a descending defender can be shot on the way down and cannot shoot back
+until it lands. The dead stay dead in place — a body is left where it fell,
+for the rest of the match, so a room tells you what happened in it. Bodies
+are scenery: shots and sightlines pass straight through them.
 
 Every shot reads as one: a muzzle flash, a tracer down its path, a spark
-where it lands, and a bullet hole with a scorch ring that stays on the
-wall. A grenade goes off as a fireball and lights the room around it.
-Those four effect shapes are soft radial gradients, generated into pixel
-data at load rather than shipped as images — no download, no attribution,
-and their shape is unit-testable, which matters because nothing else about
-a render can be. On top of that the arena runs a light post-processing
-pass (bloom, ambient occlusion, a skybox) over real sourced models and
-audio for the weapons.
+where it lands, and a bullet hole with a scorch ring that stays on the wall.
+A grenade goes off as a fireball and lights the room around it. Those effect
+shapes are soft radial gradients, generated into pixel data at load rather
+than shipped as images — no download, no attribution, and their shape is
+unit-testable, which matters because most of what a renderer does is not. On
+top of that the arena runs a light post-processing pass (bloom, ambient
+occlusion, a skybox) over real sourced models and audio.
 
 ## Screenshots
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/01-start-screen.jpg" alt="Start screen, arena visible behind the play prompt"></td>
-<td width="50%"><img src="docs/screenshots/02-firefight.jpg" alt="Two bots in the Hall district, the near one firing"></td>
+<td width="50%"><img src="docs/screenshots/01-start-screen.jpg" alt="Start screen: the mission brief over key art of the compound, with drones lowering defenders in"></td>
+<td width="50%"><img src="docs/screenshots/02-firefight.jpg" alt="Trading fire with a defender in the Hall, another already down on the right"></td>
 </tr>
 <tr>
-<td width="100%" colspan="2"><img src="docs/screenshots/03-arena-wide.jpg" alt="The Yard district looking east down the arena's longest sightline, amber accent walls under the skybox"></td>
+<td width="100%" colspan="2"><img src="docs/screenshots/03-arena-wide.jpg" alt="The Yard looking east down the map's longest sightline, through the doorway into the spoke corridor beyond"></td>
 </tr>
 </table>
 
@@ -130,7 +131,7 @@ It exists because this project could see its simulation in complete detail
 and could not see its output at all — and that is where the defects
 collected. Shadow seams along every wall base, bullet marks rendering as hard
 black squares, a district that silently stopped casting shadows: found by a
-person looking at the screen, invisible to every one of the 510 unit tests.
+person looking at the screen, invisible to every one of the unit tests.
 
 Every check is a **numeric property compared against another measurement from
 the same frame** — the seam against the floor beside it, shadowed ground
@@ -151,6 +152,9 @@ cause is two boxes sharing a volume, so it is asserted in
   feature pass (arena, combat feel, minimap, armory loop, killfeed, visual
   fidelity, asymmetric districts): product requirements, key technical
   decisions, and the implementation unit breakdown.
+- `learnings/` — periodic full-project retrospectives and the study plan they
+  feed. Blunt about what shipped broken and why; the most useful thing in
+  here if you are picking the project up.
 - `docs/solutions/` — documented bugs and their root causes, organized by
   category with searchable frontmatter. Worth checking before touching
   bot AI or simulation code.
