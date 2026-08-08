@@ -87,6 +87,22 @@ function ascending(a, b) {
   return a < b ? [a, b] : [b, a];
 }
 
+// Where a corridor running out of `room` has to start: the OUTER face of the
+// wall bounding that side, not the room boundary itself.
+//
+// The boundary is that wall's centreline -- wallAlongX/Z straddle it, half a
+// thickness each way -- so a corridor whose side walls start at the boundary
+// buries its first half-unit inside the room's own wall. Two boxes sharing a
+// volume is invisible while they share a material, which is why the corridor
+// web read fine against the neutral landmark, and z-fights the moment the
+// room carries an accent: every junction with Hall, Yard, Maze, Warren and
+// Bazaar flickered between the accent colour and the neutral one, in
+// whatever pattern the depth buffer happened to resolve that frame.
+const northFace = (room) => room.z + room.halfZ + WALL_THICKNESS;
+const southFace = (room) => room.z - room.halfZ - WALL_THICKNESS;
+const eastFace = (room) => room.x + room.halfX + WALL_THICKNESS;
+const westFace = (room) => room.x - room.halfX - WALL_THICKNESS;
+
 // A two-segment corridor bend (KTD4): one leg along Z and one along X,
 // meeting at (bendX, bendZ) and running out to `zLegEnd` / `xLegEnd`. Only
 // the INNER pair of walls stops at the inside corner -- the OUTER pair runs
@@ -260,23 +276,23 @@ const WALLS = [
   ...wallAlongZ(bazaar.x + bazaar.halfX, bazaar.z - bazaar.halfZ, bazaar.z + bazaar.halfZ, 'bazaar'),
 
   // Spokes: landmark to four of the five outlying districts (R1).
-  ...corridorAlongZ(SPOKE_OFFSET, landmark.z + landmark.halfZ, hall.z - hall.halfZ, 'spoke-north'),
-  ...corridorAlongZ(-SPOKE_OFFSET, warren.z + warren.halfZ, landmark.z - landmark.halfZ, 'spoke-south'),
-  ...corridorAlongX(SPOKE_OFFSET, landmark.x + landmark.halfX, maze.x - maze.halfX, 'spoke-east'),
-  ...corridorAlongX(-SPOKE_OFFSET, yard.x + yard.halfX, landmark.x - landmark.halfX, 'spoke-west'),
+  ...corridorAlongZ(SPOKE_OFFSET, northFace(landmark), southFace(hall), 'spoke-north'),
+  ...corridorAlongZ(-SPOKE_OFFSET, northFace(warren), southFace(landmark), 'spoke-south'),
+  ...corridorAlongX(SPOKE_OFFSET, eastFace(landmark), westFace(maze), 'spoke-east'),
+  ...corridorAlongX(-SPOKE_OFFSET, eastFace(yard), westFace(landmark), 'spoke-west'),
 
   // Straight cross-cuts (R3): Hall-Bazaar-Maze bypasses the landmark
   // entirely, giving real route choice at ground level, not just a
   // theoretical detour through the hub.
-  ...corridorAlongX(44, hall.x + hall.halfX, bazaar.x - bazaar.halfX, 'link-hall-bazaar'),
-  ...corridorAlongZ(42, maze.z + maze.halfZ, bazaar.z - bazaar.halfZ, 'link-bazaar-maze'),
+  ...corridorAlongX(44, eastFace(hall), westFace(bazaar), 'link-hall-bazaar'),
+  ...corridorAlongZ(42, northFace(maze), southFace(bazaar), 'link-bazaar-maze'),
 
   // Perimeter chain, each a bent two-segment link (KTD4): Yard-Hall,
   // Maze-Warren, Warren-Yard. bentLink mitres each turn -- see its own
   // comment for why the outside of the turn must run flush.
-  ...bentLink(-46, 35, yard.z + yard.halfZ, hall.x - hall.halfX, 'link-yard-hall-v', 'link-yard-hall-h'),
-  ...bentLink(32, -30, maze.z - maze.halfZ, warren.x + warren.halfX, 'link-maze-warren-v', 'link-maze-warren-h'),
-  ...bentLink(-34, -40, yard.z - yard.halfZ, warren.x - warren.halfX, 'link-warren-yard-v', 'link-warren-yard-h'),
+  ...bentLink(-46, 35, northFace(yard), westFace(hall), 'link-yard-hall-v', 'link-yard-hall-h'),
+  ...bentLink(32, -30, southFace(maze), eastFace(warren), 'link-maze-warren-v', 'link-maze-warren-h'),
+  ...bentLink(-34, -40, southFace(yard), westFace(warren), 'link-warren-yard-v', 'link-warren-yard-h'),
 ].map((w) => ({ ...w, halfY: WALL_HEIGHT / 2 }));
 
 // Interior cover/landmarks, one grammar-shaped cluster per district (KTD4).

@@ -426,6 +426,28 @@ describe('layout: the arena is a closed, coherent volume', () => {
     }
   });
 
+  it('never overlaps two walls that render in different colours', () => {
+    // arenaMesh.js resolves a wall's material from its spaceId: that
+    // district's accent where it has one, the shared neutral otherwise. Two
+    // boxes sharing a volume is invisible while they share a material, and
+    // z-fights the instant they do not -- which is what made every junction
+    // between an accented district and its corridors flicker between the two
+    // colours. The overlaps that remain are all neutral-on-neutral.
+    const colourOf = (spaceId) => ROOM_ACCENTS[spaceId] ?? 'neutral';
+    for (let i = 0; i < LAYOUT.walls.length; i += 1) {
+      for (let j = i + 1; j < LAYOUT.walls.length; j += 1) {
+        const [a, b] = [LAYOUT.walls[i], LAYOUT.walls[j]];
+        if (colourOf(a.spaceId) === colourOf(b.spaceId)) continue;
+        const overlapsX = Math.abs(a.x - b.x) < a.halfX + b.halfX;
+        const overlapsZ = Math.abs(a.z - b.z) < a.halfZ + b.halfZ;
+        expect(
+          overlapsX && overlapsZ,
+          `a "${a.spaceId}" wall and a "${b.spaceId}" wall share a volume and will z-fight`
+        ).toBe(false);
+      }
+    }
+  });
+
   it('keeps every cover block free-standing: no pillar intersects a wall', () => {
     for (const pillar of PILLARS) {
       for (const wall of LAYOUT.walls) {
