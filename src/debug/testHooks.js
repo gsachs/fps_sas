@@ -40,6 +40,12 @@ export function installDebugHooks({
   // cannot be acquired under headless automation at all, so the throw path is
   // otherwise unreachable without a real human at a real keyboard.
   window.__debugThrowGrenade = () => inputSampler.onKeyDown({ code: 'KeyG', repeat: false });
+  // The machine gun is held-fire, so __debugFire above latches the trigger
+  // down and leaves it there. Anything that needs to observe the world after
+  // a burst -- the visual test layer measuring bullet marks, say -- needs to
+  // let go of it first, or the muzzle flash sits over the very thing being
+  // measured.
+  window.__debugStopFiring = () => inputSampler.onFireReleased();
   // Sets the player's yaw directly (bypassing the pointer-lock-gated
   // mousemove listener) so automated verification can aim at a known
   // target instead of firing in whatever direction yaw defaulted to.

@@ -113,8 +113,36 @@ Pick any static host and upload the contents of `dist/`. A few options:
 ## Tests
 
 ```bash
-npm test
+npm test          # unit and integration, headless, ~3s
+npm run test:visual   # drives the real game in a browser and measures pixels
 ```
+
+`npm test` is the fast, hermetic suite and stays that way. The visual layer is
+separate because it needs a browser and a few seconds of scene boot:
+
+```bash
+npx playwright install chromium   # once
+npm run test:visual
+```
+
+It exists because this project could see its simulation in complete detail
+and could not see its output at all — and that is where the defects
+collected. Shadow seams along every wall base, bullet marks rendering as hard
+black squares, a district that silently stopped casting shadows: found by a
+person looking at the screen, invisible to every one of the 510 unit tests.
+
+Every check is a **numeric property compared against another measurement from
+the same frame** — the seam against the floor beside it, shadowed ground
+against lit ground — so there are no stored screenshots to rot and no
+dependence on which GPU ran it. Each one is also verified to fail against the
+code that shipped the original defect; a guard that cannot fail is worse than
+no guard, and the first draft of the seam check drew its reference from
+inside the seam and passed cleanly against the exact bug it was written for.
+
+If a defect can be caught by computing over source data, it belongs in `npm
+test` instead — z-fighting between coloured walls is a visual symptom whose
+cause is two boxes sharing a volume, so it is asserted in
+`test/arena/layout.test.js`, not here.
 
 ## Documentation
 
