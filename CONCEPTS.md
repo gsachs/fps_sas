@@ -68,3 +68,18 @@ The bullet mark a hit leaves on a world surface, placed at the visible hit point
 
 ### Cosmetic Recoil
 Weapon kick that animates the viewmodel and the camera but never moves the aim point — shots still land where the crosshair was when the trigger was pulled. The distinction matters because real recoil (aim that climbs and must be fought back down) would be a gameplay change: it reaches into hitscan resolution and invalidates the tuned Bot aim spread and reaction delay. Cosmetic Recoil stays entirely in the render layer, so weapon feel can be tuned freely without re-tuning difficulty.
+
+## Verification
+
+### Debug Hook
+A read-only accessor the running build attaches to the browser window so automated checks and hands-on investigation can read simulation, Bot, and presentation state from outside the game — without any gameplay code depending on the hook existing. Hooks report state; they never drive it, and deleting the whole layer must leave behavior unchanged.
+
+A hook keys off properties something deliberately declares — an object's name, an Entity's id — never off incidental implementation details such as a mesh's geometry type, which get changed for unrelated reasons and silently collapse the hook's output to a constant. Because the collapsed reading is almost always the benign one (zero, empty), a hook broken this way never looks wrong and can stay broken indefinitely; a Positive Control is what detects it.
+
+### Visual Check
+An automated assertion about the rendered frame, made by measuring pixels rather than by comparing against a stored screenshot. Every check compares two numbers sampled from the same frame — a suspect region against a reference region beside it — so it holds on any GPU and at any exposure, and cannot rot the way a checked-in image does. It covers the one class of defect the simulation tests structurally cannot see: what the player actually looks at.
+
+The reference region must lie outside the region under test. A same-frame comparison whose baseline overlaps its own subject scales with the defect and cannot report it — relative sampling is necessary but not sufficient.
+
+### Positive Control
+A deliberate run of a measurement against a state where the thing being measured definitely exists, performed before the measurement's result is believed; for a regression guard, the equivalent is running it against the unfixed code and watching it go red. It exists because instrumentation fails silently far more often than loudly — an instrument whose output has collapsed to one benign value reports that value forever without anything breaking. A check never observed reporting a failure is not evidence about anything.
