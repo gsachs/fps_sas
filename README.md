@@ -21,17 +21,13 @@ skybox) on top of real sourced models and audio for the weapons.
 
 ## Screenshots
 
-<!-- Pending a recapture against the asymmetric-districts arena: these still
-     show the retired symmetric rooms-and-corridors map, and 04 shows the
-     machine-gun pickup, a mechanic this pass removed entirely (the MG is
-     now every entity's default weapon from spawn, no pickup involved). -->
 <table>
 <tr>
 <td width="50%"><img src="docs/screenshots/01-start-screen.jpg" alt="Start screen, arena visible behind the play prompt"></td>
-<td width="50%"><img src="docs/screenshots/02-firefight.jpg" alt="Facing off with a bot in a corridor"></td>
+<td width="50%"><img src="docs/screenshots/02-firefight.jpg" alt="Two bots in the Hall district, the near one firing"></td>
 </tr>
 <tr>
-<td width="100%" colspan="2"><img src="docs/screenshots/03-arena-wide.jpg" alt="A district showing its accent color and the skybox"></td>
+<td width="100%" colspan="2"><img src="docs/screenshots/03-arena-wide.jpg" alt="The Yard district looking east down the arena's longest sightline, amber accent walls under the skybox"></td>
 </tr>
 </table>
 
@@ -49,6 +45,17 @@ Open the printed `localhost` URL, click "Click to Play", and go.
 - **Fire:** Click and hold (the machine gun sprays continuously while held — it's infinite and it's the only weapon, from the first spawn)
 - **Throw grenade:** G (grenades are picked up from the outlying districts; area damage hits everyone in blast radius, including the thrower, and is blocked by walls)
 - **Jump:** Space
+- **Pause / settings:** Escape
+
+### Graphics
+
+Escape opens the pause screen, which carries the one graphics setting worth
+exposing: **Shadows: High / Standard**. The shadow map is stretched over the
+whole arena, so High (4096) is what keeps shadow edges crisp at this map's
+size, and Standard (2048) halves that resolution for machines where the
+larger map costs frames — integrated graphics, mostly. High is the default
+and a modern discrete GPU will not notice it. The choice applies immediately
+and is remembered between sessions.
 
 ## Build for deployment
 

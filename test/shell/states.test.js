@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { STATES, transition, formatResultsEntry, createGameShell } from '../../src/shell/states.js';
 import { LOCAL_PLAYER_ID } from '../../src/sim/entityIds.js';
+import { SHADOW_QUALITY, shadowQualityLabel } from '../../src/shell/graphicsSettings.js';
 
 describe('transition (pure game-state machine)', () => {
   it('moves from START to PLAYING only on lockAcquired', () => {
@@ -45,24 +46,31 @@ describe('formatResultsEntry (R6, AE4)', () => {
 
 describe('createGameShell (orchestrator wiring)', () => {
   // Buttons in DOM order, matching createGameShell's own append order:
-  // pauseScreen gets [resume, restart, returnToStart] then resultsScreen
-  // gets [playAgain, returnToStart]. No test hook exists for these beyond
-  // the container the caller already owns.
-  function buildShell(onRestart = () => {}, onPause = () => {}) {
+  // pauseScreen gets [resume, restart, returnToStart, shadowQuality] then
+  // resultsScreen gets [playAgain, returnToStart]. No test hook exists for
+  // these beyond the container the caller already owns.
+  function buildShell(onRestart = () => {}, onPause = () => {}, options = {}) {
     const container = document.createElement('div');
     const lockElement = document.createElement('div');
     // jsdom has no Pointer Lock implementation; the shell only needs the
     // call not to throw; the pointer-lock controller itself is unit-tested
     // separately.
     lockElement.requestPointerLock = () => {};
-    const shell = createGameShell({ container, lockElement, onRestart, onPause });
-    const [resumeButton, restartButton, returnButtonFromPause, playAgainButton, returnButtonFromResults] =
-      container.querySelectorAll('button');
+    const shell = createGameShell({ container, lockElement, onRestart, onPause, ...options });
+    const [
+      resumeButton,
+      restartButton,
+      returnButtonFromPause,
+      shadowQualityButton,
+      playAgainButton,
+      returnButtonFromResults,
+    ] = container.querySelectorAll('button');
     return {
       shell,
       resumeButton,
       restartButton,
       returnButtonFromPause,
+      shadowQualityButton,
       playAgainButton,
       returnButtonFromResults,
       resultsScreen: container.children[2],
@@ -160,5 +168,40 @@ describe('createGameShell (orchestrator wiring)', () => {
 
     expect(shell.getState()).toBe(STATES.START);
     expect(onPause).not.toHaveBeenCalled();
+  });
+
+  // The graphics setting is the one pause-screen control that changes state
+  // the player keeps, so its wiring gets the same treatment as the restart
+  // buttons above: a view must not be the only place this mapping is proven.
+  describe('shadow quality toggle', () => {
+    it('opens showing the quality it was given, not a hardcoded default', () => {
+      const { shadowQualityButton } = buildShell(undefined, undefined, {
+        shadowQuality: SHADOW_QUALITY.STANDARD,
+      });
+
+      expect(shadowQualityButton.textContent).toBe(shadowQualityLabel(SHADOW_QUALITY.STANDARD));
+    });
+
+    it('reports each flip to the caller and shows the new value', () => {
+      const onShadowQualityChange = vi.fn();
+      const { shadowQualityButton } = buildShell(undefined, undefined, {
+        shadowQuality: SHADOW_QUALITY.HIGH,
+        onShadowQualityChange,
+      });
+
+      shadowQualityButton.click();
+      expect(onShadowQualityChange).toHaveBeenLastCalledWith(SHADOW_QUALITY.STANDARD);
+      expect(shadowQualityButton.textContent).toBe(shadowQualityLabel(SHADOW_QUALITY.STANDARD));
+
+      shadowQualityButton.click();
+      expect(onShadowQualityChange).toHaveBeenLastCalledWith(SHADOW_QUALITY.HIGH);
+      expect(shadowQualityButton.textContent).toBe(shadowQualityLabel(SHADOW_QUALITY.HIGH));
+    });
+
+    it('still toggles when no caller is listening', () => {
+      const { shadowQualityButton } = buildShell();
+
+      expect(() => shadowQualityButton.click()).not.toThrow();
+    });
   });
 });

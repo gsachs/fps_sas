@@ -1,6 +1,11 @@
 import { createPointerLockController } from './pointerLock.js';
 import { displayName } from '../ui/names.js';
 import { LOCAL_PLAYER_ID } from '../sim/entityIds.js';
+import {
+  DEFAULT_SHADOW_QUALITY,
+  otherShadowQuality,
+  shadowQualityLabel,
+} from './graphicsSettings.js';
 
 // Pure state machine -- no DOM, no pointer lock -- so transitions are
 // unit-testable in isolation. The orchestrator below (createGameShell)
@@ -56,7 +61,14 @@ function styledButton(label) {
   return button;
 }
 
-export function createGameShell({ container, lockElement, onRestart, onPause }) {
+export function createGameShell({
+  container,
+  lockElement,
+  onRestart,
+  onPause,
+  shadowQuality = DEFAULT_SHADOW_QUALITY,
+  onShadowQualityChange,
+}) {
   let state = STATES.START;
 
   const startScreen = createScreen(container, { visible: true });
@@ -75,6 +87,21 @@ export function createGameShell({ container, lockElement, onRestart, onPause }) 
   pauseControlsHint.style.opacity = '0.8';
   pauseControlsHint.textContent = CONTROLS_TEXT;
   pauseScreen.append(pauseControlsHint);
+
+  // Below the controls hint, after the actions the player came here for: the
+  // one graphics setting worth exposing (graphicsSettings.js explains why
+  // it is a setting at all). It lives on the pause screen rather than the
+  // start screen because the reason to reach for it -- the frame rate is
+  // struggling -- only shows up once you are playing, and Escape is already
+  // the way out of that.
+  let currentShadowQuality = shadowQuality;
+  const shadowQualityButton = styledButton(shadowQualityLabel(currentShadowQuality));
+  pauseScreen.append(shadowQualityButton);
+  shadowQualityButton.addEventListener('click', () => {
+    currentShadowQuality = otherShadowQuality(currentShadowQuality);
+    shadowQualityButton.textContent = shadowQualityLabel(currentShadowQuality);
+    onShadowQualityChange?.(currentShadowQuality);
+  });
 
   const resultsScreen = createScreen(container);
   const resultsHeading = document.createElement('h2');

@@ -91,6 +91,23 @@ export function installDebugHooks({
   // Counts live tracer lines in the scene graph, for verifying the tracer
   // effect actually spawns (and expires) without a human watching the screen.
   window.__debugTracerCount = () => scene.children.filter((child) => child.type === 'Line').length;
+  // Shadow state has now gone silently wrong twice on this project -- an
+  // extent hardcoded to a retired arena, then a sun standing too close for
+  // its own near plane -- and neither showed up as anything but "that wall
+  // looks like it is floating". This reports the numbers directly so a
+  // verification pass can read them instead of judging them by eye.
+  window.__debugShadowCamera = () => {
+    const sun = scene.children.find((child) => child.isDirectionalLight);
+    const { near, far, right, top } = sun.shadow.camera;
+    return {
+      mapSize: sun.shadow.mapSize.width,
+      lightDistance: sun.position.length(),
+      near,
+      far,
+      extent: right,
+      squareExtent: right === top,
+    };
+  };
   // Reports the bot ramp's live state, for verifying reinforcements unlock
   // over a match without waiting out the real ramp interval by hand.
   window.__debugBotRamp = () => ({

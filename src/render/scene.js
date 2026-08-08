@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { raceInitWithTimeout } from '../shell/initTimeout.js';
 import { FLOOR_HALF_SIZE } from '../arena/layout.js';
+import { DEFAULT_SHADOW_QUALITY, shadowMapSize } from '../shell/graphicsSettings.js';
 
 // The scene and its lighting rig. What makes an arena of untextured boxes
 // read as a place is not the geometry -- it is whether objects are grounded
@@ -17,15 +18,32 @@ import { FLOOR_HALF_SIZE } from '../arena/layout.js';
 // constant here is exactly what reintroduces the seam KTD5 exists to avoid,
 // since loadSkyBackground below never touches this value itself.
 export const SKY_COLOR = 0x979baa;
-// Walls cap real sightlines well short of an open arena's full diagonal --
-// fog starts near the longest sightline any district's geometry actually
-// produces and reaches full density with margin past it, so it contributes
-// instead of sitting unused beyond where any line of sight can reach. Close
-// fog would hide bots at exactly the range where the player most needs to
-// pick them out (R15). U5 owns retuning this against the current map if
-// live play says otherwise.
-const FOG_NEAR = 20;
-const FOG_FAR = 60;
+// Fog is tuned against the longest line of sight the geometry actually
+// produces, never against the floor's size: walls cap real sightlines far
+// short of the floor diagonal, and fog placed past where any line of sight
+// can reach simply does not contribute. Close fog is worse than none -- it
+// hides bots at exactly the range where the player most needs to pick them
+// out (R15).
+//
+// Measured, not estimated: ray-marching the live layout at eye height gives
+// a longest unobstructed line of 62 units, from the Yard's west edge east
+// along the west spoke and through the Landmark. Half of every standing
+// position's own longest line is under 26. test/render/fogRange.test.js
+// re-measures against the live layout and fails when the map drifts away
+// from this, which is the guard the shadow extent twice went without.
+const LONGEST_SIGHTLINE = 62;
+// The retired arena's hand-tuned 20/60 pair held these proportions against
+// its own ~36-unit longest line. Carrying the proportions rather than
+// re-guessing the distances keeps the look the author already accepted:
+// fog opens a little past half the longest line, and saturates comfortably
+// beyond its end so the far wall of the longest sightline is heavily
+// tinted but never solid.
+const FOG_START_FRACTION = 0.56;
+const FOG_SATURATION_FRACTION = 1.67;
+const FOG_NEAR = Math.round(LONGEST_SIGHTLINE * FOG_START_FRACTION); // 35
+const FOG_FAR = Math.round(LONGEST_SIGHTLINE * FOG_SATURATION_FRACTION); // 104
+
+export const FOG_RANGE = { near: FOG_NEAR, far: FOG_FAR, longestSightline: LONGEST_SIGHTLINE };
 
 const SUN_COLOR = 0xfff2df;
 const SUN_INTENSITY = 2.6;
@@ -50,7 +68,6 @@ const AMBIENT_INTENSITY = 1.4;
 // of sync with it again the way a hardcoded constant once did.
 const SHADOW_EXTENT_MARGIN = 4; // clearance past the outermost wall face, beyond its own thickness
 const SHADOW_EXTENT = FLOOR_HALF_SIZE + SHADOW_EXTENT_MARGIN;
-const SHADOW_MAP_SIZE = 2048;
 const SHADOW_CAMERA_NEAR = 1;
 
 // The shadow camera sits AT the light and looks down SUN_DIRECTION, so how
@@ -84,7 +101,19 @@ const SHADOW_CAMERA_FAR = SUN_DISTANCE + FLOOR_HALF_SIZE * Math.SQRT2 + 20;
 const SHADOW_BIAS = -0.0006;
 const SHADOW_NORMAL_BIAS = 0.03;
 
-export function createScene({ aspect = 16 / 9 } = {}) {
+// Changes the sun's shadow-map resolution on a live scene. three.js
+// allocates the depth target once and then reuses it, so a new mapSize is
+// ignored until the old target is released -- which is the whole reason this
+// is a function here rather than a field the caller can set.
+export function applyShadowQuality(sun, quality) {
+  const size = shadowMapSize(quality);
+  if (sun.shadow.mapSize.width === size) return;
+  sun.shadow.mapSize.set(size, size);
+  sun.shadow.map?.dispose();
+  sun.shadow.map = null;
+}
+
+export function createScene({ aspect = 16 / 9, shadowQuality = DEFAULT_SHADOW_QUALITY } = {}) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SKY_COLOR);
   scene.fog = new THREE.Fog(SKY_COLOR, FOG_NEAR, FOG_FAR);
@@ -106,7 +135,7 @@ export function createScene({ aspect = 16 / 9 } = {}) {
   const sun = new THREE.DirectionalLight(SUN_COLOR, SUN_INTENSITY);
   sun.position.set(SUN_POSITION.x, SUN_POSITION.y, SUN_POSITION.z);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+  sun.shadow.mapSize.set(shadowMapSize(shadowQuality), shadowMapSize(shadowQuality));
   sun.shadow.camera.left = -SHADOW_EXTENT;
   sun.shadow.camera.right = SHADOW_EXTENT;
   sun.shadow.camera.top = SHADOW_EXTENT;

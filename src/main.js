@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { createScene, loadSkyBackground } from './render/scene.js';
+import { createScene, loadSkyBackground, applyShadowQuality } from './render/scene.js';
 import { createRenderLoop } from './render/loop.js';
 import { createPostFX } from './render/postfx.js';
 import { buildArenaMeshes } from './render/arenaMesh.js';
@@ -38,6 +38,7 @@ import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio, EXPLOSION_SOUND_SET_ID } from './audio/gunshots.js';
 import { createGameShell } from './shell/states.js';
+import { browserStorage, readShadowQuality, writeShadowQuality } from './shell/graphicsSettings.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
 import { renderStartupError } from './shell/startupError.js';
 import { raceInitWithTimeout, InitTimeoutError } from './shell/initTimeout.js';
@@ -80,7 +81,15 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 app.appendChild(renderer.domElement);
 
-const { scene, camera, sun, skyAmbient } = createScene({ aspect: window.innerWidth / window.innerHeight });
+// The player's stored graphics choice, resolved before the scene is built
+// so the shadow map is allocated at the right size once rather than being
+// reallocated on the first frame.
+const shadowQualityStorage = browserStorage();
+const shadowQuality = readShadowQuality(shadowQualityStorage);
+const { scene, camera, sun, skyAmbient } = createScene({
+  aspect: window.innerWidth / window.innerHeight,
+  shadowQuality,
+});
 
 // U1: composer chain (AO, bloom, anti-alias, tone map) that replaces the
 // direct renderer.render() call below -- OutputPass at its end reads
@@ -338,6 +347,11 @@ window.addEventListener('resize', () => {
 const gameShell = createGameShell({
   container: app,
   lockElement: renderer.domElement,
+  shadowQuality,
+  onShadowQualityChange: (quality) => {
+    writeShadowQuality(shadowQualityStorage, quality);
+    applyShadowQuality(sun, quality);
+  },
   // U24: Escape is the common way this game pauses (it exits pointer lock,
   // which the shell turns into a PLAYING -> PAUSED transition) -- mirrors
   // the window-blur listener below, which covers the alt-tab case instead.
