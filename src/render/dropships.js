@@ -49,12 +49,11 @@ const FADE_SECONDS = 0.8; // trailing fade, so it thins out instead of popping
 // its craft arrive and stay rather than leaving.
 const MAX_ACTIVE = 10;
 
-// The victory flight: the landing the whole match was fought to allow. Craft
-// come in from outside the wall, high, and settle over the site instead of
-// peeling away -- the same machine doing the opposite of its usual job, which
-// is the point. Reuses the drop drone rather than modelling a second
-// aircraft: it is the vehicle the player has watched deliver defenders all
-// match, and seeing a flight of them arrive on your side is the payoff.
+// The victory flight: escorts, ahead of the mothership that is the landing
+// proper (mothership.js). Craft come in from outside the wall, high, and
+// settle over the site instead of peeling away -- the same machine doing the
+// opposite of its usual job, which is the point. They are also what clears
+// any defender still standing when the match ends (victorySequence.js).
 const ARRIVAL_START_DISTANCE = 95; // beyond the outermost wall, so they cross the whole site
 const ARRIVAL_START_HEIGHT = 34;
 const ARRIVAL_HOVER_HEIGHT = 17;
@@ -65,7 +64,7 @@ const ARRIVAL_FADE_IN_SECONDS = 1.2;
 // keeps arrived craft from being recycled by MAX_ACTIVE while the player is
 // still looking at them -- an arriving craft holds station rather than fading
 // out, so eviction would pop it off the sky.
-const ARRIVAL_FLIGHT_SIZE = 8;
+const ARRIVAL_FLIGHT_SIZE = 5;
 
 // One shared set of geometries -- a drone spawns per arrival, and per-drone
 // geometry is what makes renderer.info.memory climb over a match instead of
@@ -263,5 +262,22 @@ export function createDropshipFleet(scene) {
     endVictoryFlight();
   }
 
-  return { syncArrivals, update, beginVictoryFlight, endVictoryFlight, resetAll, count: () => active.length };
+  // Where the escorts currently are, so the victory mop-up can fire from
+  // whichever one is actually nearest its target rather than from a point in
+  // empty sky. Only arrived craft: a departing drop is somebody else's.
+  function escortPositions() {
+    return active
+      .filter((entry) => entry.mode === 'arriving')
+      .map((entry) => ({ x: entry.drone.position.x, y: entry.drone.position.y, z: entry.drone.position.z }));
+  }
+
+  return {
+    syncArrivals,
+    update,
+    beginVictoryFlight,
+    endVictoryFlight,
+    escortPositions,
+    resetAll,
+    count: () => active.length,
+  };
 }

@@ -39,7 +39,7 @@ export function checkMatchEnd(entityAccessor) {
 // reason -- R5 says they persist through a match, not across one.
 export function resetMatch(
   entityAccessor,
-  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem, grenadeSystem, killfeed, decals, corpses, dropships }
+  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem, grenadeSystem, killfeed, decals, corpses, dropships, victorySequence }
 ) {
   if (pickupSystem) pickupSystem.resetAll();
   if (grenadeSystem) grenadeSystem.resetAll();
@@ -47,6 +47,9 @@ export function resetMatch(
   if (decals) decals.resetAll();
   if (corpses) corpses.resetAll();
   if (dropships) dropships.resetAll();
+  // Clears the mothership and stops the mop-up, so a second match does not
+  // open with the last one's landing still hanging over the site.
+  if (victorySequence) victorySequence.reset();
 
   const assignedSpawns = [];
   for (const entity of entityAccessor.allEntities()) {

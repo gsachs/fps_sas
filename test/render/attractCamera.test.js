@@ -3,7 +3,7 @@
 // exactly that way: the camera was never positioned at all, and the very
 // first screen anyone saw was the underside of the world.
 import { describe, expect, it } from 'vitest';
-import { ATTRACT_ORBIT, attractCameraPose } from '../../src/render/attractCamera.js';
+import { ATTRACT_ORBIT, attractCameraPose, victoryCameraPose } from '../../src/render/attractCamera.js';
 import { FLOOR_HALF_SIZE, WALL_HEIGHT } from '../../src/arena/layout.js';
 
 const samples = Array.from({ length: 64 }, (_, i) =>
@@ -63,5 +63,22 @@ describe('attract camera orbit', () => {
       Math.hypot(pose.position.x - ATTRACT_ORBIT.CENTRE.x, pose.position.z - ATTRACT_ORBIT.CENTRE.z)
     );
     expect(Math.max(...radii) - Math.min(...radii)).toBeLessThan(1e-9);
+  });
+
+  // The results screen reuses the orbit but has something in the sky to show.
+  describe('victory pose', () => {
+    it('keeps the same orbit path as the start screen', () => {
+      const attract = attractCameraPose(12);
+      const victory = victoryCameraPose(12);
+      expect(victory.position).toEqual(attract.position);
+    });
+
+    it('aims above the rooftops, so the landing is not off the top of frame', () => {
+      const victory = victoryCameraPose(12);
+      expect(victory.lookAt.y).toBeGreaterThan(attractCameraPose(12).lookAt.y);
+      // Below where the mothership settles, or the camera would be looking
+      // over the top of the site it is meant to be showing.
+      expect(victory.lookAt.y).toBeLessThan(23);
+    });
   });
 });

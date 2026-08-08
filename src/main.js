@@ -36,7 +36,9 @@ import { createImpactSystem } from './render/impacts.js';
 import { createDecalSystem } from './render/decals.js';
 import { createCorpseField } from './render/corpses.js';
 import { createDropshipFleet } from './render/dropships.js';
-import { attractCameraPose, ATTRACT_ORBIT } from './render/attractCamera.js';
+import { attractCameraPose, victoryCameraPose, ATTRACT_ORBIT } from './render/attractCamera.js';
+import { createMothership } from './render/mothership.js';
+import { createVictorySequence } from './render/victorySequence.js';
 import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio, EXPLOSION_SOUND_SET_ID } from './audio/gunshots.js';
@@ -162,6 +164,23 @@ const corpses = createCorpseField(scene, {
     yOffset: -CAPSULE_GROUND_OFFSET,
   },
   onError: (error) => console.warn('Failed to load corpse model:', error),
+});
+
+// The end-of-match cutscene: the landing arriving and its escorts clearing
+// anything still standing. Render-only -- see victorySequence.js.
+const mothership = createMothership(scene);
+const victorySequence = createVictorySequence({
+  mothership,
+  dropships,
+  tracers,
+  impacts,
+  corpses,
+  // The director never reaches into a bot entry; it reports the strike and
+  // this hides the mesh, which is the one thing main.js owns here.
+  onDefenderDown: (botId) => {
+    const entry = bots.find((b) => b.id === botId);
+    if (entry) entry.mesh.visible = false;
+  },
 });
 const pickupMeshes = createPickupMeshes(scene, arena.pickups);
 const grenadeFX = createGrenadeFX(scene);
@@ -396,6 +415,7 @@ const gameShell = createGameShell({
       decals,
       corpses,
       dropships,
+      victorySequence,
     });
     // resetMatch repositions every entity in the world, including bots the
     // ramp hadn't unlocked yet -- re-park those so the new match starts the
@@ -516,8 +536,15 @@ const loop = createRenderLoop({
         // camera and the craft -- which is why this can run at all on a frame
         // the simulation is not stepping.
         victoryElapsedSeconds += delta;
+        // The cutscene's own effects have to be driven here too: these
+        // systems normally tick inside the running branch above, and the
+        // simulation is stopped on this screen.
+        victorySequence.update(delta);
         dropships.update(delta);
-        const pose = attractCameraPose(victoryElapsedSeconds);
+        tracers.update(delta);
+        impacts.update(delta);
+        corpses.update(delta);
+        const pose = victoryCameraPose(victoryElapsedSeconds);
         camera.position.set(pose.position.x, pose.position.y, pose.position.z);
         camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
       }
@@ -648,7 +675,14 @@ const loop = createRenderLoop({
       // match however it went.
       if (matchResult.leaderboard[0]?.id === LOCAL_PLAYER_ID) {
         victoryElapsedSeconds = 0;
-        dropships.beginVictoryFlight(ATTRACT_ORBIT.CENTRE);
+        victorySequence.begin({
+          centre: ATTRACT_ORBIT.CENTRE,
+          survivors: bots
+            .filter((entry) => entry.active)
+            .map((entry) => sim.world.getEntity(entry.id))
+            .filter((entity) => entity && !entity.dead)
+            .map((entity) => ({ id: entity.id, position: { ...entity.position }, yaw: entity.yaw })),
+        });
       }
     }
 

@@ -26,11 +26,16 @@ const ORBIT_RADIUS = 38;
 // height that an arriving bot still reads as coming from above.
 const ORBIT_HEIGHT = 15;
 const LOOK_AT_HEIGHT = 1.5;
+// The results screen shares the orbit but tilts up: the mothership hovers
+// well above the rooftops, and aimed at the ground like the start screen it
+// sits off the top of the frame -- the one thing on that screen you most
+// want seen.
+const VICTORY_LOOK_AT_HEIGHT = 11;
 // Slow enough to read as a drift rather than a spin; long enough that nobody
 // sees it loop before they click.
 const ORBIT_PERIOD_SECONDS = 90;
 
-export const ATTRACT_ORBIT = { CENTRE, ORBIT_RADIUS, ORBIT_HEIGHT, ORBIT_PERIOD_SECONDS };
+export const ATTRACT_ORBIT = { CENTRE, ORBIT_RADIUS, ORBIT_HEIGHT, ORBIT_PERIOD_SECONDS, LOOK_AT_HEIGHT, VICTORY_LOOK_AT_HEIGHT };
 
 // Camera pose for the attract orbit at `elapsedSeconds` into it. Plain
 // numbers at the boundary (KTD7), promoted to THREE types by the caller.
@@ -44,6 +49,12 @@ export function attractCameraPose(elapsedSeconds) {
     },
     lookAt: { x: CENTRE.x, y: LOOK_AT_HEIGHT, z: CENTRE.z },
   };
+}
+
+// Same orbit, tilted up for the end-of-match landing.
+export function victoryCameraPose(elapsedSeconds) {
+  const pose = attractCameraPose(elapsedSeconds);
+  return { position: pose.position, lookAt: { ...pose.lookAt, y: VICTORY_LOOK_AT_HEIGHT } };
 }
 
 // Exported for the test that keeps the orbit honest as the map changes.
