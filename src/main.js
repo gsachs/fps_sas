@@ -36,7 +36,7 @@ import { createImpactSystem } from './render/impacts.js';
 import { createDecalSystem } from './render/decals.js';
 import { createCorpseField } from './render/corpses.js';
 import { createDropshipFleet } from './render/dropships.js';
-import { attractCameraPose } from './render/attractCamera.js';
+import { attractCameraPose, ATTRACT_ORBIT } from './render/attractCamera.js';
 import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio, EXPLOSION_SOUND_SET_ID } from './audio/gunshots.js';
@@ -471,6 +471,7 @@ app.appendChild(statsEl);
 let frames = 0;
 let fpsAccum = 0;
 let attractElapsedSeconds = 0;
+let victoryElapsedSeconds = 0;
 
 const loop = createRenderLoop({
   render: (delta) => postfx.composer.render(delta),
@@ -486,10 +487,11 @@ const loop = createRenderLoop({
     // the site from above, and a first-person weapon hanging in the corner of
     // that shot reads as a bug. Paused and results keep them, because those
     // screens sit over a frozen frame of real play.
-    const atStartScreen = gameShell.getState() === STATES.START;
-    weaponView.setVisible(!atStartScreen);
-    minimap.setVisible(!atStartScreen);
-    hud.setVisible(!atStartScreen);
+    const inMenu =
+      gameShell.getState() === STATES.START || gameShell.getState() === STATES.RESULTS;
+    weaponView.setVisible(!inMenu);
+    minimap.setVisible(!inMenu);
+    hud.setVisible(!inMenu);
 
     // The scene still renders every frame regardless (render/loop.js calls
     // renderer.render after this returns), so start/pause/results screens
@@ -505,6 +507,17 @@ const loop = createRenderLoop({
       if (gameShell.getState() === STATES.START) {
         attractElapsedSeconds += delta;
         const pose = attractCameraPose(attractElapsedSeconds);
+        camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+        camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
+      } else if (gameShell.getState() === STATES.RESULTS) {
+        // A finished match lifts out of the player's own eyes and orbits the
+        // site; on a win, the landing flies in over it (see the match-end
+        // branch below). The sim is stopped, so nothing here moves except the
+        // camera and the craft -- which is why this can run at all on a frame
+        // the simulation is not stepping.
+        victoryElapsedSeconds += delta;
+        dropships.update(delta);
+        const pose = attractCameraPose(victoryElapsedSeconds);
         camera.position.set(pose.position.x, pose.position.y, pose.position.z);
         camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
       }
@@ -626,7 +639,17 @@ const loop = createRenderLoop({
 
     const matchResult = checkMatchEnd(sim.world);
     if (matchResult.ended) {
-      gameShell.showResults(matchResult.leaderboard);
+      gameShell.showResults(matchResult.leaderboard, { durationSeconds: matchElapsedSeconds });
+      // Winning is the whole premise paying off -- the site is clear, so the
+      // landing it was being held for can finally come down. Only the flight
+      // is conditional; the camera lifts either way, because a frozen
+      // first-person frame at the end of a lost match is usually a wall or a
+      // patch of floor, and the site itself is the better last image of a
+      // match however it went.
+      if (matchResult.leaderboard[0]?.id === LOCAL_PLAYER_ID) {
+        victoryElapsedSeconds = 0;
+        dropships.beginVictoryFlight(ATTRACT_ORBIT.CENTRE);
+      }
     }
 
     frames += 1;

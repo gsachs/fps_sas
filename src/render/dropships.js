@@ -45,8 +45,27 @@ const LIFETIME_SECONDS = 3.4;
 const FADE_SECONDS = 0.8; // trailing fade, so it thins out instead of popping
 
 // Several drops can overlap on a busy ramp; past a handful they are all off
-// over the wall anyway.
-const MAX_ACTIVE = 6;
+// over the wall anyway. The victory flight needs a little more room, since
+// its craft arrive and stay rather than leaving.
+const MAX_ACTIVE = 10;
+
+// The victory flight: the landing the whole match was fought to allow. Craft
+// come in from outside the wall, high, and settle over the site instead of
+// peeling away -- the same machine doing the opposite of its usual job, which
+// is the point. Reuses the drop drone rather than modelling a second
+// aircraft: it is the vehicle the player has watched deliver defenders all
+// match, and seeing a flight of them arrive on your side is the payoff.
+const ARRIVAL_START_DISTANCE = 95; // beyond the outermost wall, so they cross the whole site
+const ARRIVAL_START_HEIGHT = 34;
+const ARRIVAL_HOVER_HEIGHT = 17;
+const ARRIVAL_APPROACH_SECONDS = 9;
+const ARRIVAL_SPACING_SECONDS = 1.7; // stagger, so they arrive as a flight rather than a wall
+const ARRIVAL_FADE_IN_SECONDS = 1.2;
+// A landing is a finite event, not a stream. Capping the flight is also what
+// keeps arrived craft from being recycled by MAX_ACTIVE while the player is
+// still looking at them -- an arriving craft holds station rather than fading
+// out, so eviction would pop it off the sky.
+const ARRIVAL_FLIGHT_SIZE = 8;
 
 // One shared set of geometries -- a drone spawns per arrival, and per-drone
 // geometry is what makes renderer.info.memory climb over a match instead of
@@ -104,11 +123,41 @@ export function createDropshipFleet(scene) {
   // Which entities were mid-arrival last frame, so a drop is spawned once on
   // the transition rather than every frame of the fall.
   let arrivingIds = new Set();
+  // Victory-flight state: where the landing is heading, and its cadence.
+  let victoryCentre = null;
+  let arrivalsSent = 0;
+  let sinceLastArrival = 0;
 
   function retire(index) {
     const [entry] = active.splice(index, 1);
     scene.remove(entry.drone);
     for (const material of entry.materials) material.dispose(); // geometries are shared
+  }
+
+  // Ease-out, so a craft comes in fast from the horizon and settles rather
+  // than sliding in at a constant rate.
+  const easeOut = (t) => 1 - (1 - t) * (1 - t) * (1 - t);
+
+  // One arriving craft, inbound from `bearing` radians around the site.
+  function arrive(centre, bearing) {
+    if (active.length >= MAX_ACTIVE) retire(0);
+    const { drone, rotors, materials } = buildDrone();
+    const from = {
+      x: centre.x + Math.sin(bearing) * ARRIVAL_START_DISTANCE,
+      z: centre.z + Math.cos(bearing) * ARRIVAL_START_DISTANCE,
+    };
+    const to = {
+      // Spread the flight out over the site rather than stacking every craft
+      // on one point.
+      x: centre.x + Math.sin(bearing) * 16,
+      z: centre.z + Math.cos(bearing) * 16,
+    };
+    drone.position.set(from.x, ARRIVAL_START_HEIGHT, from.z);
+    // Nose along the direction of travel: inbound, so facing the site.
+    drone.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+    for (const material of materials) material.opacity = 0;
+    scene.add(drone);
+    active.push({ drone, rotors, materials, mode: 'arriving', from, to, elapsed: 0 });
   }
 
   function spawn(releasePoint) {
@@ -120,7 +169,7 @@ export function createDropshipFleet(scene) {
     // sliding off sideways.
     drone.rotation.y = Math.atan2(heading.x, heading.z);
     scene.add(drone);
-    active.push({ drone, rotors, materials, heading, elapsed: 0 });
+    active.push({ drone, rotors, materials, mode: 'departing', heading, elapsed: 0 });
   }
 
   // Spawns a drone for every entity that has just started arriving. Takes the
@@ -139,15 +188,42 @@ export function createDropshipFleet(scene) {
   }
 
   function update(deltaSeconds) {
+    // The victory flight keeps sending craft for as long as the screen is up.
+    if (victoryCentre) {
+      sinceLastArrival += deltaSeconds;
+      if (sinceLastArrival >= ARRIVAL_SPACING_SECONDS) {
+        sinceLastArrival = 0;
+        // Golden-angle steps around the site, so successive craft come in
+        // from meaningfully different directions instead of clustering.
+        arrive(victoryCentre, arrivalsSent * 2.39996);
+        arrivalsSent += 1;
+        if (arrivalsSent >= ARRIVAL_FLIGHT_SIZE) victoryCentre = null; // the flight is in
+      }
+    }
+
     for (let i = active.length - 1; i >= 0; i -= 1) {
       const entry = active[i];
       entry.elapsed += deltaSeconds;
+      for (const rotor of entry.rotors) rotor.rotation.y += ROTOR_SPIN_RATE * deltaSeconds;
+
+      if (entry.mode === 'arriving') {
+        const t = Math.min(1, entry.elapsed / ARRIVAL_APPROACH_SECONDS);
+        const eased = easeOut(t);
+        entry.drone.position.x = entry.from.x + (entry.to.x - entry.from.x) * eased;
+        entry.drone.position.z = entry.from.z + (entry.to.z - entry.from.z) * eased;
+        entry.drone.position.y =
+          ARRIVAL_START_HEIGHT + (ARRIVAL_HOVER_HEIGHT - ARRIVAL_START_HEIGHT) * eased;
+        // Fades up out of the haze rather than snapping into existence at the
+        // horizon, which is where fog would otherwise have hidden it anyway.
+        const opacity = Math.min(1, entry.elapsed / ARRIVAL_FADE_IN_SECONDS);
+        for (const material of entry.materials) material.opacity = opacity;
+        continue; // arriving craft hold station; they are not on a lifetime
+      }
+
       if (entry.elapsed >= LIFETIME_SECONDS) {
         retire(i);
         continue;
       }
-
-      for (const rotor of entry.rotors) rotor.rotation.y += ROTOR_SPIN_RATE * deltaSeconds;
 
       // Station-keeping, then an eased run-up to full speed, so the drone
       // pulls away rather than teleporting into motion.
@@ -168,10 +244,24 @@ export function createDropshipFleet(scene) {
     }
   }
 
+  // Starts and stops the victory flight. Called on a won match, cleared on a
+  // match reset, so a second match does not open with the last one's landing
+  // still hanging over the site.
+  function beginVictoryFlight(centre) {
+    victoryCentre = centre;
+    arrivalsSent = 0;
+    sinceLastArrival = ARRIVAL_SPACING_SECONDS; // first craft launches immediately
+  }
+
+  function endVictoryFlight() {
+    victoryCentre = null;
+  }
+
   function resetAll() {
     for (let i = active.length - 1; i >= 0; i -= 1) retire(i);
     arrivingIds = new Set();
+    endVictoryFlight();
   }
 
-  return { syncArrivals, update, resetAll, count: () => active.length };
+  return { syncArrivals, update, beginVictoryFlight, endVictoryFlight, resetAll, count: () => active.length };
 }

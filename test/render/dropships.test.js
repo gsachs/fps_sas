@@ -108,4 +108,93 @@ describe('dropship fleet', () => {
     fleet.syncArrivals([arriving('bot0', { x: 0, y: 15, z: 0 })]);
     expect(drones(scene)).toHaveLength(1);
   });
+
+  // The victory flight: the landing the whole match was fought to allow. The
+  // same drone doing the opposite of its usual job, which is the point.
+  describe('victory flight', () => {
+    const CENTRE = { x: -1, z: 3.5 };
+
+    it('sends nothing until the match is actually won', () => {
+      const scene = new THREE.Scene();
+      const fleet = createDropshipFleet(scene);
+
+      for (let i = 0; i < 300; i += 1) fleet.update(1 / 60);
+
+      expect(drones(scene)).toHaveLength(0);
+    });
+
+    it('launches the first craft immediately, then keeps them coming', () => {
+      const scene = new THREE.Scene();
+      const fleet = createDropshipFleet(scene);
+
+      fleet.beginVictoryFlight(CENTRE);
+      fleet.update(1 / 60);
+      expect(drones(scene)).toHaveLength(1);
+
+      for (let i = 0; i < 600; i += 1) fleet.update(1 / 60);
+      expect(fleet.count()).toBeGreaterThan(1);
+    });
+
+    it('brings them in from outside the site and settles them over it', () => {
+      const scene = new THREE.Scene();
+      const fleet = createDropshipFleet(scene);
+      fleet.beginVictoryFlight(CENTRE);
+      fleet.update(1 / 60);
+      const [craft] = drones(scene);
+      const distanceOut = Math.hypot(craft.position.x - CENTRE.x, craft.position.z - CENTRE.z);
+      const startHeight = craft.position.y;
+
+      for (let i = 0; i < 700; i += 1) fleet.update(1 / 60);
+
+      // Inbound and descending: closer than it started, and lower.
+      expect(Math.hypot(craft.position.x - CENTRE.x, craft.position.z - CENTRE.z)).toBeLessThan(
+        distanceOut / 2
+      );
+      expect(craft.position.y).toBeLessThan(startHeight);
+    });
+
+    it('holds station once arrived, rather than expiring like a departing drop', () => {
+      const scene = new THREE.Scene();
+      const fleet = createDropshipFleet(scene);
+      fleet.beginVictoryFlight(CENTRE);
+      fleet.update(1 / 60);
+      const [craft] = drones(scene);
+
+      // Thirty seconds -- many times the lifetime a departing drop is retired
+      // at, and long after the whole flight has arrived.
+      for (let i = 0; i < 1800; i += 1) fleet.update(1 / 60);
+
+      expect(scene.children).toContain(craft);
+    });
+
+    it('is a finite flight: it stops sending once the landing is in', () => {
+      const scene = new THREE.Scene();
+      const fleet = createDropshipFleet(scene);
+      fleet.beginVictoryFlight(CENTRE);
+
+      // Thirty seconds is well past the last craft's launch slot, so the
+      // flight is complete by here.
+      for (let i = 0; i < 1800; i += 1) fleet.update(1 / 60);
+      const wholeFlight = fleet.count();
+      for (let i = 0; i < 6000; i += 1) fleet.update(1 / 60);
+
+      // Unbounded sending would eventually evict arrived craft to stay under
+      // the active cap, and an arriving craft holds station rather than
+      // fading, so that eviction would pop it off the sky in plain view.
+      expect(fleet.count()).toBe(wholeFlight);
+      expect(fleet.count()).toBeLessThanOrEqual(8);
+    });
+
+    it('stops on a match reset, so the next match does not open under the last one\'s landing', () => {
+      const scene = new THREE.Scene();
+      const fleet = createDropshipFleet(scene);
+      fleet.beginVictoryFlight(CENTRE);
+      for (let i = 0; i < 300; i += 1) fleet.update(1 / 60);
+
+      fleet.resetAll();
+      for (let i = 0; i < 300; i += 1) fleet.update(1 / 60);
+
+      expect(drones(scene)).toHaveLength(0);
+    });
+  });
 });

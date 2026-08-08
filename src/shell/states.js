@@ -36,6 +36,12 @@ export function transition(state, event) {
   }
 }
 
+// mm:ss for the results stat line. Pure, so it is testable without a DOM.
+export function formatDuration(totalSeconds) {
+  const whole = Math.max(0, Math.floor(totalSeconds));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
 // R6, AE4: pure per-entry label, extracted so the results list's naming is
 // unit-testable without a DOM (mirrors src/ui/hud.js's exported formatters).
 export function formatResultsEntry(entry) {
@@ -175,13 +181,29 @@ export function createGameShell({
   });
 
   const resultsScreen = createScreen(container);
+  // Lighter than the start screen's wash on purpose: the landing flying in
+  // behind this one is the celebration, and the craft are dark against a
+  // dark compound, so over-scrimming hides the very thing being celebrated.
+  // The scoreboard sits on the ground half of the frame, which is dim
+  // enough already.
+  resultsScreen.style.background =
+    'linear-gradient(to bottom, rgba(6,8,12,0.20) 0%, rgba(6,8,12,0.58) 26%, rgba(6,8,12,0.66) 50%, rgba(6,8,12,0.66) 78%, rgba(6,8,12,0.30) 100%)';
   const resultsHeading = document.createElement('h2');
-  resultsHeading.style.margin = '0';
+  const resultsSubheading = document.createElement('p');
+  const resultsStat = document.createElement('p');
   const resultsList = document.createElement('ol');
-  resultsList.style.cssText = 'font-size:1.1rem;padding:0;list-style-position:inside;';
+  // A scoreboard, not a bulleted list: fixed-width rank and score columns so
+  // the numbers line up, and the player's own row picked out in the same gold
+  // the killfeed already uses for their kills.
+  resultsList.style.cssText =
+    'list-style:none;margin:0 0 2rem;padding:0;font-size:1.05rem;min-width:19rem;text-align:left;' +
+    'text-shadow:0 1px 6px rgba(0,0,0,0.9);';
+  const resultsButtons = document.createElement('div');
+  resultsButtons.style.cssText = 'display:flex;gap:12px;justify-content:center;';
   const playAgainButton = styledButton('Play Again');
   const returnButtonFromResults = styledButton('Return to Start');
-  resultsScreen.append(resultsHeading, resultsList, playAgainButton, returnButtonFromResults);
+  resultsButtons.append(playAgainButton, returnButtonFromResults);
+  resultsScreen.append(resultsHeading, resultsSubheading, resultsStat, resultsList, resultsButtons);
 
   function updateScreens() {
     startScreen.style.display = state === STATES.START ? 'flex' : 'none';
@@ -235,26 +257,51 @@ export function createGameShell({
     dispatch('returnToStart');
   });
 
-  function showResults(leaderboard) {
+  // The end of a match is the payoff for the brief the player was given at the
+  // start, so it answers it in the same terms: the site is secured, or it is
+  // not. `durationSeconds` is how long the match ran, for the stat line.
+  function showResults(leaderboard, { durationSeconds = 0 } = {}) {
     if (pointerLock.isLocked()) document.exitPointerLock();
     dispatch('matchEnded');
 
     const playerEntry = leaderboard.find((entry) => entry.id === LOCAL_PLAYER_ID);
     const isPlayerLeading = leaderboard[0]?.id === LOCAL_PLAYER_ID;
-    resultsHeading.textContent = isPlayerLeading ? 'You Win!' : 'You Lose';
+
+    resultsHeading.style.cssText =
+      'margin:0;font-size:3.4rem;letter-spacing:0.2em;font-weight:700;' +
+      `color:${isPlayerLeading ? '#ffd479' : '#ffffff'};` +
+      `text-shadow:0 2px 18px ${isPlayerLeading ? 'rgba(255,180,60,0.45)' : 'rgba(0,0,0,0.8)'}, 0 1px 3px rgba(0,0,0,0.9);`;
+    resultsHeading.textContent = isPlayerLeading ? 'SITE SECURED' : 'SITE LOST';
+
+    resultsSubheading.style.cssText =
+      'margin:0.5rem 0 1.6rem;font-size:1rem;letter-spacing:0.28em;text-transform:uppercase;' +
+      'opacity:0.8;text-shadow:0 1px 8px rgba(0,0,0,0.9);';
+    resultsSubheading.textContent = isPlayerLeading
+      ? 'The landing is coming down'
+      : `${displayName(leaderboard[0]?.id ?? '')} holds the compound`;
+
+    resultsStat.style.cssText =
+      'margin:0 0 1.8rem;font-size:1.05rem;opacity:0.9;text-shadow:0 1px 6px rgba(0,0,0,0.9);';
+    resultsStat.textContent = `${playerEntry?.score ?? 0} cleared · ${formatDuration(durationSeconds)}`;
+
     resultsList.innerHTML = '';
-    for (const entry of leaderboard) {
+    const rows = playerEntry
+      ? leaderboard
+      : // Keep the player's own entry discoverable even if the scoreboard
+        // omitted it for some reason (defensive; should not happen).
+        [...leaderboard, { id: LOCAL_PLAYER_ID, score: 0 }];
+    rows.forEach((entry, index) => {
+      const isPlayer = entry.id === LOCAL_PLAYER_ID;
       const item = document.createElement('li');
-      item.textContent = formatResultsEntry(entry);
+      item.style.cssText =
+        'display:flex;gap:1rem;padding:0.32rem 0.7rem;border-radius:3px;' +
+        (isPlayer ? 'background:rgba(255,212,121,0.14);color:#ffd479;font-weight:600;' : 'opacity:0.78;');
+      item.innerHTML =
+        `<span style="width:1.6rem;opacity:0.6;">${index + 1}</span>` +
+        `<span style="flex:1;">${displayName(entry.id)}</span>` +
+        `<span style="font-variant-numeric:tabular-nums;">${entry.score}</span>`;
       resultsList.appendChild(item);
-    }
-    // Keep the player's own entry discoverable even if the scoreboard
-    // omitted it for some reason (defensive; should not happen in practice).
-    if (!playerEntry) {
-      const item = document.createElement('li');
-      item.textContent = formatResultsEntry({ id: LOCAL_PLAYER_ID, score: 0 });
-      resultsList.appendChild(item);
-    }
+    });
   }
 
   return {

@@ -97,7 +97,7 @@ describe('createGameShell (orchestrator wiring)', () => {
     expect(onRestart).toHaveBeenCalledTimes(4);
   });
 
-  it('shows "You Win!" when the local player leads the results leaderboard', () => {
+  it('declares the site secured when the local player leads the results leaderboard', () => {
     const { shell, resultsScreen } = buildShell();
     shell.debugForceLockAcquired();
 
@@ -106,10 +106,12 @@ describe('createGameShell (orchestrator wiring)', () => {
       { id: 'bot0', score: 3 },
     ]);
 
-    expect(resultsScreen.querySelector('h2').textContent).toBe('You Win!');
+    // Answers the start screen's brief in its own terms, rather than a
+    // generic win/lose.
+    expect(resultsScreen.querySelector('h2').textContent).toBe('SITE SECURED');
   });
 
-  it('shows "You Lose" when the local player trails the results leaderboard', () => {
+  it('declares the site lost when the local player trails the results leaderboard', () => {
     const { shell, resultsScreen } = buildShell();
     shell.debugForceLockAcquired();
 
@@ -118,20 +120,23 @@ describe('createGameShell (orchestrator wiring)', () => {
       { id: LOCAL_PLAYER_ID, score: 3 },
     ]);
 
-    expect(resultsScreen.querySelector('h2').textContent).toBe('You Lose');
+    expect(resultsScreen.querySelector('h2').textContent).toBe('SITE LOST');
   });
 
   it('adds a fallback entry for the local player when the leaderboard omits them', () => {
     const { shell, resultsScreen } = buildShell();
-    shell.debugForceLockAcquired();
 
     shell.showResults([
       { id: 'bot0', score: 5 },
       { id: 'bot1', score: 3 },
     ]);
 
-    const entries = [...resultsScreen.querySelectorAll('li')].map((li) => li.textContent);
-    expect(entries).toContain(formatResultsEntry({ id: LOCAL_PLAYER_ID, score: 0 }));
+    // The row is columns now (rank, name, score), so match on the name cell
+    // rather than on one concatenated label.
+    const names = [...resultsScreen.querySelectorAll('li')].map(
+      (row) => row.children[1]?.textContent
+    );
+    expect(names).toContain('You');
   });
 
   // U24: a press queued right before Escape (lockLost while PLAYING) must not
