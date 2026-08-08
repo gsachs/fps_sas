@@ -525,10 +525,15 @@ const loop = createRenderLoop({
       grenadeFX,
     });
 
-    // Layered on top of the simulation's pitch, which was applied above and
-    // is what hitscans actually resolve against -- so the jolt is visible
-    // but the shot still lands where the crosshair was (R5, R17).
-    camera.rotation.x -= weaponView.getCameraKick();
+    // A punch straight back along the view axis, applied after the camera has
+    // been placed from the simulation above. Deliberately a translation and
+    // not a rotation: the crosshair is pinned to the centre of the screen, so
+    // it points wherever the camera points, and rotating the camera is
+    // therefore the same as moving the crosshair off the shot. Translating
+    // along the axis the camera already looks down leaves the crosshair ray
+    // collinear with the shot, so R5/R17 hold at every range instead of only
+    // while the gun is at rest. See weaponView.js's CAMERA_PUNCH_DISTANCE.
+    camera.translateZ(weaponView.getCameraPunch());
 
     // R10: shows whichever weapon the local player currently holds --
     // cheap no-op internally when unchanged from last frame.

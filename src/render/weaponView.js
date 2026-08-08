@@ -34,11 +34,27 @@ export const WEAPON_LAYER = 1;
 // or future.
 const WEAPON_CAMERA_NEAR = 0.01;
 const WEAPON_CAMERA_FAR = 2;
-// The camera jolts by a fraction of the weapon's own kick. Deliberately
-// small: this is cosmetic only and must never move the aim point, so the
-// simulation's pitch (which is what hitscans are actually resolved against)
-// is untouched and shots still land exactly where the crosshair was.
-const CAMERA_KICK_RATIO = 0.55;
+// The camera's own jolt on each shot, as a distance the view is punched
+// backward along the axis it is already looking down -- NOT a rotation.
+//
+// R5/R17 require that the jolt never move the aim point, and the retired
+// version tried to satisfy that by pitching the camera while leaving the
+// simulation's pitch (what hitscans actually resolve against) alone. That
+// reasoning has a hole in it: the crosshair is a fixed element at the centre
+// of the screen, so it points wherever the CAMERA points. Pitching the
+// camera moves the crosshair off the shot. Under sustained fire the kick
+// never fully decayed between rounds and the camera sat a steady ~5 degrees
+// off the shot line -- bullets passing 0.9m above the crosshair at 10m and
+// 1.8m at 20m, straight over the head of anything further than point-blank.
+// A held trigger reliably missed a target the crosshair was sitting on.
+//
+// Translating along the view axis has no such hole: it leaves the camera's
+// forward direction untouched, so the crosshair ray stays exactly collinear
+// with the shot at every range, and the requirement holds by construction
+// rather than by an argument about what the player is looking at. The gun
+// itself still kicks and pivots (RECOIL_KICK/RECOIL_PITCH on the visual),
+// which is what actually sells the shot.
+const CAMERA_PUNCH_DISTANCE = 0.06;
 
 // R10: the viewmodel shows the held weapon. `weaponVisuals` maps a weapon id
 // to its own { visual, restPositionZ, restRotationX } -- pre-seeded with a
@@ -148,8 +164,8 @@ export function createWeaponView(camera) {
   // KTD4: a second camera, driven by the same transform as `camera` --
   // parenting it the same way `group` is parented above means its world
   // matrix tracks `camera`'s automatically every frame via the normal scene
-  // graph update, including the camera-kick jolt (main.js mutates `camera`'s
-  // own rotation before each render). It only ever sees WEAPON_LAYER, so
+  // graph update, including the recoil punch (main.js translates `camera`
+  // before each render). It only ever sees WEAPON_LAYER, so
   // postfx.js's depth-cleared weapon pass draws the viewmodel and nothing
   // else -- not even a wall a few centimetres away -- which is what makes
   // clipping impossible regardless of how close the player stands to
@@ -201,11 +217,12 @@ export function createWeaponView(camera) {
     }
   }
 
-  // How far the camera should be pitched up this frame for the recoil jolt.
-  // Read by the render loop *after* it applies the simulation's own pitch, so
-  // it is layered on top of aim rather than folded into it.
-  function getCameraKick() {
-    return (recoilOffset / RECOIL_KICK) * CAMERA_KICK_RATIO * RECOIL_PITCH;
+  // How far back along its own view axis the camera should be punched this
+  // frame. The render loop applies it as a translation after positioning the
+  // camera from the simulation, so it never touches the view direction the
+  // crosshair and the shot share.
+  function getCameraPunch() {
+    return (recoilOffset / RECOIL_KICK) * CAMERA_PUNCH_DISTANCE;
   }
 
   // Replaces `weaponId`'s visual (placeholder or a prior model) with
@@ -246,5 +263,5 @@ export function createWeaponView(camera) {
   // weaponCamera is exposed here so main.js's own
   // `postfx.addWeaponPass(weaponView.weaponCamera)` can register the
   // depth-clear pass (KTD4) once both this view and the composer exist.
-  return { fire, update, setModel, setHeldWeapon, getCameraKick, weaponCamera };
+  return { fire, update, setModel, setHeldWeapon, getCameraPunch, weaponCamera };
 }

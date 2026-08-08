@@ -81,18 +81,43 @@ describe('createWeaponView', () => {
     expect(gun.rotation.x).toBeCloseTo(0, 5);
   });
 
-  it('reports a camera kick that peaks on fire and decays to nothing', () => {
+  it('reports a camera punch that peaks on fire and decays to nothing', () => {
     const camera = new THREE.PerspectiveCamera();
     const weaponView = createWeaponView(camera);
 
-    expect(weaponView.getCameraKick()).toBe(0);
+    expect(weaponView.getCameraPunch()).toBe(0);
 
     weaponView.fire();
     weaponView.update(0);
-    expect(weaponView.getCameraKick()).toBeGreaterThan(0);
+    expect(weaponView.getCameraPunch()).toBeGreaterThan(0);
 
     for (let i = 0; i < 60; i++) weaponView.update(1 / 60);
-    expect(weaponView.getCameraKick()).toBe(0);
+    expect(weaponView.getCameraPunch()).toBe(0);
+  });
+
+  // R5/R17: the jolt must never move the aim point. The crosshair is pinned
+  // to the centre of the screen, so it points wherever the camera points --
+  // which makes "does the jolt rotate the camera" the whole question. The
+  // retired pitch-based kick held the camera ~5 degrees off the shot line
+  // for as long as the trigger was down, putting rounds over the head of
+  // anything past point-blank while the crosshair sat on it.
+  it('punches the camera without turning it, so the crosshair keeps marking the shot', () => {
+    const camera = new THREE.PerspectiveCamera();
+    const weaponView = createWeaponView(camera);
+    camera.updateMatrixWorld(true);
+    const aimBefore = camera.getWorldDirection(new THREE.Vector3()).clone();
+
+    weaponView.fire();
+    weaponView.update(0);
+    // Applied exactly as main.js's render loop applies it.
+    camera.translateZ(weaponView.getCameraPunch());
+    camera.updateMatrixWorld(true);
+
+    const aimAfter = camera.getWorldDirection(new THREE.Vector3());
+    expect(aimAfter.angleTo(aimBefore)).toBe(0);
+    // ...and the punch is along that same unchanged axis, so the crosshair
+    // ray stays collinear with the shot rather than merely parallel to it.
+    expect(camera.position.clone().normalize().angleTo(aimBefore)).toBeCloseTo(Math.PI, 6);
   });
 
   it('setModel swaps the placeholder for a real model and keeps recoil/flash working', () => {
