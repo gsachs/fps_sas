@@ -25,7 +25,7 @@ The map's rooms and doorways treated as nodes a Bot can plan a route across, wit
 ## Map
 
 ### Room
-A distinct, walled space in the arena — the fixed central landmark room, or one of the five outlying Districts. Joined by a corridor web of spokes (landmark to district), a perimeter chain linking district to district, and cross-cuts that bypass the landmark entirely, so no single circuit is the default way around and no reachable position sees the whole map. Walls, rooms, doorways, pillars, and spawn points are all authored as one descriptor dataset (`src/arena/layout.js`) that both physics and rendering consume, so the two can never derive the map's shape differently.
+A distinct, walled space in the arena — the fixed central landmark room, or one of the five outlying Districts. Joined by a corridor web of spokes (landmark to district), a perimeter chain linking district to district, and cross-cuts that bypass the landmark entirely, so no single circuit is the default way around and no reachable position sees the whole map. Walls, rooms, doorways, pillars, and spawn points are all authored as one descriptor dataset that both physics and rendering consume, so the two can never derive the map's shape differently.
 
 ### District
 One of the five outlying Rooms, each naming itself by its own structural grammar — a tight chamber warren, an open long-sightline yard, a pillared hall, a cover-block maze, or a scattered-cover bazaar — rather than a shared footprint told apart by landmark placement. Identifiable at a glance by structure alone; its Room Accent is a secondary, color-layer cue, never the primary one. The landmark room is deliberately not a District: it keeps a neutral, fixed-reference identity as the arena's one retained landmark.

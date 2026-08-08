@@ -25,25 +25,25 @@ While building the rotating minimap's map-space math (`src/ui/minimap.js`), `rot
 
 ## Symptoms
 
-- The directional regression test (`test/ui/minimap.test.js:24-37`, `describe('minimap: projectToMap ...')`, `it.each` over yaw `0`, `π/2`, `π`, and an arbitrary yaw `1.234`) failed against the buggy formula with concrete numeric mismatches:
-  - At yaw `0` and yaw `π`, the `y < 0` assertion (`test/ui/minimap.test.js:36`) failed with `expected 0.20797258270192573 to be less than 0` — a point directly ahead of the player projected to positive `y` (screen-*down*, since SVG is y-down) instead of negative.
-  - At the arbitrary yaw `1.234`, the `x ≈ 0` assertion (`test/ui/minimap.test.js:35`) failed with `expected 0.1297328755544316 to be close to +0` — the ahead-point drifted sideways instead of landing directly above the marker.
-- A second test in the same file, the diagonal-fit invariant (`test/ui/minimap.test.js:50-74`, asserting the four floor corners stay within radius `1` of the map's circular frame at several yaws), **passed both before and after the fix** — it gave no signal that anything was wrong.
+- The directional regression test (`test/ui/minimap.test.js:23-36`, `describe('minimap: projectToMap ...')`, `it.each` over yaw `0`, `π/2`, `π`, and an arbitrary yaw `1.234`) failed against the buggy formula with concrete numeric mismatches:
+  - At yaw `0` and yaw `π`, the `y < 0` assertion (`test/ui/minimap.test.js:35`) failed with `expected 0.20797258270192573 to be less than 0` — a point directly ahead of the player projected to positive `y` (screen-*down*, since SVG is y-down) instead of negative.
+  - At the arbitrary yaw `1.234`, the `x ≈ 0` assertion (`test/ui/minimap.test.js:34`) failed with `expected 0.1297328755544316 to be close to +0` — the ahead-point drifted sideways instead of landing directly above the marker.
+- A second test in the same file, the diagonal-fit invariant (`test/ui/minimap.test.js:50-72`, asserting the four floor corners stay within radius `1` of the map's circular frame at several yaws), **passed both before and after the fix** — it gave no signal that anything was wrong.
 
 ## What Didn't Work
 
-The diagonal-fit test (`test/ui/minimap.test.js:67-73`) could not have caught this bug, for a precise mathematical reason, not just bad luck: it only asserts `Math.hypot(projected.x, projected.y) <= 1` — the *distance from center* of a projected point — and both the buggy and the corrected `rotateMapPoint` are **orthogonal matrices**, so both preserve that distance exactly, for every input, at every yaw.
+The diagonal-fit test (`test/ui/minimap.test.js:66-72`) could not have caught this bug, for a precise mathematical reason, not just bad luck: it only asserts `Math.hypot(projected.x, projected.y) <= 1` — the *distance from center* of a projected point — and both the buggy and the corrected `rotateMapPoint` are **orthogonal matrices**, so both preserve that distance exactly, for every input, at every yaw.
 
 Written as matrices (`u, v` = the map-space point's `x, y`):
 
 - Buggy: `[[cos, -sin], [-sin, -cos]]` — row-wise dot products give `cos²+sin²=1`, `sin²+cos²=1`, and `cos·(-sin)+(-sin)·(-cos)=0`, so it's orthogonal; its determinant is `-cos²-sin²=-1`, i.e. a **reflection**.
 - Correct: `[[cos, sin], [-sin, cos]]` — likewise orthogonal, but with determinant `cos²+sin²=+1`, i.e. a genuine **rotation**.
 
-An orthogonal matrix preserves Euclidean norm (`‖Mx‖ = ‖x‖` for all `x`) regardless of its determinant's sign — that's what "orthogonal" (`MᵀM = I`) means, independent of whether it's a proper rotation (det `+1`) or a mirror-image reflection (det `-1`). A magnitude/hypot-only check can therefore only ever catch a broken *scale* (a non-unit-norm transform) — it is structurally blind to the difference between "rotated the right way" and "reflected instead of rotated," because both preserve exactly the same distance-from-center for every point. Catching this class of bug requires a test that checks *where* a point ends up, not merely *how far* it ends up from the center — which is exactly what the AE2 directional test (`test/ui/minimap.test.js:24-37`) does, and why it was written in the first place.
+An orthogonal matrix preserves Euclidean norm (`‖Mx‖ = ‖x‖` for all `x`) regardless of its determinant's sign — that's what "orthogonal" (`MᵀM = I`) means, independent of whether it's a proper rotation (det `+1`) or a mirror-image reflection (det `-1`). A magnitude/hypot-only check can therefore only ever catch a broken *scale* (a non-unit-norm transform) — it is structurally blind to the difference between "rotated the right way" and "reflected instead of rotated," because both preserve exactly the same distance-from-center for every point. Catching this class of bug requires a test that checks *where* a point ends up, not merely *how far* it ends up from the center — which is exactly what the AE2 directional test (`test/ui/minimap.test.js:23-36`) does, and why it was written in the first place.
 
 ## Solution
 
-`rotateMapPoint` (`src/ui/minimap.js:58-62`) only needed the sign flipped on the two `point.y`-involving terms:
+`rotateMapPoint` (`src/ui/minimap.js:67-71`) only needed the sign flipped on the two `point.y`-involving terms:
 
 ```js
 // before (buggy)
@@ -53,7 +53,7 @@ function rotateMapPoint(point, playerYaw) {
   return { x: cos * point.x - sin * point.y, y: -sin * point.x - cos * point.y };
 }
 
-// after (fixed — current src/ui/minimap.js:58-62)
+// after (fixed — current src/ui/minimap.js:67-71)
 function rotateMapPoint(point, playerYaw) {
   const cos = Math.cos(playerYaw);
   const sin = Math.sin(playerYaw);
@@ -63,7 +63,7 @@ function rotateMapPoint(point, playerYaw) {
 
 `point.x`'s coefficients, and the `cos`/`sin`/`-sin` pattern otherwise, are unchanged — only `- sin * point.y` became `+ sin * point.y`, and `- cos * point.y` became `+ cos * point.y`.
 
-The regression test that catches any future recurrence is the AE2 directional test (`test/ui/minimap.test.js:24-37`), run through `projectToMap` (`src/ui/minimap.js:84-88`), which composes `toMapSpace` (`src/ui/minimap.js:35-37`) and `rotateMapPoint`:
+The regression test that catches any future recurrence is the AE2 directional test (`test/ui/minimap.test.js:23-36`), run through `projectToMap` (`src/ui/minimap.js:93-97`), which composes `toMapSpace` (`src/ui/minimap.js:44-46`) and `rotateMapPoint`:
 
 ```js
 it.each([
@@ -80,15 +80,15 @@ it.each([
 });
 ```
 
-where `aheadWorldPoint` (`test/ui/minimap.test.js:17-22`) constructs a world point along the player's own forward direction, `{ x: player.x + sin(yaw)*distance, z: player.z + cos(yaw)*distance }`, matching `movement.js`'s own `forward` convention (`src/sim/movement.js:75`).
+where `aheadWorldPoint` (`test/ui/minimap.test.js:16-21`) constructs a world point along the player's own forward direction, `{ x: player.x + sin(yaw)*distance, z: player.z + cos(yaw)*distance }`, matching `movement.js`'s own `forward` convention (`src/sim/movement.js:78`).
 
 After the fix, the full suite (`npm test`, 220 tests at the time) passed, including this newly-passing directional test alongside the still-passing diagonal-fit test.
 
 ## Why This Works
 
-Define the player's world-space forward direction as `(sin(yaw), cos(yaw))`, matching `src/sim/movement.js:75`. `toMapSpace` (`src/ui/minimap.js:35-37`) maps a raw world delta `(dx, dz)` to map-space `(u, v) = (dx·scale, -dz·scale)` — the `-dz` flip exists because SVG's y-axis increases downward while `+z` is "ahead" (comment at `src/ui/minimap.js:30-34`).
+Define the player's world-space forward direction as `(sin(yaw), cos(yaw))`, matching `src/sim/movement.js:78`. `toMapSpace` (`src/ui/minimap.js:44-46`) maps a raw world delta `(dx, dz)` to map-space `(u, v) = (dx·scale, -dz·scale)` — the `-dz` flip exists because SVG's y-axis increases downward while `+z` is "ahead" (comment at `src/ui/minimap.js:39-43`).
 
-The developer's derivation started from the standard 2D rotation matrix `R(θ) = [[cosθ, -sinθ], [sinθ, cosθ]]` with `θ = -yaw` (rotating by the *negative* of yaw is what makes the map turn opposite the player, so their forward always ends up pointing screen-up — the same `-yaw` used by `computeMapTransform` at `src/ui/minimap.js:48-50`). Multiplying that matrix directly against the pair `(dx, -dz)` — substituting the map-space y-value `-dz` for the y-input *at the point of matrix multiplication*, rather than composing `toMapSpace` and the rotation as two separate steps — gives (dropping the scale factor, which is a linear constant that carries through unchanged):
+The developer's derivation started from the standard 2D rotation matrix `R(θ) = [[cosθ, -sinθ], [sinθ, cosθ]]` with `θ = -yaw` (rotating by the *negative* of yaw is what makes the map turn opposite the player, so their forward always ends up pointing screen-up — the same `-yaw` used by `computeMapTransform` at `src/ui/minimap.js:57-59`). Multiplying that matrix directly against the pair `(dx, -dz)` — substituting the map-space y-value `-dz` for the y-input *at the point of matrix multiplication*, rather than composing `toMapSpace` and the rotation as two separate steps — gives (dropping the scale factor, which is a linear constant that carries through unchanged):
 
 ```
 x' = cos(yaw)·dx − sin(yaw)·(−dz) ... (raw substitution)  ⇒  as coded: cos(yaw)·dx − sin(yaw)·dz
@@ -108,12 +108,13 @@ This is exactly the corrected code: `{ x: cos*point.x + sin*point.y, y: -sin*poi
 
 ## Prevention
 
-- The AE2 directional test (`test/ui/minimap.test.js:24-37`) is the concrete guardrail going forward: any future change to `rotateMapPoint`, `toMapSpace`, or their composition that reintroduces a handedness/sign error will fail this test immediately, because it checks *where* a point lands, not merely how far it is from center.
+- The AE2 directional test (`test/ui/minimap.test.js:23-36`) is the concrete guardrail going forward: any future change to `rotateMapPoint`, `toMapSpace`, or their composition that reintroduces a handedness/sign error will fail this test immediately, because it checks *where* a point lands, not merely how far it is from center.
 - The generalizable lesson: when composing two coordinate transforms (here, a sign-flip/axis-remap followed by a rotation), don't derive one transform's coefficients against a *hypothetical* raw input and then reuse those coefficients unchanged on the *other* transform's already-transformed output. Every intermediate variable's actual meaning has to be re-substituted at each composition boundary — `point.y` inside `rotateMapPoint` is `-dz`, not `dz`, and the formula has to be re-derived (or at minimum re-verified) against that fact, not copied from a derivation that assumed a different input shape.
-- This is the same higher-level failure mode as `docs/solutions/logic-errors/strafe-direction-camera-basis-mismatch.md` — a `movement.js` world-space basis vector that was internally orthonormal (self-consistent) but the wrong-handed one relative to what the camera actually renders — and as `docs/solutions/logic-errors/bot-obstacle-avoidance-reversal.md` — a deflection formula that looked like a plausible steering pattern but pointed backward for realistic approach angles, invisible to anyone who only read the formula. All three are "a coordinate/vector-math transform that is internally valid (orthonormal, textbook-derived, or superficially plausible) but wrong relative to what it's supposed to produce downstream, and invisible to a self-consistency or magnitude-only check." This is now the third occurrence of that exact pattern in this repo. The AE2 test itself was written in direct anticipation of that lesson from the strafe-direction bug, and it worked — it caught a new instance of the same class before the module was ever committed, rather than after it shipped. Given three occurrences now, it may be worth this repo turning "assert the actual downstream-consumed direction/orientation, not just internal self-consistency or magnitude" into an explicit, named review-checklist item or a `CONCEPTS.md` entry — a recommendation for a follow-up, not something this doc implements.
+- This is the same higher-level failure mode as `docs/solutions/logic-errors/strafe-direction-camera-basis-mismatch.md` — a `movement.js` world-space basis vector that was internally orthonormal (self-consistent) but the wrong-handed one relative to what the camera actually renders — and as `docs/solutions/logic-errors/bot-obstacle-avoidance-reversal.md` — a deflection formula that looked like a plausible steering pattern but pointed backward for realistic approach angles, invisible to anyone who only read the formula. All three are "a coordinate/vector-math transform that is internally valid (orthonormal, textbook-derived, or superficially plausible) but wrong relative to what it's supposed to produce downstream, and invisible to a self-consistency or magnitude-only check." This is now the third occurrence of that exact pattern in this repo. The AE2 test itself was written in direct anticipation of that lesson from the strafe-direction bug, and it worked — it caught a new instance of the same class before the module was ever committed, rather than after it shipped. Given three occurrences, this doc recommended promoting "assert the actual downstream-consumed direction/orientation, not just internal self-consistency or magnitude" into a named rule. That has since been done, and generalized past direction/orientation to measurement as a whole: `docs/solutions/conventions/measurement-that-cannot-report-failure-is-not-evidence.md` states the rule, and `CONCEPTS.md` defines Positive Control as the admission criterion. The diagonal-fit test below is the earliest case that doc records.
 
 ## Related Issues
 
 - `docs/solutions/logic-errors/strafe-direction-camera-basis-mismatch.md` — a different bug (a `movement.js` basis vector picking the wrong-handed perpendicular relative to the rendered camera) but a real, causal relationship: this doc's own AE2 directional test exists specifically because of that doc's prevention lesson ("cross-check against the actual rendered/consuming side, not just internal orthonormality"), and it worked — catching this second instance of the same higher-level pattern before it ever shipped.
 - `docs/solutions/logic-errors/bot-obstacle-avoidance-reversal.md` — a third, mechanically distinct occurrence of the same pattern family (an angle-dependent deflection-blend singularity, rather than a composition/re-derivation error), sharing no files or specific mechanism with this bug but the same underlying lesson.
+- `docs/solutions/conventions/measurement-that-cannot-report-failure-is-not-evidence.md` — the general rule this doc asked for, written after two further instances of a check that could not fail. It cites the diagonal-fit test here as the earliest recorded case: a guard that ran, passed, and was structurally incapable of reporting the defect sitting beside it.
 - `docs/solutions/logic-errors/bot-retreat-survives-death.md` — unrelated; a clock-domain/stale-deadline bug with no shared mechanism.
