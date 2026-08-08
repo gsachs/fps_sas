@@ -106,6 +106,19 @@ export const GRENADE_MODEL = {
   offset: { x: 0.002, y: 0.091, z: 0 },
 };
 
+// The same grenade, thrown rather than lying on the floor. Same file and the
+// same scale on purpose: it is the object the player just picked up, and a
+// grenade that changed size the moment it left the hand would read as a
+// different one. Only the offset differs, and it has to: a floor pickup is
+// grounded on its lowest vertex, while a thrown grenade's sim position is
+// the projectile's own centre, so this recentres on all three axes
+// (-centre*scale from the same measured bbox) instead of lifting it.
+export const GRENADE_PROJECTILE_MODEL = {
+  path: GRENADE_MODEL.path,
+  scale: GRENADE_MODEL.scale,
+  offset: { x: 0.002, y: 0.002, z: 0 },
+};
+
 // U5: calm-horizon equirectangular sky (KTD5), used by scene.js as
 // scene.background via loadSkyBackground. 2048x1024 -- plenty of resolution
 // for a background the player never approaches, at a fraction of the

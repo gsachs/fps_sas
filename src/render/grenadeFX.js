@@ -9,9 +9,17 @@
 import * as THREE from 'three';
 import { GRENADE_POCKET_CAPACITY } from '../sim/pickups.js';
 import { radialGlowTextureData } from './shotTextures.js';
+import { GRENADE_PROJECTILE_MODEL } from './modelAssets.js';
+import { loadPropModel } from './models.js';
 
 const GRENADE_MESH_RADIUS = 0.15;
 const GRENADE_MESH_COLOR = 0x3a3f2e; // dark, inert -- distinct from the pickup box's brighter green so a live throw doesn't read as another pickup
+
+// Mirrors main.js's own `assetUrl` and pickupMeshes.js's copy of it, for the
+// same reason that module gives: this module starts its own load rather than
+// taking a resolved URL, so its call site does not change shape to launch
+// one. BASE_URL-relative, so a subpath deployment still resolves.
+const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 // Only the player carries grenades (R7); a throw spends one pocket slot
 // before the projectile is ever added to grenades.js's in-flight map, so
 // GRENADE_POCKET_CAPACITY is already the true ceiling on how many can be
@@ -55,7 +63,10 @@ BURST_TEXTURE.colorSpace = THREE.SRGBColorSpace;
 BURST_TEXTURE.needsUpdate = true;
 const GRENADE_GEOMETRY = new THREE.IcosahedronGeometry(GRENADE_MESH_RADIUS, 0);
 // No per-instance animation on a grenade mesh (it doesn't fade), so unlike
-// the burst material this one is safely shared across the whole pool.
+// the burst material this one is safely shared across the whole pool. Shared
+// is also why a placeholder is never passed to disposeObject3D on swap-out:
+// that walks the subtree freeing geometry and materials, which here would
+// blank every other placeholder still in the pool.
 const GRENADE_MATERIAL = new THREE.MeshStandardMaterial({ color: GRENADE_MESH_COLOR, roughness: 0.5 });
 
 export function createGrenadeFX(scene) {
@@ -63,11 +74,35 @@ export function createGrenadeFX(scene) {
   const slotByGrenadeId = new Map();
   const activeExplosions = [];
 
+  // Set once the real model arrives; until then every slot shows the
+  // placeholder solid. Held as a template so each slot gets its own clone --
+  // a single Object3D cannot be in two places at once, and two grenades can
+  // be airborne.
+  let projectileTemplate = null;
+
+  // Each slot's scene object is a Group, not the visual itself: syncInFlight
+  // moves the group to the grenade's sim position every frame, while the
+  // visual inside carries the model's own scale and recentring offset. That
+  // separation is what lets the placeholder be swapped for the real model
+  // mid-flight without syncInFlight knowing either exists.
+  function projectileVisual() {
+    if (!projectileTemplate) {
+      const placeholder = new THREE.Mesh(GRENADE_GEOMETRY, GRENADE_MATERIAL);
+      placeholder.castShadow = true;
+      return placeholder;
+    }
+    const model = projectileTemplate.clone();
+    model.traverse((node) => {
+      if (node.isMesh) node.castShadow = true;
+    });
+    return model;
+  }
+
   function addPoolSlot() {
-    const mesh = new THREE.Mesh(GRENADE_GEOMETRY, GRENADE_MATERIAL);
+    const mesh = new THREE.Group();
     mesh.name = 'grenade';
     mesh.visible = false;
-    mesh.castShadow = true;
+    mesh.add(projectileVisual());
     scene.add(mesh);
     const slot = { mesh, assignedId: null };
     pool.push(slot);
@@ -75,6 +110,26 @@ export function createGrenadeFX(scene) {
   }
 
   for (let i = 0; i < GRENADE_MESH_POOL_SIZE; i++) addPoolSlot();
+
+  // Swaps every slot's placeholder for the real model once it loads, through
+  // the same non-blocking, placeholder-on-failure shape pickupMeshes.js uses
+  // (R18: a stalled or failed load leaves the solid in place and the game
+  // stays playable). Slots created later pick the model up on their own via
+  // projectileVisual. The outgoing placeholders are removed but never
+  // disposed -- their geometry and material are shared pool-wide.
+  loadPropModel(assetUrl(GRENADE_PROJECTILE_MODEL.path), {
+    onError: (error) => console.warn('Failed to load grenade projectile model:', error),
+  }).then((result) => {
+    if (!result.loaded) return;
+    const { offset, scale } = GRENADE_PROJECTILE_MODEL;
+    projectileTemplate = result.scene;
+    projectileTemplate.scale.setScalar(scale);
+    projectileTemplate.position.set(offset.x, offset.y, offset.z);
+    for (const slot of pool) {
+      slot.mesh.clear();
+      slot.mesh.add(projectileVisual());
+    }
+  });
 
   // Syncs the pool against grenades.js's current getInFlightGrenades()
   // snapshot: a live id keeps (or claims) a mesh and moves it to the

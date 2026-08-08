@@ -16,10 +16,13 @@ By [Quaternius](https://poly.pizza/u/Quaternius), via [Poly Pizza](https://poly.
   was also the ground model for the machine-gun floor pickup, which retired
   along with the pistol: the machine gun is now every entity's weapon from
   spawn, so there is nothing to pick up.
-- **Scifi Grenade** — [source](https://poly.pizza/m/uooNRUiCa9). Grenade
-  pickup on the floor, replacing the placeholder box. Chosen over
-  Quaternius's plainer "Grenade" (also CC0) for its sci-fi styling, matching
-  why the Rifle above was chosen over its other sci-fi guns.
+- **Scifi Grenade** — [source](https://poly.pizza/m/uooNRUiCa9). Both the
+  grenade pickup on the floor and the thrown projectile in flight, each with
+  its own transform off the same file (grounded for the pickup, recentred
+  for the projectile) — the same object either way, so it would be wrong for
+  it to change size or model between them. Chosen over Quaternius's plainer
+  "Grenade" (also CC0) for its sci-fi styling, matching why the Rifle above
+  was chosen over its other sci-fi guns.
 
 ## Audio
 
