@@ -60,6 +60,7 @@ export function createTracerSystem(scene) {
       depthWrite: false,
     });
     const beam = new THREE.Mesh(BEAM_GEOMETRY, material);
+    beam.name = 'tracer';
     beam.position.copy(start);
     beam.quaternion.setFromUnitVectors(BEAM_AXIS, direction);
     beam.scale.set(TRACER_RADIUS, length, TRACER_RADIUS);

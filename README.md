@@ -15,9 +15,17 @@ ever revealing a position.
 The machine gun is everyone's default, infinite weapon from the moment
 they spawn — player and bots alike, no pickup required. Grenades spawn as
 a pickup in each outlying district and respawn on a timer, so holding
-those matters. Bullet hits leave persistent impact decals, and the arena
-runs through a light post-processing pass (bloom, ambient occlusion, a
-skybox) on top of real sourced models and audio for the weapons.
+those matters.
+
+Every shot reads as one: a muzzle flash, a tracer down its path, a spark
+where it lands, and a bullet hole with a scorch ring that stays on the
+wall. A grenade goes off as a fireball and lights the room around it.
+Those four effect shapes are soft radial gradients, generated into pixel
+data at load rather than shipped as images — no download, no attribution,
+and their shape is unit-testable, which matters because nothing else about
+a render can be. On top of that the arena runs a light post-processing
+pass (bloom, ambient occlusion, a skybox) over real sourced models and
+audio for the weapons.
 
 ## Screenshots
 
@@ -46,6 +54,14 @@ Open the printed `localhost` URL, click "Click to Play", and go.
 - **Throw grenade:** G (grenades are picked up from the outlying districts; area damage hits everyone in blast radius, including the thrower, and is blocked by walls)
 - **Jump:** Space
 - **Pause / settings:** Escape
+
+Adding `?debug` to the URL turns on an fps readout and a set of
+`window.__debug*` hooks that read and drive the running game — entity
+state, bot phases, the shadow rig's own numbers, and direct fire/throw/
+teleport calls that do not need pointer lock. They exist so the parts of
+this game a unit test cannot see can still be checked by something other
+than eye: several of the render bugs this project has fixed looked
+identical from the outside and had unrelated causes.
 
 ### Graphics
 
@@ -99,6 +115,9 @@ npm test
 - `docs/solutions/` — documented bugs and their root causes, organized by
   category with searchable frontmatter. Worth checking before touching
   bot AI or simulation code.
+- `docs/residual-review-findings/` — findings from code review that were
+  read, judged, and deliberately not acted on, with the reasoning. Kept so
+  the same ground is not re-argued from scratch.
 - `CONCEPTS.md` — shared vocabulary for this codebase's domain (Command,
   Entity, Bot, Bot Phase).
 

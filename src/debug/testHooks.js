@@ -35,6 +35,11 @@ export function installDebugHooks({
   // Triggers the same fire-latch path a real mousedown does, for automated
   // verification in a harness where pointer lock cannot engage.
   window.__debugFire = () => inputSampler.onFirePressed();
+  // The throw key's own version of the same problem: main.js gates keydown on
+  // pointer lock (so a queued press cannot fire on resume), and pointer lock
+  // cannot be acquired under headless automation at all, so the throw path is
+  // otherwise unreachable without a real human at a real keyboard.
+  window.__debugThrowGrenade = () => inputSampler.onKeyDown({ code: 'KeyG', repeat: false });
   // Sets the player's yaw directly (bypassing the pointer-lock-gated
   // mousemove listener) so automated verification can aim at a known
   // target instead of firing in whatever direction yaw defaulted to.
@@ -88,9 +93,22 @@ export function installDebugHooks({
   // dropped -- the exact failure mode this guards against.
   window.__debugBotYaws = () =>
     bots.map((b) => ({ id: b.id, entityYaw: sim.world.getEntity(b.id)?.yaw, meshYaw: b.mesh.rotation.y }));
-  // Counts live tracer lines in the scene graph, for verifying the tracer
-  // effect actually spawns (and expires) without a human watching the screen.
-  window.__debugTracerCount = () => scene.children.filter((child) => child.type === 'Line').length;
+  // Counts live transient effects in the scene graph by name, for verifying
+  // each actually spawns and expires without a human watching the screen.
+  // By name rather than by geometry type on purpose: the previous version
+  // counted `type === 'Line'` and had silently reported zero ever since the
+  // tracer stopped being a THREE.Line (a Line renders one pixel wide on
+  // every platform that matters, which is why it never was one for long).
+  // Names survive a mesh becoming a sprite; types do not.
+  const countNamed = (name) => scene.children.filter((child) => child.name === name).length;
+  window.__debugTracerCount = () => countNamed('tracer');
+  window.__debugEffectCounts = () => ({
+    tracer: countNamed('tracer'),
+    impactSpark: countNamed('impactSpark'),
+    decal: countNamed('decal'),
+    explosionBurst: countNamed('explosionBurst'),
+    explosionLight: countNamed('explosionLight'),
+  });
   // Sweeps the shadow rig's tuning values on the live scene without a
   // reload, so a candidate value can be compared against the current one in
   // the actual renderer. Shadow defects here are all of the kind no unit

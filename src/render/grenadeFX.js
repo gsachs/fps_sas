@@ -8,6 +8,7 @@
 // their own clock (the impacts.js idiom).
 import * as THREE from 'three';
 import { GRENADE_POCKET_CAPACITY } from '../sim/pickups.js';
+import { radialGlowTextureData } from './shotTextures.js';
 
 const GRENADE_MESH_RADIUS = 0.15;
 const GRENADE_MESH_COLOR = 0x3a3f2e; // dark, inert -- distinct from the pickup box's brighter green so a live throw doesn't read as another pickup
@@ -35,9 +36,23 @@ const EXPLOSION_LIGHT_DISTANCE = 20; // PointLight's own falloff radius, beyond 
 // mirroring impacts.js's MAX_ACTIVE_IMPACTS.
 const MAX_ACTIVE_EXPLOSIONS = 8;
 
-// Shared across every burst the same way impacts.js's spark texture is --
-// per-instance state (opacity) lives on each mesh's own material instead.
-const BURST_GEOMETRY = new THREE.IcosahedronGeometry(1, 0);
+// A camera-facing sprite on the same generated glow texture the muzzle flash
+// and impact spark use (shotTextures.js), for the same reason: an
+// icosahedron reads as a faceted solid, and at this one's end radius of 3 it
+// was a six-sided orange lump six units across rather than a fireball. The
+// burst is the one place that shape mattered most -- it is the largest thing
+// on screen when it happens.
+//
+// Shared across every burst the same way the spark texture is; per-instance
+// state (opacity, scale) lives on each sprite's own material and transform.
+const BURST_TEXTURE_SIZE = 128; // larger than the spark's: this fills much more of the screen
+const BURST_TEXTURE = new THREE.DataTexture(
+  radialGlowTextureData(BURST_TEXTURE_SIZE),
+  BURST_TEXTURE_SIZE,
+  BURST_TEXTURE_SIZE
+);
+BURST_TEXTURE.colorSpace = THREE.SRGBColorSpace;
+BURST_TEXTURE.needsUpdate = true;
 const GRENADE_GEOMETRY = new THREE.IcosahedronGeometry(GRENADE_MESH_RADIUS, 0);
 // No per-instance animation on a grenade mesh (it doesn't fade), so unlike
 // the burst material this one is safely shared across the whole pool.
@@ -94,7 +109,7 @@ export function createGrenadeFX(scene) {
   function retireExplosion(index) {
     const entry = activeExplosions[index];
     scene.remove(entry.burst);
-    entry.burst.material.dispose(); // geometry is shared; see BURST_GEOMETRY
+    entry.burst.material.dispose(); // BURST_TEXTURE is shared and outlives every burst
     scene.remove(entry.light);
     activeExplosions.splice(index, 1);
   }
@@ -106,12 +121,13 @@ export function createGrenadeFX(scene) {
   function spawnExplosion(position) {
     if (activeExplosions.length >= MAX_ACTIVE_EXPLOSIONS) retireExplosion(0);
 
-    const material = new THREE.MeshBasicMaterial({
+    const material = new THREE.SpriteMaterial({
+      map: BURST_TEXTURE,
       color: EXPLOSION_COLOR,
       transparent: true,
       depthWrite: false,
     });
-    const burst = new THREE.Mesh(BURST_GEOMETRY, material);
+    const burst = new THREE.Sprite(material);
     burst.name = 'explosionBurst';
     burst.position.set(position.x, position.y, position.z);
     burst.scale.setScalar(EXPLOSION_BURST_START_RADIUS);

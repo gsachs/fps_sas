@@ -78,6 +78,7 @@ export function createImpactSystem(scene) {
       depthWrite: false,
     });
     const spark = new THREE.Sprite(material);
+    spark.name = 'impactSpark';
     spark.position.set(point.x, point.y, point.z);
     spark.scale.setScalar(START_RADIUS);
     scene.add(spark);
