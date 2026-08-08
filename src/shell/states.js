@@ -6,6 +6,8 @@ import {
   otherShadowQuality,
   shadowQualityLabel,
 } from './graphicsSettings.js';
+import { KILLS_TO_WIN } from './matchEnd.js';
+import { RAMP_INTERVAL_SECONDS } from './botRamp.js';
 
 // Pure state machine -- no DOM, no pointer lock -- so transitions are
 // unit-testable in isolation. The orchestrator below (createGameShell)
@@ -40,6 +42,10 @@ export function formatResultsEntry(entry) {
   return `${displayName(entry.id)} — ${entry.score}`;
 }
 
+// Dropped in by the player, not shipped: absent, the start screen falls back
+// to the live orbiting view of the arena (see the loader below).
+const KEY_ART_PATH = `${import.meta.env.BASE_URL}assets/ui/keyart.jpg`;
+
 const CONTROLS_TEXT = 'WASD move · Mouse look · Click fire · Space jump';
 
 function createScreen(container, { visible = false } = {}) {
@@ -72,10 +78,52 @@ export function createGameShell({
   let state = STATES.START;
 
   const startScreen = createScreen(container, { visible: true });
-  startScreen.innerHTML =
-    `<h1 style="margin:0;font-size:2.5rem;">FPS Arena</h1>` +
-    `<div style="font-size:1.5rem;cursor:pointer;">Click to Play</div>` +
-    `<p style="opacity:0.8;">${CONTROLS_TEXT}</p>`;
+  // A gradient rather than the flat wash the other screens use: the arena is
+  // orbiting behind this one (render/attractCamera.js) and a key-art image
+  // may be layered over it, so the scrim has to darken enough for text to
+  // read at the middle without flattening the picture at the edges.
+  startScreen.style.background =
+    'linear-gradient(to bottom, rgba(6,8,12,0.55) 0%, rgba(6,8,12,0.86) 42%, rgba(6,8,12,0.86) 62%, rgba(6,8,12,0.55) 100%)';
+  startScreen.style.gap = '0';
+
+  // Optional key art, behind the text and in front of the live view. Loaded
+  // the way every other asset here is (R18): absent or failed, the element
+  // simply stays transparent and the orbiting arena shows through, so the
+  // screen is complete either way and nothing has to ship to make it work.
+  const keyArt = document.createElement('div');
+  keyArt.style.cssText =
+    'position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;' +
+    'transition:opacity 600ms ease;pointer-events:none;';
+  startScreen.appendChild(keyArt);
+  const keyArtImage = new Image();
+  keyArtImage.onload = () => {
+    keyArt.style.backgroundImage = `url(${KEY_ART_PATH})`;
+    keyArt.style.opacity = '1';
+  };
+  keyArtImage.src = KEY_ART_PATH;
+
+  // The brief quotes the real numbers by importing them, so a retune of the
+  // kill target or the reinforcement interval cannot leave the story telling
+  // the player something the match no longer does.
+  const brief = document.createElement('div');
+  brief.style.cssText = 'position:relative;max-width:44rem;padding:0 2rem;';
+  brief.innerHTML =
+    `<h1 style="margin:0;font-size:4rem;letter-spacing:0.22em;font-weight:700;">FOOTHOLD</h1>` +
+    `<p style="margin:0.35rem 0 1.6rem;font-size:1rem;letter-spacing:0.32em;opacity:0.65;` +
+    `text-transform:uppercase;">Secure the site for the landing behind you</p>` +
+    `<p style="margin:0 0 0.9rem;font-size:1.05rem;line-height:1.65;opacity:0.9;">` +
+    `They put you down alone, ahead of everyone else. The compound has to be clear before ` +
+    `the main landing can come down on it &mdash; and the machines holding it know that too.</p>` +
+    `<p style="margin:0 0 1.8rem;font-size:1.05rem;line-height:1.65;opacity:0.9;">` +
+    `Their drones are already inbound: one more defender every ${RAMP_INTERVAL_SECONDS} seconds, ` +
+    `dropped into whichever district you are not standing in.</p>` +
+    `<p style="margin:0 0 1.9rem;font-size:1.1rem;letter-spacing:0.12em;">` +
+    `<span style="opacity:0.55;text-transform:uppercase;font-size:0.85rem;` +
+    `letter-spacing:0.28em;">Objective &nbsp;</span>` +
+    `Clear ${KILLS_TO_WIN} defenders and the site is yours</p>` +
+    `<div style="font-size:1.45rem;cursor:pointer;letter-spacing:0.06em;">Click to Play</div>` +
+    `<p style="margin:1.4rem 0 0;opacity:0.55;font-size:0.9rem;">${CONTROLS_TEXT}</p>`;
+  startScreen.appendChild(brief);
 
   const pauseScreen = createScreen(container);
   const resumeButton = styledButton('Resume');

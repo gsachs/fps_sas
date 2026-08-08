@@ -12,7 +12,10 @@
 // contact density scales through the larger max and the map itself, not a
 // more crowded opening.
 const INITIAL_ACTIVE_BOTS = 2;
-const RAMP_INTERVAL_SECONDS = 15;
+// Exported because the start screen's brief tells the player how often
+// reinforcements arrive; a hand-typed number there would drift the first
+// time this is retuned.
+export const RAMP_INTERVAL_SECONDS = 15;
 
 export function getActiveBotCount(elapsedSeconds, maxBots) {
   const unlocked = INITIAL_ACTIVE_BOTS + Math.floor(elapsedSeconds / RAMP_INTERVAL_SECONDS);

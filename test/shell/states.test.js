@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { STATES, transition, formatResultsEntry, createGameShell } from '../../src/shell/states.js';
 import { LOCAL_PLAYER_ID } from '../../src/sim/entityIds.js';
 import { SHADOW_QUALITY, shadowQualityLabel } from '../../src/shell/graphicsSettings.js';
+import { KILLS_TO_WIN } from '../../src/shell/matchEnd.js';
+import { RAMP_INTERVAL_SECONDS } from '../../src/shell/botRamp.js';
 
 describe('transition (pure game-state machine)', () => {
   it('moves from START to PLAYING only on lockAcquired', () => {
@@ -205,3 +207,4 @@ describe('createGameShell (orchestrator wiring)', () => {
     });
   });
 });
+

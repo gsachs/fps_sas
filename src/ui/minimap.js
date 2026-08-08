@@ -191,5 +191,11 @@ export function createMinimap(container, layout) {
     marker.setAttribute('transform', `translate(${markerPos.x}, ${markerPos.y})`);
   }
 
-  return { update };
+  // Same reason as the viewmodel's: the minimap is the player's instrument,
+  // and there is no player at the start screen.
+  function setVisible(visible) {
+    wrapper.style.display = visible ? 'block' : 'none';
+  }
+
+  return { update, setVisible };
 }

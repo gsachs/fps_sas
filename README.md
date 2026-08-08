@@ -1,8 +1,9 @@
-# FPS Arena
+# Foothold
 
-A browser-based 3D shooter: hunt AI bots through an asymmetric,
-districts-and-corridors map in deathmatch, built with Three.js and Rapier
-physics. Bots patrol, chase, search a last-seen position when they lose
+A browser-based 3D shooter, built with Three.js and Rapier physics. You are
+put down alone on a compound that has to be clear before the main landing can
+come down on it, and the machines holding it are being reinforced by drone
+while you work. Clear enough of them and the site is yours. Bots patrol, chase, search a last-seen position when they lose
 sight of you, and retreat toward a doorway when hurt. They only acquire
 what is inside a forward cone, so flanking is worth doing — though shooting
 one alerts it, and it will turn on you. Each district — a

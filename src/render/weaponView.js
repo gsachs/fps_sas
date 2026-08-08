@@ -263,5 +263,12 @@ export function createWeaponView(camera) {
   // weaponCamera is exposed here so main.js's own
   // `postfx.addWeaponPass(weaponView.weaponCamera)` can register the
   // depth-clear pass (KTD4) once both this view and the composer exist.
-  return { fire, update, setModel, setHeldWeapon, getCameraPunch, weaponCamera };
+  // Hides the whole viewmodel. The start screen orbits the arena from above,
+  // and a first-person gun hanging in the corner of that shot belongs to a
+  // player who is not there yet.
+  function setVisible(visible) {
+    group.visible = visible;
+  }
+
+  return { fire, update, setModel, setHeldWeapon, getCameraPunch, setVisible, weaponCamera };
 }

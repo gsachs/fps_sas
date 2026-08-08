@@ -36,10 +36,11 @@ import { createImpactSystem } from './render/impacts.js';
 import { createDecalSystem } from './render/decals.js';
 import { createCorpseField } from './render/corpses.js';
 import { createDropshipFleet } from './render/dropships.js';
+import { attractCameraPose } from './render/attractCamera.js';
 import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio, EXPLOSION_SOUND_SET_ID } from './audio/gunshots.js';
-import { createGameShell } from './shell/states.js';
+import { createGameShell, STATES } from './shell/states.js';
 import { browserStorage, readShadowQuality, writeShadowQuality } from './shell/graphicsSettings.js';
 import { checkMatchEnd, resetMatch } from './shell/matchEnd.js';
 import { renderStartupError } from './shell/startupError.js';
@@ -469,6 +470,7 @@ statsEl.style.cssText = 'position:absolute;top:8px;left:8px;color:#0f0;font:12px
 app.appendChild(statsEl);
 let frames = 0;
 let fpsAccum = 0;
+let attractElapsedSeconds = 0;
 
 const loop = createRenderLoop({
   render: (delta) => postfx.composer.render(delta),
@@ -479,10 +481,35 @@ const loop = createRenderLoop({
     const simRunning = gameShell.isSimRunning();
     gunshots.setRunning(simRunning);
 
+    // The player's own instruments -- their gun and their map -- belong to a
+    // player who is in the match. At the start screen the camera is orbiting
+    // the site from above, and a first-person weapon hanging in the corner of
+    // that shot reads as a bug. Paused and results keep them, because those
+    // screens sit over a frozen frame of real play.
+    const atStartScreen = gameShell.getState() === STATES.START;
+    weaponView.setVisible(!atStartScreen);
+    minimap.setVisible(!atStartScreen);
+    hud.setVisible(!atStartScreen);
+
     // The scene still renders every frame regardless (render/loop.js calls
     // renderer.render after this returns), so start/pause/results screens
     // show over a frozen last-playing frame rather than a blank canvas.
-    if (!simRunning) return;
+    if (!simRunning) {
+      // ...except at the start screen, where there is no last-playing frame
+      // to freeze. Left alone the camera sits at the renderer's default pose
+      // -- the origin, at floor level -- and since the ground plane is
+      // single-sided, half the first screen anyone sees is the underside of
+      // the world. Orbit the site instead: it is the thing the brief is
+      // asking the player to go and secure. Paused and results keep their
+      // frozen frame, which is the right backdrop for both.
+      if (gameShell.getState() === STATES.START) {
+        attractElapsedSeconds += delta;
+        const pose = attractCameraPose(attractElapsedSeconds);
+        camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+        camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
+      }
+      return;
+    }
 
     // Ramp reinforcements in over the match (shell/botRamp.js) -- the clock
     // only advances while actually playing, so pausing doesn't burn ramp time.

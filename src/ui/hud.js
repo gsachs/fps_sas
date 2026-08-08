@@ -88,5 +88,14 @@ export function createHud(container) {
     grenadeEl.textContent = grenadeText;
   }
 
-  return { update, flashCrosshair };
+  // Hidden at the start screen, along with the weapon and the minimap: these
+  // are the player's readouts, and there is no player yet. It also stops a
+  // finished match's health and score sitting over the brief after a return
+  // to start -- update() is not called while stopped, so whatever was on
+  // screen at the final kill would otherwise stay there.
+  function setVisible(visible) {
+    root.style.display = visible ? 'block' : 'none';
+  }
+
+  return { update, flashCrosshair, setVisible };
 }
