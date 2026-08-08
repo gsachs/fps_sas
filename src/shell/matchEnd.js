@@ -34,18 +34,19 @@ export function checkMatchEnd(entityAccessor) {
 // pocket, and needs its own clear hook (KTD5). killfeed (also optional)
 // clears its entries the same way -- it only ages while a match plays, so
 // without this the previous match's frozen lines would bleed into the new
-// one. decals and corpses (both optional) clear every bullet mark and body
-// left by the finished match, for the same
+// one. decals, corpses and dropships (all optional) clear every bullet mark,
+// body and in-flight drone left by the finished match, for the same
 // reason -- R5 says they persist through a match, not across one.
 export function resetMatch(
   entityAccessor,
-  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem, grenadeSystem, killfeed, decals, corpses }
+  { rapierWorld, spawnPoints, movementSystem, healthSystem, pickupSystem, grenadeSystem, killfeed, decals, corpses, dropships }
 ) {
   if (pickupSystem) pickupSystem.resetAll();
   if (grenadeSystem) grenadeSystem.resetAll();
   if (killfeed) killfeed.resetAll();
   if (decals) decals.resetAll();
   if (corpses) corpses.resetAll();
+  if (dropships) dropships.resetAll();
 
   const assignedSpawns = [];
   for (const entity of entityAccessor.allEntities()) {

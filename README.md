@@ -3,7 +3,9 @@
 A browser-based 3D shooter: hunt AI bots through an asymmetric,
 districts-and-corridors map in deathmatch, built with Three.js and Rapier
 physics. Bots patrol, chase, search a last-seen position when they lose
-sight of you, and retreat toward a doorway when hurt. Each district — a
+sight of you, and retreat toward a doorway when hurt. They only acquire
+what is inside a forward cone, so flanking is worth doing — though shooting
+one alerts it, and it will turn on you. Each district — a
 tight chamber warren, an open long-sightline yard, a pillared hall, a
 cover-block maze, a scattered-cover bazaar — is identifiable by its
 structure alone, with its own accent color as a secondary cue, echoed on a
@@ -16,6 +18,14 @@ The machine gun is everyone's default, infinite weapon from the moment
 they spawn — player and bots alike, no pickup required. Grenades spawn as
 a pickup in each outlying district and respawn on a timer, so holding
 those matters.
+
+Nobody appears out of thin air and nobody vanishes. Arrivals are flown in:
+a drone releases them overhead and peels away, and the fall is real
+simulation, so a descending bot can be shot on the way down and cannot
+shoot back until it lands. The dead stay dead in place — a body is left
+where it fell, for the rest of the match, so a room tells you what happened
+in it. Bodies are scenery: shots and sightlines pass straight through
+them.
 
 Every shot reads as one: a muzzle flash, a tracer down its path, a spark
 where it lands, and a bullet hole with a scorch ring that stays on the

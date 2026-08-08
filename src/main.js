@@ -35,6 +35,7 @@ import { createTracerSystem } from './render/tracer.js';
 import { createImpactSystem } from './render/impacts.js';
 import { createDecalSystem } from './render/decals.js';
 import { createCorpseField } from './render/corpses.js';
+import { createDropshipFleet } from './render/dropships.js';
 import { createPickupMeshes } from './render/pickupMeshes.js';
 import { createGrenadeFX } from './render/grenadeFX.js';
 import { createGunshotAudio, EXPLOSION_SOUND_SET_ID } from './audio/gunshots.js';
@@ -144,6 +145,10 @@ const decals = createDecalSystem(scene, arenaMeshes);
 // Bodies outlive the bot that left them, so they cannot be the bot's own
 // mesh; corpses.js explains why. Handed the same rig description the live
 // bots use, so a body is the same character at the same size and facing.
+// The drone that delivered an arriving bot. Cosmetic only -- see
+// dropships.js for why this one is render-layer while the fall it
+// accompanies has to be simulation.
+const dropships = createDropshipFleet(scene);
 const corpses = createCorpseField(scene, {
   modelUrl: assetUrl(BOT_MODEL.path),
   model: {
@@ -389,6 +394,7 @@ const gameShell = createGameShell({
       killfeed,
       decals,
       corpses,
+      dropships,
     });
     // resetMatch repositions every entity in the world, including bots the
     // ramp hadn't unlocked yet -- re-park those so the new match starts the
@@ -567,7 +573,12 @@ const loop = createRenderLoop({
     impacts.update(delta);
     decals.update(delta);
     corpses.update(delta);
+    dropships.update(delta);
     pickupMeshes.update(pickupSystem.getPickupStates());
+    // Diffed against last frame rather than driven by an event: the sim has
+    // no "airdrop started" event, and a purely visual effect is not reason
+    // enough to grow one. Mirrors grenadeFX.syncInFlight just below.
+    dropships.syncArrivals(sim.world.allEntities());
     grenadeFX.syncInFlight(grenadeSystem.getInFlightGrenades());
     grenadeFX.update(delta);
     hud.update({
