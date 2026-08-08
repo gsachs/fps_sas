@@ -15,6 +15,15 @@ import * as THREE from 'three';
 const TRACER_LIFETIME_SECONDS = 0.14;
 const TRACER_COLOR = 0xfff2b0;
 const TRACER_RADIUS = 0.022;
+// How far down the shot the beam actually starts. The local player's fire
+// origin is the camera itself, so a beam drawn from the origin puts a
+// cylinder centimetres from the eye: at that range even a 2cm-wide tracer
+// covers a third of the screen, which is the pale band that swamped the view
+// on every shot. Starting it clear of the near field leaves the muzzle flash
+// to sell the shot leaving the gun, and the beam to sell where it went. Bots
+// are unaffected in practice -- at any range you can see one from, two
+// metres off their muzzle is not a visible difference.
+export const TRACER_START_OFFSET = 2;
 
 // Unit cylinder shared by every tracer, translated so its origin sits at the
 // base and scaling along Y grows it from the muzzle toward the impact. Shared
@@ -30,10 +39,18 @@ export function createTracerSystem(scene) {
   function spawn(origin, endPoint) {
     const start = new THREE.Vector3(origin.x, origin.y, origin.z);
     const direction = new THREE.Vector3(endPoint.x, endPoint.y, endPoint.z).sub(start);
-    const length = direction.length();
+    const fullLength = direction.length();
     // A zero-length shot has no direction to orient against, and normalising
     // it would produce a NaN quaternion that silently corrupts the mesh.
-    if (length === 0) return;
+    if (fullLength === 0) return;
+    // A shot that lands inside the offset -- point blank against a wall or a
+    // body -- gets no beam at all. There is no room to draw one that would
+    // not be the near-eye band this offset exists to remove, and the muzzle
+    // flash and impact spark already cover that range.
+    const length = fullLength - TRACER_START_OFFSET;
+    if (length <= 0) return;
+    direction.divideScalar(fullLength);
+    start.addScaledVector(direction, TRACER_START_OFFSET);
 
     const material = new THREE.MeshBasicMaterial({
       color: TRACER_COLOR,
@@ -44,7 +61,7 @@ export function createTracerSystem(scene) {
     });
     const beam = new THREE.Mesh(BEAM_GEOMETRY, material);
     beam.position.copy(start);
-    beam.quaternion.setFromUnitVectors(BEAM_AXIS, direction.divideScalar(length));
+    beam.quaternion.setFromUnitVectors(BEAM_AXIS, direction);
     beam.scale.set(TRACER_RADIUS, length, TRACER_RADIUS);
     scene.add(beam);
     active.push({ beam, remaining: TRACER_LIFETIME_SECONDS });

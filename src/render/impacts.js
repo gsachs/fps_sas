@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { radialGlowTextureData } from './shotTextures.js';
 
 // What a shot looks like where it lands. Without this a bullet that hits a
 // wall and one that hits nothing at all look identical, so the player has no
@@ -31,7 +32,17 @@ const IMPACT_COLORS = {
 // Shared for the same reason the tracer beam is: impacts spawn as often as
 // shots do, and per-impact geometry is what stops renderer.info.memory from
 // plateauing over a long match.
-const SPARK_GEOMETRY = new THREE.IcosahedronGeometry(1, 0);
+// A camera-facing sprite, not a solid: an icosahedron at this size renders
+// as a visibly faceted lump that reads as a floating polyhedron rather than
+// a spark. The texture is generated, not loaded (shotTextures.js).
+const SPARK_TEXTURE_SIZE = 64;
+const SPARK_TEXTURE = new THREE.DataTexture(
+  radialGlowTextureData(SPARK_TEXTURE_SIZE),
+  SPARK_TEXTURE_SIZE,
+  SPARK_TEXTURE_SIZE
+);
+SPARK_TEXTURE.colorSpace = THREE.SRGBColorSpace;
+SPARK_TEXTURE.needsUpdate = true;
 
 // Which shooters landed a shot on someone this tick. The simulation pushes a
 // 'fire' event and then, for the same shooter in the same tick, a 'hit' event
@@ -53,19 +64,20 @@ export function createImpactSystem(scene) {
   function retire(index) {
     const entry = active[index];
     scene.remove(entry.spark);
-    entry.spark.material.dispose(); // geometry is shared; see SPARK_GEOMETRY
+    entry.spark.material.dispose(); // SPARK_TEXTURE is shared and outlives every spark
     active.splice(index, 1);
   }
 
   function spawn(point, kind = 'surface') {
     if (active.length >= MAX_ACTIVE_IMPACTS) retire(0);
 
-    const material = new THREE.MeshBasicMaterial({
+    const material = new THREE.SpriteMaterial({
+      map: SPARK_TEXTURE,
       color: IMPACT_COLORS[kind] ?? IMPACT_COLORS.surface,
       transparent: true,
       depthWrite: false,
     });
-    const spark = new THREE.Mesh(SPARK_GEOMETRY, material);
+    const spark = new THREE.Sprite(material);
     spark.position.set(point.x, point.y, point.z);
     spark.scale.setScalar(START_RADIUS);
     scene.add(spark);

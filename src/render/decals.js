@@ -7,11 +7,18 @@
 // mirrors the reasoning impacts.js documents for using a spark instead of a
 // decal for its own transient flash.
 import * as THREE from 'three';
+import { bulletHoleTextureData } from './shotTextures.js';
 
-const DECAL_SIZE = 0.28; // world units -- a bullet mark, not a poster
+// The quad the mark is drawn on. Bigger than the mark itself looks: the
+// texture is a hole with a scorch ring and a dust halo fading to nothing
+// well inside the quad's edge, so the visible hole is about a fifth of this
+// and the whole mark fades out rather than ending on a square edge. The
+// retired 0.28 quad had no texture at all -- it was a flat opaque square,
+// which is exactly what it read as.
+const DECAL_SIZE = 0.22;
+const BULLET_HOLE_TEXTURE_SIZE = 128; // enough that the rim stays crisp with your face against a wall
 const DEFAULT_FORWARD = new THREE.Vector3(0, 0, 1); // PlaneGeometry's own resting normal
 const SURFACE_OFFSET = 0.01; // lifts the quad off the surface it's stamped on, avoiding self-intersection
-const DECAL_COLOR = 0x1c1a17; // dark scorch mark, reads on every accent colour this arena uses
 
 // KTD3: the MG fires 30 rounds/sec, so per-round decals into roughly the
 // same spot would be waste; a ~0.15-unit cluster counts as one mark.
@@ -23,10 +30,22 @@ const DEDUP_DISTANCE_SQ = DEDUP_DISTANCE * DEDUP_DISTANCE;
 const MAX_ACTIVE_DECALS = 200;
 const EVICTION_FADE_SECONDS = 0.25;
 
-// Shared across every decal the same way impacts.js's SPARK_GEOMETRY is --
+// Shared across every decal the same way impacts.js's spark texture is --
 // decals spawn as often as shots land, and per-decal geometry is what stops
 // renderer.info.memory from plateauing over a long match.
 const DECAL_GEOMETRY = new THREE.PlaneGeometry(DECAL_SIZE, DECAL_SIZE);
+
+// Shared for the same reason the geometry is. Generated, not loaded: see
+// shotTextures.js. The luminance is baked in rather than tinted by the
+// material, because a hole, its scorch ring and its dust halo are three
+// different greys and a single material colour cannot express that.
+const DECAL_TEXTURE = new THREE.DataTexture(
+  bulletHoleTextureData(BULLET_HOLE_TEXTURE_SIZE),
+  BULLET_HOLE_TEXTURE_SIZE,
+  BULLET_HOLE_TEXTURE_SIZE
+);
+DECAL_TEXTURE.colorSpace = THREE.SRGBColorSpace;
+DECAL_TEXTURE.needsUpdate = true;
 
 // Pure, so KTD7's directional sign test can exercise it without a scene,
 // raycaster, or mesh. `normal` stays a plain {x,y,z} at this boundary
@@ -97,7 +116,7 @@ export function createDecalSystem(scene, arenaMeshes) {
     if (active.length >= MAX_ACTIVE_DECALS) evictOldest();
 
     const material = new THREE.MeshBasicMaterial({
-      color: DECAL_COLOR,
+      map: DECAL_TEXTURE,
       transparent: true,
       depthWrite: false,
       // Negative offset pulls the decal's fragment depth toward the camera

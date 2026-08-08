@@ -35,7 +35,7 @@ const EXPLOSION_LIGHT_DISTANCE = 20; // PointLight's own falloff radius, beyond 
 // mirroring impacts.js's MAX_ACTIVE_IMPACTS.
 const MAX_ACTIVE_EXPLOSIONS = 8;
 
-// Shared across every burst the same way impacts.js's SPARK_GEOMETRY is --
+// Shared across every burst the same way impacts.js's spark texture is --
 // per-instance state (opacity) lives on each mesh's own material instead.
 const BURST_GEOMETRY = new THREE.IcosahedronGeometry(1, 0);
 const GRENADE_GEOMETRY = new THREE.IcosahedronGeometry(GRENADE_MESH_RADIUS, 0);

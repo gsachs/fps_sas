@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { disposeObject3D } from './models.js';
+import { radialGlowTextureData } from './shotTextures.js';
 import { DEFAULT_WEAPON_ID } from '../sim/weapon.js';
 
 // First-person weapon: a model parented to the camera (so it always renders
@@ -18,6 +19,7 @@ const RECOIL_RECOVERY_RATE = 11; // higher = snaps back faster
 const MUZZLE_FLASH_SECONDS = 0.07;
 const MUZZLE_FLASH_INTENSITY = 9;
 const MUZZLE_FLASH_RADIUS = 0.07;
+const MUZZLE_FLASH_TEXTURE_SIZE = 64;
 // KTD4: the render layer the viewmodel lives on exclusively. It is drawn
 // only through the weapon camera's own depth-cleared pass (postfx.js's
 // addWeaponPass), never through the main world camera -- moving it off the
@@ -115,9 +117,27 @@ export function createWeaponView(camera) {
   // often none, so a shot could light nothing and read as no shot at all.
   // This is the flash itself -- unlit geometry, visible regardless of scene
   // lighting.
+  // A soft round glow on a quad, not a solid: an icosahedron this close to
+  // the eye renders as a distinct faceted hexagon hanging off the barrel.
+  // The quad needs no billboarding of its own -- it is parented to the
+  // camera, so it already faces it. Texture generated, not loaded
+  // (shotTextures.js).
+  const muzzleFlashTexture = new THREE.DataTexture(
+    radialGlowTextureData(MUZZLE_FLASH_TEXTURE_SIZE),
+    MUZZLE_FLASH_TEXTURE_SIZE,
+    MUZZLE_FLASH_TEXTURE_SIZE
+  );
+  muzzleFlashTexture.colorSpace = THREE.SRGBColorSpace;
+  muzzleFlashTexture.needsUpdate = true;
   const muzzleFlash = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(MUZZLE_FLASH_RADIUS, 0),
-    new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0, depthWrite: false })
+    new THREE.PlaneGeometry(MUZZLE_FLASH_RADIUS * 2, MUZZLE_FLASH_RADIUS * 2),
+    new THREE.MeshBasicMaterial({
+      map: muzzleFlashTexture,
+      color: 0xffd98a,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    })
   );
   muzzleFlash.position.set(0, 0, -0.26);
   muzzleFlash.name = 'muzzleFlash';
