@@ -105,6 +105,9 @@ export function installDebugHooks({
     if (opts.normalBias !== undefined) sun.shadow.normalBias = opts.normalBias;
     if (opts.near !== undefined) sun.shadow.camera.near = opts.near;
     if (opts.far !== undefined) sun.shadow.camera.far = opts.far;
+    if (opts.shadowSide !== undefined) {
+      scene.traverse((o) => { if (o.material && o.castShadow) o.material.shadowSide = opts.shadowSide; });
+    }
     sun.shadow.camera.updateProjectionMatrix();
     sun.shadow.map?.dispose();
     sun.shadow.map = null;

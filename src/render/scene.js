@@ -109,14 +109,28 @@ const SHADOW_CAMERA_FAR = SUN_DISTANCE + FLOOR_HALF_SIZE * Math.SQRT2 + 20;
 // wall's shadow visibly clear of its base throughout the arena. Rescaling
 // it back only halves the strip; it was faintly there at 0.053 too.
 //
-// So zero, and let `normalBias` do the work alone. That one offsets the
-// lookup along the receiving surface's normal in WORLD units, so it cannot
-// drift with the camera, and 0.03 holds acne off by itself -- checked on a
-// sunlit floor at 2048, where a bigger texel makes acne show first.
-// shadowCoverage.test.js bounds the world-space depth bias so this cannot
-// quietly grow back.
+// `normalBias` causes the same defect by a different route: it offsets the
+// lookup along the receiving surface's normal, so on a floor it lifts the
+// sample straight up and the wall's shadow starts fractionally out from the
+// wall. Sampling the live framebuffer across the junction, 0.03 put a
+// one-pixel spike of 76 luminance between a 42 wall and a 47 floor -- the
+// bright seam. Zero reads 49, level with the floor either side of it.
+//
+// Both are zero because neither is buying anything here. three.js renders
+// BACK faces into the shadow map for a FrontSide material, so a caster's own
+// lit faces are never in the depth map and cannot self-shadow; the floor is
+// receive-only (arenaMesh.js sets no castShadow on it) so it is not in there
+// at all. That leaves nothing for these offsets to protect against, which is
+// why zeroing both shows no acne on walls, pillars, cover blocks, bots or a
+// sunlit floor at 2048, where a bigger texel would surface it first.
+//
+// The premise, not the numbers, is what to re-check if this ever needs
+// revisiting: give the ground `castShadow`, or override `shadowSide`, and
+// self-shadowing becomes reachable again and these offsets start earning
+// their keep. shadowCoverage.test.js bounds their combined world-space size
+// so neither can quietly grow back in the meantime.
 const SHADOW_BIAS = 0;
-const SHADOW_NORMAL_BIAS = 0.03;
+const SHADOW_NORMAL_BIAS = 0;
 
 // Changes the sun's shadow-map resolution on a live scene. three.js
 // allocates the depth target once and then reuses it, so a new mapSize is
